@@ -1,0 +1,15 @@
+card_type: DI
+points: 4
+tags:
+  - name: "Rack0_Slot2_FlowSwitch"
+    alarm: true
+    normal_state: "off"
+  - name: "Rack0_Slot2_OverTemp"
+    alarm: true
+    normal_state: "off"
+  - name: "Rack0_Slot2_LowPressure"
+    alarm: true
+    normal_state: "on"
+  - name: "Rack0_Slot2_Spare4"
+    alarm: false
+    normal_state: "off"

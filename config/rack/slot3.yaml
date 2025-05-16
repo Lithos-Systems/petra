@@ -1,0 +1,10 @@
+card_type: AI
+points: 4
+tags:
+  - name: "Rack0_Slot3_Pressure"
+    units: "psi"
+    scale: [0, 27648, 0.0, 100.0]
+  - name: "Rack0_Slot3_Temperature"
+    units: "degF"
+    scale: [0, 27648, -40.0, 150.0]
+  # ...up to 4

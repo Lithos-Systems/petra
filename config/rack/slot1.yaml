@@ -1,0 +1,27 @@
+card_type: DI
+points: 8
+tags:
+  - name: "Rack0_Slot1_PumpFault"
+    alarm: true
+    normal_state: "off"
+  - name: "Rack0_Slot1_LevelLow"
+    alarm: true
+    normal_state: "on"
+  - name: "Rack0_Slot1_DoorOpen"
+    alarm: false
+    normal_state: "off"
+  - name: "Rack0_Slot1_Spare4"
+    alarm: false
+    normal_state: "off"
+  - name: "Rack0_Slot1_Spare5"
+    alarm: false
+    normal_state: "off"
+  - name: "Rack0_Slot1_Spare6"
+    alarm: false
+    normal_state: "off"
+  - name: "Rack0_Slot1_Spare7"
+    alarm: false
+    normal_state: "off"
+  - name: "Rack0_Slot1_Spare8"
+    alarm: false
+    normal_state: "off"

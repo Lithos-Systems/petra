@@ -1,0 +1,221 @@
+
+// ===== File: ./Cargo.toml =====
+
+[package]
+name = "petra_basic"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.37", features = ["full"] }
+
+# Optional: MQTT (uncomment when ready)
+# rumqttc = "0.24"
+
+# Optional for config/serde
+# serde = { version = "1", features = ["derive"] }
+# serde_yaml = "0.9"
+
+# Optional for tracing/logging
+# tracing = "0.1"
+# tracing-subscriber = "0.3"
+
+// ===== File: ./src/control/timer.rs =====
+
+use tokio::time::{Instant, Duration};
+
+#[derive(Clone)]
+pub struct Ton {
+    pub in_: bool,
+    pub pt: Duration,
+    pub q: bool,
+    pub start_time: Option<Instant>,
+}
+
+impl Ton {
+    pub fn new(pt_ms: u64) -> Self {
+        Self { in_: false, pt: Duration::from_millis(pt_ms), q: false, start_time: None }
+    }
+    pub async fn execute(&mut self) {
+        if self.in_ {
+            if self.start_time.is_none() { self.start_time = Some(Instant::now()); }
+            if self.start_time.unwrap().elapsed() >= self.pt { self.q = true; }
+        } else {
+            self.q = false;
+            self.start_time = None;
+        }
+    }
+}
+
+// ===== File: ./src/devices/pump_controller.rs =====
+
+use crate::tags::{TagManager, TagValue};
+use crate::control::timer::Ton;
+
+pub struct PumpController {
+    pub input_tag: &'static str,
+    pub output_tag: &'static str,
+    pub start_sp: f64,
+    pub stop_sp: f64,
+    pub running: bool,
+    pub ton: Ton,
+}
+
+impl PumpController {
+    pub fn new(input_tag: &'static str, output_tag: &'static str, start_sp: f64, stop_sp: f64, delay_ms: u64) -> Self {
+        Self {
+            input_tag, output_tag, start_sp, stop_sp, running: false, ton: Ton::new(delay_ms)
+        }
+    }
+
+    pub async fn execute(&mut self, tags: &TagManager) {
+        // Read pressure from tags
+        let pressure = if let Some(TagValue::Float(v)) = tags.read(self.input_tag).await {
+            v
+        } else {
+            return;
+        };
+
+        // Start logic
+        self.ton.in_ = pressure < self.start_sp;
+        self.ton.execute().await;
+
+        if !self.running && self.ton.q {
+            self.running = true;
+        }
+        if self.running && pressure > self.stop_sp {
+            self.running = false;
+        }
+
+        tags.write(self.output_tag, TagValue::Bool(self.running)).await;
+    }
+}
+
+// ===== File: ./src/io/console_output.rs =====
+
+use crate::tags::TagManager;
+
+pub struct ConsoleOutput {
+    pub tag: &'static str,
+}
+
+impl ConsoleOutput {
+    pub fn new(tag: &'static str) -> Self { Self { tag } }
+    pub async fn execute(&self, tags: &TagManager) {
+        if let Some(val) = tags.read(self.tag).await {
+            println!("{} = {:?}", self.tag, val);
+        }
+    }
+}
+
+// ===== File: ./src/io/input_block.rs =====
+
+use crate::tags::{TagManager, TagValue};
+
+pub struct InputBlock {
+    pub tag: &'static str,
+}
+
+impl InputBlock {
+    pub fn new(tag: &'static str) -> Self {
+        Self { tag }
+    }
+
+    pub async fn execute(&self, tags: &TagManager) {
+        use std::io::{stdin,stdout,Write};
+        print!("Enter pressure (blank to quit): ");
+        stdout().flush().unwrap();
+        let mut buf = String::new();
+        stdin().read_line(&mut buf).unwrap();
+        if buf.trim().is_empty() { std::process::exit(0); }
+        if let Ok(v) = buf.trim().parse::<f64>() {
+            tags.write(self.tag, TagValue::Float(v)).await;
+        }
+    }
+}
+
+// ===== File: ./src/io/mqtt_send.rs =====
+
+use crate::tags::{TagManager, TagValue};
+
+// Simulated MQTT send, prints to console in this example
+pub struct MqttSend {
+    pub tag: &'static str,
+    pub topic: &'static str,
+}
+
+impl MqttSend {
+    pub fn new(tag: &'static str, topic: &'static str) -> Self {
+        Self { tag, topic }
+    }
+
+    pub async fn execute(&self, tags: &TagManager) {
+        if let Some(val) = tags.read(self.tag).await {
+            println!("[MQTT OUT] Topic: {} | Value: {:?}", self.topic, val);
+            // Here you would use an AsyncClient to actually publish!
+        }
+    }
+}
+
+// ===== File: ./src/main.rs =====
+
+mod tags;
+mod io { pub mod input_block; pub mod mqtt_send; pub mod console_output; }
+mod control { pub mod timer; }
+mod devices { pub mod pump_controller; }
+
+use tags::TagManager;
+use io::input_block::InputBlock;
+use io::mqtt_send::MqttSend;
+use io::console_output::ConsoleOutput;
+use devices::pump_controller::PumpController;
+
+#[tokio::main]
+async fn main() {
+    let tags = TagManager::new();
+
+    // Blocks (keep as struct fields for state)
+    let input = InputBlock::new("Pressure");
+    let mut pump = PumpController::new("Pressure", "PumpRun", 50.0, 60.0, 3000);
+    let mqtt = MqttSend::new("PumpRun", "plc/pump1/run");
+    let out = ConsoleOutput::new("PumpRun");
+
+    loop {
+        input.execute(&tags).await;      // Get new pressure
+        pump.execute(&tags).await;       // Pump logic
+        mqtt.execute(&tags).await;       // Simulate MQTT out
+        out.execute(&tags).await;        // Show status
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
+}
+
+// ===== File: ./src/tags.rs =====
+
+use std::collections::HashMap;
+use tokio::sync::Mutex;
+
+#[derive(Clone, Debug)]   // <-- Added Debug here!
+pub enum TagValue {
+    Bool(bool),
+    Float(f64),
+    Int(i32),
+}
+
+#[derive(Debug)]          // <-- Optional, but handy!
+pub struct TagManager {
+    data: Mutex<HashMap<&'static str, TagValue>>,
+}
+
+impl TagManager {
+    pub fn new() -> Self {
+        Self { data: Mutex::new(HashMap::new()) }
+    }
+
+    pub async fn read(&self, key: &'static str) -> Option<TagValue> {
+        self.data.lock().await.get(key).cloned()
+    }
+
+    pub async fn write(&self, key: &'static str, val: TagValue) {
+        self.data.lock().await.insert(key, val);
+    }
+}

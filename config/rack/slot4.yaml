@@ -1,0 +1,8 @@
+card_type: AO
+points: 2
+tags:
+  - name: "Rack0_Slot4_ChlorineSetpoint"
+    units: "mg/L"
+    scale: [0, 27648, 0.0, 5.0]
+  # ...up to 2
+

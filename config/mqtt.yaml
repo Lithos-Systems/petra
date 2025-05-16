@@ -1,0 +1,6 @@
+client_id: "plc-demo-client"
+host: "mqtt.yoursite.com"
+port: 1883
+keep_alive_secs: 5
+username: "username"    # Change to your actual username
+password: 'password'    # Change to your actual password
