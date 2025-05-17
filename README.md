@@ -1,4 +1,4 @@
-# petra
+# Petra
 Petra is a modular, high-performance, open-source PLC/SCADA runtime and IO framework written in Rust.
 Designed for industrial automation, telemetry, and control applications, Petra bridges the world of programmable logic and cloud connectivity—enabling modern, flexible, and secure process control from the edge to the cloud.
 Key Features
