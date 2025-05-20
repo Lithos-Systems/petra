@@ -1,6 +1,6 @@
-client_id: "plc-demo-client"
-host: "mqtt.yoursite.com"
-port: 1883
-keep_alive_secs: 5
-username: "username"    # Change to your actual username
-password: 'password'    # Change to your actual password
+client_id: "${MQTT_CLIENT_ID}"
+host: "${MQTT_HOST}"
+port: ${MQTT_PORT}
+keep_alive_secs: ${MQTT_KEEP_ALIVE_SECS}
+username: "${MQTT_USERNAME}"  # Loaded from environment variable
+password: "${MQTT_PASSWORD}"  # Loaded from environment variable
