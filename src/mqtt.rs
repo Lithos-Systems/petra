@@ -47,8 +47,7 @@ pub struct MqttHandler {
     eventloop: EventLoop,
     bus: SignalBus,
     config: MqttConfig,
-    command_tx: mpsc::Sender<MqttMessage>,
-    command_rx: mpsc::Receiver<MqttMessage>,
+    signal_change_rx: Option<mpsc::Receiver<(String, Value)>>,
 }
 
 impl MqttHandler {
@@ -61,16 +60,18 @@ impl MqttHandler {
         mqttoptions.set_keep_alive(Duration::from_secs(30));
 
         let (client, eventloop) = AsyncClient::new(mqttoptions, 100);
-        let (command_tx, command_rx) = mpsc::channel(100);
 
         Ok(Self {
             client,
             eventloop,
             bus,
             config,
-            command_tx,
-            command_rx,
+            signal_change_rx: None,
         })
+    }
+
+    pub fn set_signal_change_channel(&mut self, rx: mpsc::Receiver<(String, Value)>) {
+        self.signal_change_rx = Some(rx);
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -106,14 +107,22 @@ impl MqttHandler {
                         _ => {}
                     }
                 }
-                Some(cmd) = self.command_rx.recv() => {
-                    self.handle_command(cmd).await;
+                Some((name, value)) = async {
+                    if let Some(rx) = &mut self.signal_change_rx {
+                        rx.recv().await
+                    } else {
+                        None
+                    }
+                } => {
+                    if self.config.publish_on_change {
+                        self.publish_signal(&name, &value).await;
+                    }
                 }
             }
         }
     }
 
-    async fn handle_incoming_message(&mut self, _topic: String, payload: Vec<u8>) {
+    async fn handle_incoming_message(&mut self, topic: String, payload: Vec<u8>) {
         let payload_str = match String::from_utf8(payload) {
             Ok(s) => s,
             Err(e) => {
@@ -122,7 +131,7 @@ impl MqttHandler {
             }
         };
 
-        debug!("MQTT message: {}", payload_str);
+        debug!("MQTT received on {}: {}", topic, payload_str);
 
         match serde_json::from_str::<MqttMessage>(&payload_str) {
             Ok(msg) => match msg {
@@ -130,7 +139,6 @@ impl MqttHandler {
                     match self.bus.set(&name, value.clone()) {
                         Ok(()) => {
                             info!("MQTT set {} = {}", name, value);
-                            // Don't publish immediately - let scan cycle handle it
                         }
                         Err(e) => warn!("Failed to set signal: {}", e),
                     }
@@ -152,17 +160,6 @@ impl MqttHandler {
         }
     }
 
-    async fn handle_command(&mut self, cmd: MqttMessage) {
-        debug!("Engine command: {:?}", cmd);
-    }
-
-    // Called by engine at end of scan for changed signals
-    pub async fn publish_signal_change(&mut self, name: &str, value: &Value) {
-        if self.config.publish_on_change {
-            self.publish_signal(name, value).await;
-        }
-    }
-
     async fn publish_signal(&mut self, name: &str, value: &Value) {
         let topic = format!("{}/signals/{}", self.config.topic_prefix, name);
         let payload = serde_json::json!({
@@ -171,6 +168,8 @@ impl MqttHandler {
             "timestamp": chrono::Utc::now().to_rfc3339()
         })
         .to_string();
+
+        debug!("Publishing {} = {} to {}", name, value, topic);
 
         if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
             warn!("Failed to publish signal: {}", e);
@@ -213,10 +212,6 @@ impl MqttHandler {
             .await
             .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         Ok(())
-    }
-
-    pub fn command_sender(&self) -> mpsc::Sender<MqttMessage> {
-        self.command_tx.clone()
     }
 }
 
