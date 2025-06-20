@@ -2,3 +2,20 @@
 .env
 .env.local
 .env.production
+
+# Ignore target directory
+/target
+
+# Ignore build artifacts
+**/*.rs.bk
+**/*.swp
+
+# Ignore Cargo lock file for libraries (optional for binaries)
+/Cargo.lock
+
+# VSCode / JetBrains IDEs
+/.vscode/
+/.idea/
+
+# Backup files
+*~
