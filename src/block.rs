@@ -1,7 +1,6 @@
 use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
 use std::time::Instant;
-use std::collections::HashMap;
-use tracing::{trace, warn};
+use tracing::trace;
 
 pub trait Block: Send + Sync {
     fn execute(&mut self, bus: &SignalBus) -> Result<()>;
