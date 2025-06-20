@@ -15,6 +15,9 @@ pub struct MqttConfig {
     pub qos: u8,
     #[serde(default = "default_publish_on_change")]
     pub publish_on_change: bool,
+    // Optional fields - will use env vars if not provided
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 fn default_qos() -> u8 { 1 }
@@ -29,25 +32,10 @@ impl Default for MqttConfig {
             topic_prefix: "petra/plc".to_string(),
             qos: 1,
             publish_on_change: true,
+            username: None,
+            password: None,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum MqttMessage {
-    SetSignal { name: String, value: Value },
-    GetSignal { name: String },
-    GetAllSignals,
-    GetStats,
-}
-
-pub struct MqttHandler {
-    client: AsyncClient,
-    eventloop: EventLoop,
-    bus: SignalBus,
-    config: MqttConfig,
-    signal_change_rx: Option<mpsc::Receiver<(String, Value)>>,
 }
 
 impl MqttHandler {
@@ -58,6 +46,19 @@ impl MqttHandler {
             config.broker_port,
         );
         mqttoptions.set_keep_alive(Duration::from_secs(30));
+        
+        // Check config first, then environment variables
+        let username = config.username
+            .or_else(|| std::env::var("MQTT_USERNAME").ok());
+        let password = config.password
+            .or_else(|| std::env::var("MQTT_PASSWORD").ok());
+        
+        if let (Some(user), Some(pass)) = (&username, &password) {
+            mqttoptions.set_credentials(user, pass);
+            info!("MQTT authentication configured for user: {}", user);
+        } else {
+            info!("MQTT using anonymous connection");
+        }
 
         let (client, eventloop) = AsyncClient::new(mqttoptions, 100);
 
@@ -70,9 +71,6 @@ impl MqttHandler {
         })
     }
 
-    pub fn set_signal_change_channel(&mut self, rx: mpsc::Receiver<(String, Value)>) {
-        self.signal_change_rx = Some(rx);
-    }
 
     pub async fn start(&mut self) -> Result<()> {
         let cmd_topic = format!("{}/cmd", self.config.topic_prefix);
