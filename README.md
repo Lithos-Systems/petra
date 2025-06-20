@@ -107,4 +107,4 @@ mqtt:
 
 ## License
 
-MIT
+AGPLv3
