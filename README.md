@@ -6,7 +6,6 @@ Production-ready PLC with MQTT integration for industrial automation.
 
 - **Rock-solid reliability** - Comprehensive error handling
 - **MQTT Integration** - Bidirectional communication via MQTT
-- **Node-RED Ready** - Example flow and docker environment provided
 - **Simple architecture** - About one thousand lines of readable Rust
 
 ## Quick Start
@@ -24,10 +23,6 @@ Production-ready PLC with MQTT integration for industrial automation.
    ```bash
    cargo run --release configs/example-mqtt.yaml
    ```
-4. **Access Node-RED**
-   - Open <http://localhost:1880>
-   - Import `flows.json`
-   - Access dashboard at <http://localhost:1880/ui>
 
 ## MQTT Topics
 
@@ -85,7 +80,7 @@ blocks:
 scan_time_ms: 100
 
 mqtt:
-  broker_host: "localhost"
+  broker_host: "mqtt.lithos.systems"
   broker_port: 1883
   client_id: "petra-01"
   topic_prefix: "petra/plc"
