@@ -1,4 +1,4 @@
-use crate::{error::*, signal::SignalBus, block::*, config::Config, value::Value};
+use crate::{error::*, signal::SignalBus, block::*, config::Config, value::Value, mqtt::MqttHandler};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
@@ -13,6 +13,8 @@ pub struct Engine {
     scan_count: Arc<AtomicU64>,
     error_count: Arc<AtomicU64>,
     start_time: Instant,
+    // Track which signals changed during scan
+    changed_signals: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +31,7 @@ impl Engine {
     pub fn new(config: Config) -> Result<Self> {
         let bus = SignalBus::new();
 
-        // Initialize all signals with proper error handling
+        // Initialize all signals
         for signal in &config.signals {
             let value = match signal.signal_type.as_str() {
                 "bool" => Value::Bool(signal.initial.as_bool().unwrap_or(false)),
@@ -46,7 +48,7 @@ impl Engine {
             debug!("Initialized signal '{}' as {} = {}", signal.name, signal.signal_type, value);
         }
 
-        // Create all blocks with validation
+        // Create all blocks
         let mut blocks = Vec::new();
         for block_config in &config.blocks {
             match create_block(block_config) {
@@ -70,10 +72,11 @@ impl Engine {
             scan_count: Arc::new(AtomicU64::new(0)),
             error_count: Arc::new(AtomicU64::new(0)),
             start_time: Instant::now(),
+            changed_signals: Vec::new(),
         })
     }
 
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(&mut self, mqtt_handler: &mut MqttHandler) -> Result<()> {
         if self.running.load(Ordering::Relaxed) {
             return Err(PlcError::Config("Engine is already running".into()));
         }
@@ -90,11 +93,39 @@ impl Engine {
             let scan_start = Instant::now();
             let scan_num = self.scan_count.fetch_add(1, Ordering::Relaxed) + 1;
 
-            // Execute all blocks with error isolation
+            // Take snapshot before processing
+            let pre_scan_signals = self.bus.snapshot();
+            
+            // Execute all blocks
             for block in &mut self.blocks {
                 if let Err(e) = block.execute(&self.bus) {
                     self.error_count.fetch_add(1, Ordering::Relaxed);
                     warn!("Block '{}' error: {}", block.name(), e);
+                }
+            }
+
+            // Determine which signals changed
+            let post_scan_signals = self.bus.snapshot();
+            self.changed_signals.clear();
+            
+            for (name, new_value) in &post_scan_signals {
+                if let Some(old_value) = pre_scan_signals.iter().find(|(n, _)| n == name) {
+                    if &old_value.1 != new_value {
+                        self.changed_signals.push(name.clone());
+                    }
+                } else {
+                    // New signal (shouldn't happen in normal operation)
+                    self.changed_signals.push(name.clone());
+                }
+            }
+
+            // Publish changed signals at end of scan
+            if !self.changed_signals.is_empty() {
+                debug!("Publishing {} changed signals", self.changed_signals.len());
+                for signal_name in &self.changed_signals {
+                    if let Ok(value) = self.bus.get(signal_name) {
+                        mqtt_handler.publish_signal_change(signal_name, &value).await;
+                    }
                 }
             }
 
@@ -142,14 +173,5 @@ impl Engine {
 
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
-    }
-}
-
-impl Drop for Engine {
-    fn drop(&mut self) {
-        if self.is_running() {
-            self.stop();
-            std::thread::sleep(Duration::from_millis(100));
-        }
     }
 }
