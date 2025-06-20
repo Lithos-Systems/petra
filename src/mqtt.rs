@@ -3,7 +3,7 @@ use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::{info, warn, error, debug};
+use tracing::{info, warn, debug};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MqttConfig {
@@ -55,10 +55,10 @@ impl MqttHandler {
             config.broker_port,
         );
         mqttoptions.set_keep_alive(Duration::from_secs(30));
-        
+
         let (client, eventloop) = AsyncClient::new(mqttoptions, 100);
         let (command_tx, command_rx) = mpsc::channel(100);
-        
+
         Ok(Self {
             client,
             eventloop,
@@ -68,17 +68,154 @@ impl MqttHandler {
             command_rx,
         })
     }
-    
+
     pub async fn start(&mut self) -> Result<()> {
-        // Subscribe to command topic
         let cmd_topic = format!("{}/cmd", self.config.topic_prefix);
-        self.client.subscribe(&cmd_topic, QoS::AtLeastOnce).await
+        self.client
+            .subscribe(&cmd_topic, QoS::AtLeastOnce)
+            .await
             .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-        
-        info!(
-        "Final stats: {} scans, {} errors, uptime: {}s",
-        stats.scan_count, stats.error_count, stats.uptime_secs
-    );
-    
-    Ok(())
+
+        info!("MQTT connected to {}:{}", self.config.broker_host, self.config.broker_port);
+        info!("Subscribed to {}", cmd_topic);
+
+        self.publish_status("online").await?;
+        Ok(())
+    }
+
+    pub async fn run(&mut self) -> Result<()> {
+        loop {
+            tokio::select! {
+                event = self.eventloop.poll() => {
+                    match event {
+                        Ok(Event::Incoming(Packet::Publish(p))) => {
+                            self.handle_message(p.topic, p.payload.to_vec()).await;
+                        }
+                        Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                            info!("MQTT reconnected");
+                            self.start().await?;
+                        }
+                        Err(e) => {
+                            warn!("MQTT error: {}", e);
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                        }
+                        _ => {}
+                    }
+                }
+                Some(cmd) = self.command_rx.recv() => {
+                    self.handle_command(cmd).await;
+                }
+            }
+        }
+    }
+
+    async fn handle_message(&mut self, _topic: String, payload: Vec<u8>) {
+        let payload_str = match String::from_utf8(payload) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("Invalid UTF-8 in MQTT message: {}", e);
+                return;
+            }
+        };
+
+        debug!("MQTT message: {}", payload_str);
+
+        match serde_json::from_str::<MqttMessage>(&payload_str) {
+            Ok(msg) => match msg {
+                MqttMessage::SetSignal { name, value } => {
+                    match self.bus.set(&name, value.clone()) {
+                        Ok(()) => {
+                            info!("MQTT set {} = {}", name, value);
+                            self.publish_signal(&name, &value).await;
+                        }
+                        Err(e) => warn!("Failed to set signal: {}", e),
+                    }
+                }
+                MqttMessage::GetSignal { name } => {
+                    match self.bus.get(&name) {
+                        Ok(value) => self.publish_signal(&name, &value).await,
+                        Err(e) => warn!("Signal not found: {}", e),
+                    }
+                }
+                MqttMessage::GetAllSignals => {
+                    self.publish_all_signals().await;
+                }
+                MqttMessage::GetStats => {
+                    self.publish_stats().await;
+                }
+            },
+            Err(e) => warn!("Invalid MQTT command: {}", e),
+        }
+    }
+
+    async fn handle_command(&mut self, cmd: MqttMessage) {
+        debug!("Engine command: {:?}", cmd);
+    }
+
+    async fn publish_signal(&mut self, name: &str, value: &Value) {
+        let topic = format!("{}/signals/{}", self.config.topic_prefix, name);
+        let payload = serde_json::json!({
+            "name": name,
+            "value": value,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })
+        .to_string();
+
+        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
+            warn!("Failed to publish signal: {}", e);
+        }
+    }
+
+    async fn publish_all_signals(&mut self) {
+        let topic = format!("{}/signals", self.config.topic_prefix);
+        let signals = self.bus.snapshot();
+        let payload = serde_json::json!({
+            "signals": signals.into_iter().map(|(k, v)| {
+                serde_json::json!({ "name": k, "value": v })
+            }).collect::<Vec<_>>(),
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })
+        .to_string();
+
+        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
+            warn!("Failed to publish signals: {}", e);
+        }
+    }
+
+    async fn publish_stats(&mut self) {
+        let topic = format!("{}/stats", self.config.topic_prefix);
+        let payload = serde_json::json!({
+            "status": "running",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })
+        .to_string();
+
+        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
+            warn!("Failed to publish stats: {}", e);
+        }
+    }
+
+    async fn publish_status(&mut self, status: &str) -> Result<()> {
+        let topic = format!("{}/status", self.config.topic_prefix);
+        self.client
+            .publish(&topic, QoS::AtLeastOnce, true, status)
+            .await
+            .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        Ok(())
+    }
+
+    pub fn command_sender(&self) -> mpsc::Sender<MqttMessage> {
+        self.command_tx.clone()
+    }
+}
+
+impl Drop for MqttHandler {
+    fn drop(&mut self) {
+        let topic = format!("{}/status", self.config.topic_prefix);
+        let client = self.client.clone();
+        tokio::spawn(async move {
+            let _ = client.publish(&topic, QoS::AtLeastOnce, true, "offline").await;
+            let _ = client.disconnect().await;
+        });
+    }
 }

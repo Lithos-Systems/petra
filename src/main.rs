@@ -2,7 +2,6 @@ use petra::{Config, Engine, MqttHandler, Result};
 use tokio::signal;
 use tracing::{error, info};
 use tracing_subscriber;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -37,28 +36,22 @@ async fn main() -> Result<()> {
         }
     });
 
-    let engine_arc = Arc::new(&engine);
-    let engine_handle = engine_arc.clone();
-
-    tokio::spawn(async move {
-        match signal::ctrl_c().await {
-            Ok(()) => {
-                info!("Received shutdown signal");
-                engine_handle.stop();
-            }
-            Err(e) => {
-                error!("Failed to listen for shutdown signal: {}", e);
-            }
+    let mut ctrl_c = signal::ctrl_c();
+tokio::pin!(ctrl_c);
+    tokio::select! {
+        _ = &mut ctrl_c => {
+            info!("Received shutdown signal");
+            engine.stop();
         }
-    });
-
-    match engine.run().await {
-        Ok(()) => info!("Engine stopped normally"),
-        Err(e) => {
-            error!("Engine error: {}", e);
-            std::process::exit(1);
+        res = engine.run() => {
+            if let Err(e) = res {
+                error!("Engine error: {}", e);
+                std::process::exit(1);
+            }
         }
     }
+
+    info!("Engine stopped normally");
 
     let stats = engine.stats();
     info!(

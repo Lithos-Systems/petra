@@ -1,4 +1,4 @@
-# Petra PLC configuration with MQTT
+# Example PLC configuration
 signals:
   - name: "start_button"
     type: "bool"
@@ -12,9 +12,9 @@ signals:
     type: "bool"
     initial: false
 
-  - name: "motor_speed"
-    type: "int"
-    initial: 0
+  - name: "motor_timer"
+    type: "bool"
+    initial: false
 
   - name: "temperature"
     type: "float"
@@ -23,6 +23,10 @@ signals:
   - name: "temp_limit"
     type: "float"
     initial: 75.0
+
+  - name: "over_temp"
+    type: "bool"
+    initial: false
 
 blocks:
   - name: "start_trigger"
@@ -63,11 +67,13 @@ blocks:
     outputs:
       out: "motor_run"
 
-scan_time_ms: 100
+  - name: "run_timer"
+    type: "TON"
+    inputs:
+      in: "motor_run"
+    outputs:
+      q: "motor_timer"
+    params:
+      preset_ms: 5000
 
-mqtt:
-  broker_host: "localhost"
-  broker_port: 1883
-  client_id: "petra-plc-01"
-  topic_prefix: "petra/plc"
-  qos: 1
+scan_time_ms: 100
