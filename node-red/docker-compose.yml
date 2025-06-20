@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: petra-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+
+  node-red:
+    image: nodered/node-red:latest
+    container_name: petra-node-red
+    ports:
+      - "1880:1880"
+    volumes:
+      - node-red-data:/data
+    environment:
+      - TZ=UTC
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  node-red-data:
