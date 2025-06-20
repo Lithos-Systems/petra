@@ -13,9 +13,12 @@ pub struct MqttConfig {
     pub topic_prefix: String,
     #[serde(default = "default_qos")]
     pub qos: u8,
+    #[serde(default = "default_publish_on_change")]
+    pub publish_on_change: bool,
 }
 
 fn default_qos() -> u8 { 1 }
+fn default_publish_on_change() -> bool { true }
 
 impl Default for MqttConfig {
     fn default() -> Self {
@@ -23,8 +26,9 @@ impl Default for MqttConfig {
             broker_host: "localhost".to_string(),
             broker_port: 1883,
             client_id: "petra-plc".to_string(),
-            topic_prefix: "petra".to_string(),
+            topic_prefix: "petra/plc".to_string(),
             qos: 1,
+            publish_on_change: true,
         }
     }
 }
@@ -89,7 +93,7 @@ impl MqttHandler {
                 event = self.eventloop.poll() => {
                     match event {
                         Ok(Event::Incoming(Packet::Publish(p))) => {
-                            self.handle_message(p.topic, p.payload.to_vec()).await;
+                            self.handle_incoming_message(p.topic, p.payload.to_vec()).await;
                         }
                         Ok(Event::Incoming(Packet::ConnAck(_))) => {
                             info!("MQTT reconnected");
@@ -109,7 +113,7 @@ impl MqttHandler {
         }
     }
 
-    async fn handle_message(&mut self, _topic: String, payload: Vec<u8>) {
+    async fn handle_incoming_message(&mut self, _topic: String, payload: Vec<u8>) {
         let payload_str = match String::from_utf8(payload) {
             Ok(s) => s,
             Err(e) => {
@@ -126,7 +130,7 @@ impl MqttHandler {
                     match self.bus.set(&name, value.clone()) {
                         Ok(()) => {
                             info!("MQTT set {} = {}", name, value);
-                            self.publish_signal(&name, &value).await;
+                            // Don't publish immediately - let scan cycle handle it
                         }
                         Err(e) => warn!("Failed to set signal: {}", e),
                     }
@@ -150,6 +154,13 @@ impl MqttHandler {
 
     async fn handle_command(&mut self, cmd: MqttMessage) {
         debug!("Engine command: {:?}", cmd);
+    }
+
+    // Called by engine at end of scan for changed signals
+    pub async fn publish_signal_change(&mut self, name: &str, value: &Value) {
+        if self.config.publish_on_change {
+            self.publish_signal(name, value).await;
+        }
     }
 
     async fn publish_signal(&mut self, name: &str, value: &Value) {
