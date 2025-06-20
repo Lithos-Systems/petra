@@ -1,4 +1,4 @@
-# Petra v2.0
+# Petra
 
 Production-ready PLC with MQTT integration for industrial automation.
 
