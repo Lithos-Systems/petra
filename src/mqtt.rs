@@ -38,6 +38,29 @@ impl Default for MqttConfig {
     }
 }
 
+/// Message types exchanged over MQTT
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum MqttMessage {
+    /// Set a signal to a new value
+    SetSignal { name: String, value: Value },
+    /// Request the current value of a signal
+    GetSignal { name: String },
+    /// Request a snapshot of all signals
+    GetAllSignals,
+    /// Request engine statistics
+    GetStats,
+}
+
+/// Handles MQTT connectivity and message processing
+pub struct MqttHandler {
+    pub(crate) client: AsyncClient,
+    pub(crate) eventloop: EventLoop,
+    pub(crate) bus: SignalBus,
+    pub(crate) config: MqttConfig,
+    pub(crate) signal_change_rx: Option<mpsc::Receiver<(String, Value)>>,
+}
+
 impl MqttHandler {
     pub fn new(bus: SignalBus, config: MqttConfig) -> Result<Self> {
         let mut mqttoptions = MqttOptions::new(
@@ -48,9 +71,13 @@ impl MqttHandler {
         mqttoptions.set_keep_alive(Duration::from_secs(30));
         
         // Check config first, then environment variables
-        let username = config.username
+        let username = config
+            .username
+            .clone()
             .or_else(|| std::env::var("MQTT_USERNAME").ok());
-        let password = config.password
+        let password = config
+            .password
+            .clone()
             .or_else(|| std::env::var("MQTT_PASSWORD").ok());
         
         if let (Some(user), Some(pass)) = (&username, &password) {
@@ -69,6 +96,11 @@ impl MqttHandler {
             config,
             signal_change_rx: None,
         })
+    }
+
+    /// Provide a channel receiving signal change notifications
+    pub fn set_signal_change_channel(&mut self, rx: mpsc::Receiver<(String, Value)>) {
+        self.signal_change_rx = Some(rx);
     }
 
 
