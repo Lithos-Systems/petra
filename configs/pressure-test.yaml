@@ -1,0 +1,67 @@
+# Pressure monitoring test configuration
+signals:
+  - name: "pressure"
+    type: "float"
+    initial: 0.0
+
+  - name: "pressure_high_limit"
+    type: "float"
+    initial: 150.0
+
+  - name: "pressure_low_limit"
+    type: "float"
+    initial: 50.0
+
+  - name: "pressure_high_alarm"
+    type: "bool"
+    initial: false
+
+  - name: "pressure_low_alarm"
+    type: "bool"
+    initial: false
+
+  - name: "pressure_ok"
+    type: "bool"
+    initial: true
+
+blocks:
+  - name: "high_pressure_check"
+    type: "GT"
+    inputs:
+      in1: "pressure"
+      in2: "pressure_high_limit"
+    outputs:
+      out: "pressure_high_alarm"
+
+  - name: "low_pressure_check"
+    type: "LT"
+    inputs:
+      in1: "pressure"
+      in2: "pressure_low_limit"
+    outputs:
+      out: "pressure_low_alarm"
+
+  - name: "pressure_status"
+    type: "OR"
+    inputs:
+      in1: "pressure_high_alarm"
+      in2: "pressure_low_alarm"
+    outputs:
+      out: "pressure_fault"
+
+  - name: "pressure_ok_calc"
+    type: "NOT"
+    inputs:
+      in: "pressure_fault"
+    outputs:
+      out: "pressure_ok"
+
+scan_time_ms: 100
+
+mqtt:
+  broker_host: "localhost"
+  broker_port: 1883
+  client_id: "petra-pressure-monitor"
+  topic_prefix: "petra/plc"
+  qos: 1
+  publish_on_change: true
