@@ -1,8 +1,9 @@
-use crate::{error::*, signal::SignalBus, block::*, config::Config, value::Value, mqtt::MqttHandler};
+use crate::{error::*, signal::SignalBus, block::*, config::Config, value::Value};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 use tokio::time::{interval, Duration};
+use tokio::sync::mpsc;
 use tracing::{info, warn, debug};
 
 pub struct Engine {
@@ -13,8 +14,7 @@ pub struct Engine {
     scan_count: Arc<AtomicU64>,
     error_count: Arc<AtomicU64>,
     start_time: Instant,
-    // Track which signals changed during scan
-    changed_signals: Vec<String>,
+    signal_change_tx: Option<mpsc::Sender<(String, Value)>>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,11 +72,15 @@ impl Engine {
             scan_count: Arc::new(AtomicU64::new(0)),
             error_count: Arc::new(AtomicU64::new(0)),
             start_time: Instant::now(),
-            changed_signals: Vec::new(),
+            signal_change_tx: None,
         })
     }
 
-    pub async fn run(&mut self, mqtt_handler: &mut MqttHandler) -> Result<()> {
+    pub fn set_signal_change_channel(&mut self, tx: mpsc::Sender<(String, Value)>) {
+        self.signal_change_tx = Some(tx);
+    }
+
+    pub async fn run(&mut self) -> Result<()> {
         if self.running.load(Ordering::Relaxed) {
             return Err(PlcError::Config("Engine is already running".into()));
         }
@@ -104,27 +108,15 @@ impl Engine {
                 }
             }
 
-            // Determine which signals changed
-            let post_scan_signals = self.bus.snapshot();
-            self.changed_signals.clear();
-            
-            for (name, new_value) in &post_scan_signals {
-                if let Some(old_value) = pre_scan_signals.iter().find(|(n, _)| n == name) {
-                    if &old_value.1 != new_value {
-                        self.changed_signals.push(name.clone());
-                    }
-                } else {
-                    // New signal (shouldn't happen in normal operation)
-                    self.changed_signals.push(name.clone());
-                }
-            }
-
-            // Publish changed signals at end of scan
-            if !self.changed_signals.is_empty() {
-                debug!("Publishing {} changed signals", self.changed_signals.len());
-                for signal_name in &self.changed_signals {
-                    if let Ok(value) = self.bus.get(signal_name) {
-                        mqtt_handler.publish_signal_change(signal_name, &value).await;
+            // Determine which signals changed and send them
+            if let Some(tx) = &self.signal_change_tx {
+                let post_scan_signals = self.bus.snapshot();
+                
+                for (name, new_value) in &post_scan_signals {
+                    if let Some(old_value) = pre_scan_signals.iter().find(|(n, _)| n == name) {
+                        if &old_value.1 != new_value {
+                            let _ = tx.send((name.clone(), new_value.clone())).await;
+                        }
                     }
                 }
             }
