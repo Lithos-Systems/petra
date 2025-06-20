@@ -26,7 +26,7 @@ fn default_publish_on_change() -> bool { true }
 impl Default for MqttConfig {
     fn default() -> Self {
         Self {
-            broker_host: "localhost".to_string(),
+            broker_host: "mqtt.lithos.systems".to_string(),
             broker_port: 1883,
             client_id: "petra-plc".to_string(),
             topic_prefix: "petra/plc".to_string(),

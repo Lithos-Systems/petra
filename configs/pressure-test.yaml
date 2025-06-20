@@ -59,7 +59,7 @@ blocks:
 scan_time_ms: 100
 
 mqtt:
-  broker_host: "localhost"
+  broker_host: "mqtt.lithos.systems"
   broker_port: 1883
   client_id: "petra-pressure-monitor"
   topic_prefix: "petra/plc"
