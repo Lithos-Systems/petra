@@ -30,6 +30,7 @@ async fn main() -> Result<()> {
     let mut mqtt = MqttHandler::new(bus, config.mqtt)?;
     mqtt.start().await?;
 
+    // Run MQTT in background
     tokio::spawn(async move {
         if let Err(e) = mqtt.run().await {
             error!("MQTT error: {}", e);
@@ -37,13 +38,14 @@ async fn main() -> Result<()> {
     });
 
     let mut ctrl_c = signal::ctrl_c();
-tokio::pin!(ctrl_c);
+    tokio::pin!(ctrl_c);
+    
     tokio::select! {
         _ = &mut ctrl_c => {
             info!("Received shutdown signal");
             engine.stop();
         }
-        res = engine.run() => {
+        res = engine.run(&mut mqtt) => {
             if let Err(e) = res {
                 error!("Engine error: {}", e);
                 std::process::exit(1);
