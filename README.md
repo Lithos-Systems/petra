@@ -1,4 +1,5 @@
-# Petra
+# PETRA
+Programmable Engine for Telemetry, Runtime, and Automation
 
 Production-ready PLC with MQTT integration for industrial automation.
 
