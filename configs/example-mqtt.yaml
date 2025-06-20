@@ -1,4 +1,4 @@
-# Petra PLC configuration with MQTT
+# Updated Petra PLC configuration for independent Node-RED deployment
 signals:
   - name: "start_button"
     type: "bool"
@@ -8,7 +8,19 @@ signals:
     type: "bool"
     initial: false
 
+  - name: "emergency_stop"
+    type: "bool"
+    initial: false
+
   - name: "motor_run"
+    type: "bool"
+    initial: false
+
+  - name: "motor_enabled"
+    type: "bool"
+    initial: false
+
+  - name: "start_pulse"
     type: "bool"
     initial: false
 
@@ -23,6 +35,18 @@ signals:
   - name: "temp_limit"
     type: "float"
     initial: 75.0
+
+  - name: "over_temp"
+    type: "bool"
+    initial: false
+
+  - name: "temp_ok_signal"
+    type: "bool"
+    initial: true
+
+  - name: "system_healthy"
+    type: "bool"
+    initial: true
 
 blocks:
   - name: "start_trigger"
@@ -40,6 +64,13 @@ blocks:
     outputs:
       q: "motor_enabled"
 
+  - name: "emergency_reset"
+    type: "NOT"
+    inputs:
+      in: "emergency_stop"
+    outputs:
+      out: "emergency_ok"
+
   - name: "temp_check"
     type: "GT"
     inputs:
@@ -55,13 +86,30 @@ blocks:
     outputs:
       out: "temp_ok_signal"
 
+  - name: "system_status"
+    type: "AND"
+    inputs:
+      in1: "emergency_ok"
+      in2: "temp_ok_signal"
+    outputs:
+      out: "system_healthy"
+
   - name: "motor_control"
     type: "AND"
     inputs:
       in1: "motor_enabled"
-      in2: "temp_ok_signal"
+      in2: "system_healthy"
     outputs:
       out: "motor_run"
+
+  - name: "speed_control"
+    type: "TON"
+    inputs:
+      in: "motor_run"
+    outputs:
+      q: "speed_ramp_done"
+    params:
+      preset_ms: 2000
 
 scan_time_ms: 100
 
@@ -71,3 +119,4 @@ mqtt:
   client_id: "petra-plc-01"
   topic_prefix: "petra/plc"
   qos: 1
+  publish_on_change: true
