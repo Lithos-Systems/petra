@@ -1,14 +1,11 @@
 # PETRA
 #### Programmable Engine for Telemetry, Runtime, and Automation
-
-Production-ready PLC with MQTT integration for industrial automation.
-
 ## Features
 
-- **Rock-solid reliability** - Comprehensive error handling
-- **MQTT Integration** - Bidirectional communication via MQTT
-- **Simple architecture** - About one thousand lines of readable Rust
-
+- **Entirely Rust-Based** - All the modern benfits of Rust to modernize legacy systems
+- **Rock-Solid Reliability** - Comprehensive error handling
+- **Built for Pure Function** - No nonsense, no fluff
+    
 ## Quick Start
 
 1. **Build Petra**
