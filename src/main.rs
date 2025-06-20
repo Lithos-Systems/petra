@@ -1,5 +1,6 @@
 use petra::{Config, Engine, MqttHandler, Result};
 use tokio::signal;
+use tokio::sync::mpsc;
 use tracing::{error, info};
 use tracing_subscriber;
 
@@ -27,14 +28,19 @@ async fn main() -> Result<()> {
     let mut engine = Engine::new(config.clone())?;
     let bus = engine.bus().clone();
 
+    // Create channel for signal changes
+    let (signal_tx, signal_rx) = mpsc::channel(100);
+    
+    engine.set_signal_change_channel(signal_tx);
+    
     let mut mqtt = MqttHandler::new(bus, config.mqtt)?;
+    mqtt.set_signal_change_channel(signal_rx);
     mqtt.start().await?;
 
-    let mut ctrl_c = signal::ctrl_c();
-    tokio::pin!(ctrl_c);
+    let ctrl_c = signal::ctrl_c();
     
     tokio::select! {
-        _ = &mut ctrl_c => {
+        _ = ctrl_c => {
             info!("Received shutdown signal");
             engine.stop();
         }
@@ -46,7 +52,6 @@ async fn main() -> Result<()> {
                 }
             });
             
-            // Run engine with MQTT handler reference
             let engine_result = engine.run().await;
             
             // Clean shutdown
