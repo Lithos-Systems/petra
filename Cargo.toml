@@ -16,10 +16,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rumqttc = "0.24"
 chrono = "0.4"
 
-[features]
-default = []
-connectors = ["libloading"]
-
 [profile.release]
 lto = true
 codegen-units = 1
