@@ -15,5 +15,6 @@ pub use signal::SignalBus;
 pub use config::Config;
 pub use engine::{Engine, EngineStats};
 pub use mqtt::{MqttHandler, MqttMessage};
+pub use s7::S7Connector;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
