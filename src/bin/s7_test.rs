@@ -46,7 +46,7 @@ enum Commands {
         address: u32,
         
         /// Data type (bool, byte, word, int, dint, real)
-        #[arg(short, long)]
+        #[arg(short = 't', long)]
         data_type: String,
         
         /// Bit offset (for bool)
@@ -69,7 +69,7 @@ enum Commands {
         address: u32,
         
         /// Data type (bool, byte, word, int, dint, real)
-        #[arg(short, long)]
+        #[arg(short = 't', long)]
         data_type: String,
         
         /// Bit offset (for bool)
