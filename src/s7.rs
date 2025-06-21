@@ -428,3 +428,22 @@ pub fn optimize_mappings(mappings: &[S7Mapping]) -> Vec<ReadRequest> {
         
         // Add final request
         requests.push(ReadRequest {
+            area,
+            db_number,
+            start_address: current_start,
+            length: (current_end - current_start) as usize,
+            mappings: current_mappings.into_iter().cloned().collect(),
+        });
+    }
+    
+    requests
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadRequest {
+    pub area: S7Area,
+    pub db_number: u16,
+    pub start_address: u32,
+    pub length: usize,
+    pub mappings: Vec<S7Mapping>,
+}
