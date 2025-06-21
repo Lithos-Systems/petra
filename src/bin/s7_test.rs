@@ -360,8 +360,8 @@ fn parse_area(area: &str) -> Result<S7Area, String> {
         "M" => Ok(S7Area::M),
         "C" => Ok(S7Area::C),
         "T" => Ok(S7Area::T),
-        _ => Err(format!("Invalid area_ => Err(format!("Invalid area: {}", area)),
-   }
+        _ => Err(format!("Invalid area: {}", area)),
+    }
 }
 
 fn parse_data_type(dtype: &str) -> Result<S7DataType, String> {
