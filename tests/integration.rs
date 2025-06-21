@@ -26,7 +26,7 @@ scan_time_ms: 100
 "#;
 
     let config = Config::from_yaml(yaml).unwrap();
-    let mut engine = Engine::new(config).unwrap();
+    let engine = Engine::new(config).unwrap();
 
     let bus = engine.bus();
     bus.set("a", Value::Bool(true)).unwrap();
