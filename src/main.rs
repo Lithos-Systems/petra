@@ -33,44 +33,27 @@ async fn main() -> Result<()> {
     
     engine.set_signal_change_channel(signal_tx);
     
-    // Setup MQTT if configured
-    let mqtt_handle = if !config.mqtt.broker_host.is_empty() {
-        let mut mqtt = MqttHandler::new(bus.clone(), config.mqtt)?;
-        mqtt.set_signal_change_channel(signal_rx);
-        mqtt.start().await?;
+    // Setup MQTT handler
+    let mut mqtt = MqttHandler::new(bus.clone(), config.mqtt)?;
+    mqtt.set_signal_change_channel(signal_rx);
+    mqtt.start().await?;
+
+    // Setup S7 connector if configured
+    let s7_handle = if let Some(s7_config) = config.s7 {
+        info!("S7 configuration found, starting S7 connector");
+        let s7_connector = S7Connector::new(s7_config, bus.clone())?;
         
+        // Connect to PLC
+        s7_connector.connect().await?;
+        
+        // Spawn S7 task
         Some(tokio::spawn(async move {
-            if let Err(e) = mqtt.run().await {
-                error!("MQTT error: {}", e);
+            if let Err(e) = s7_connector.run().await {
+                error!("S7 connector error: {}", e);
             }
         }))
     } else {
-        info!("MQTT not configured, skipping");
-        None
-    };
-
-    // Setup S7 if configured
-    let s7_handle = if let Some(s7_config) = config.s7 {
-        info!("Starting S7 connector");
-        let s7 = S7Connector::new(s7_config, bus.clone())?;
-        
-        // Connect to PLC
-        match s7.connect().await {
-            Ok(_) => {
-                info!("S7 PLC connected successfully");
-                Some(tokio::spawn(async move {
-                    if let Err(e) = s7.run().await {
-                        error!("S7 error: {}", e);
-                    }
-                }))
-            }
-            Err(e) => {
-                error!("Failed to connect to S7 PLC: {}", e);
-                None
-            }
-        }
-    } else {
-        info!("S7 not configured, skipping");
+        info!("No S7 configuration found, running without PLC connection");
         None
     };
 
@@ -81,20 +64,28 @@ async fn main() -> Result<()> {
             info!("Received shutdown signal");
             engine.stop();
         }
-        res = engine.run() => {
+        res = async {
+            // Run MQTT and Engine concurrently
+            let mqtt_task = tokio::spawn(async move {
+                if let Err(e) = mqtt.run().await {
+                    error!("MQTT error: {}", e);
+                }
+            });
+            
+            let engine_result = engine.run().await;
+            
+            // Clean shutdown
+            mqtt_task.abort();
+            if let Some(s7_task) = s7_handle {
+                s7_task.abort();
+            }
+            engine_result
+        } => {
             if let Err(e) = res {
                 error!("Engine error: {}", e);
                 std::process::exit(1);
             }
         }
-    }
-
-    // Clean shutdown
-    if let Some(handle) = mqtt_handle {
-        handle.abort();
-    }
-    if let Some(handle) = s7_handle {
-        handle.abort();
     }
 
     info!("Engine stopped normally");
