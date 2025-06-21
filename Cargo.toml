@@ -28,6 +28,10 @@ path = "src/main.rs"
 name = "s7_test"
 path = "src/bin/s7_test.rs"
 
+[[bin]]
+name = "simple_s7_test"
+path = "src/bin/simple_s7_test.rs"
+
 [profile.release]
 lto = true
 codegen-units = 1
