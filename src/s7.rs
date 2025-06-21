@@ -1,6 +1,6 @@
 // src/s7.rs
 use crate::{error::*, value::Value, signal::SignalBus};
-use snap7::S7Client;
+use rust_snap7::{S7Client, InternalParam, InternalParamValue, AreaCode, utils};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -114,14 +114,14 @@ impl S7DataType {
 }
 
 impl S7Area {
-    fn to_snap7_area(&self) -> i32 {
+    fn to_rust_snap7_area(&self) -> AreaCode {
         match self {
-            S7Area::I => 0x81,    // S7AreaPE
-            S7Area::Q => 0x82,    // S7AreaPA
-            S7Area::M => 0x83,    // S7AreaMK
-            S7Area::DB => 0x84,   // S7AreaDB
-            S7Area::C => 0x1C,    // S7AreaCT
-            S7Area::T => 0x1D,    // S7AreaTM
+            S7Area::I => AreaCode::S7AreaPE,    // Process Inputs
+            S7Area::Q => AreaCode::S7AreaPA,    // Process Outputs
+            S7Area::M => AreaCode::S7AreaMK,    // Merkers
+            S7Area::DB => AreaCode::S7AreaDB,   // Data Blocks
+            S7Area::C => AreaCode::S7AreaCT,    // Counters
+            S7Area::T => AreaCode::S7AreaTM,    // Timers
         }
     }
 }
@@ -146,16 +146,23 @@ impl S7Connector {
     }
 
     pub async fn connect(&self) -> Result<()> {
-        let mut client = S7Client::new();
+        let client = S7Client::create();
         
-        // Set timeouts
-        client.set_param(3, self.config.timeout_ms as i32)
-            .map_err(|e| PlcError::Config(format!("Failed to set timeout: {}", e)))?;
+        // Set connection parameters
+        client.set_param(
+            InternalParam::PduSizeRequested, 
+            InternalParamValue::U16(960)
+        ).map_err(|e| PlcError::Config(format!("Failed to set PDU size: {:?}", e)))?;
+        
+        client.set_param(
+            InternalParam::RemotePort,
+            InternalParamValue::U16(102)
+        ).map_err(|e| PlcError::Config(format!("Failed to set remote port: {:?}", e)))?;
         
         // Connect to PLC
         client
             .connect_to(&self.config.ip, self.config.rack as i32, self.config.slot as i32)
-            .map_err(|e| PlcError::Config(format!("Failed to connect: {}", e)))?;
+            .map_err(|e| PlcError::Config(format!("Failed to connect: {:?}", e)))?;
 
         *self.client.lock().await = Some(client);
         info!(
@@ -198,15 +205,15 @@ impl S7Connector {
 
     pub async fn stop(&self) {
         *self.running.lock().await = false;
-        if let Some(mut client) = self.client.lock().await.take() {
+        if let Some(client) = self.client.lock().await.take() {
             let _ = client.disconnect();
         }
         info!("S7 connector stopped");
     }
 
-    async fn read_mapping(&self, mapping: &S7Mapping) -> Result<()> {
-        let mut guard = self.client.lock().await;
-        let client = guard.as_mut().ok_or_else(|| PlcError::Config("Not connected".into()))?;
+    pub async fn read_mapping(&self, mapping: &S7Mapping) -> Result<()> {
+        let guard = self.client.lock().await;
+        let client = guard.as_ref().ok_or_else(|| PlcError::Config("Not connected".into()))?;
         let size = mapping.data_type.size();
 
         // Read data from PLC
@@ -221,26 +228,25 @@ impl S7Connector {
                     &mut buffer,
                 ).map_err(|e| PlcError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other, 
-                    format!("DB read error: {}", e)
+                    format!("DB read error: {:?}", e)
                 )))?;
             }
-            S7Area::I | S7Area::Q | S7Area::M => {
+            _ => {
                 client.read_area(
-                    mapping.area.to_snap7_area(),
-                    0, // DB number (not used for I/Q/M)
+                    mapping.area.to_rust_snap7_area(),
+                    0, // DB number (not used for non-DB areas)
                     mapping.address as i32,
                     size,
-                    1, // Word length (1 = byte)
+                    rust_snap7::WordLenTable::Byte,
                     &mut buffer,
                 ).map_err(|e| PlcError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other, 
-                    format!("Area read error: {}", e)
+                    format!("Area read error: {:?}", e)
                 )))?;
             }
-            _ => return Err(PlcError::Config("Unsupported area for reading".into())),
         }
         
-        // Convert to Petra value
+        // Convert to Petra value using rust-snap7 utils
         let value = match mapping.data_type {
             S7DataType::Bool => {
                 let byte_val = buffer[0];
@@ -248,26 +254,27 @@ impl S7Connector {
                 Value::Bool(bit_val != 0)
             }
             S7DataType::Byte => {
-                Value::Int(buffer[0] as i32)
+                let val = utils::getters::get_byte(&buffer, 0);
+                Value::Int(val as i32)
             }
             S7DataType::Word => {
-                let val = u16::from_be_bytes([buffer[0], buffer[1]]);
+                let val = utils::getters::get_word(&buffer, 0);
                 Value::Int(val as i32)
             }
             S7DataType::Int => {
-                let val = i16::from_be_bytes([buffer[0], buffer[1]]);
+                let val = utils::getters::get_int(&buffer, 0);
                 Value::Int(val as i32)
             }
             S7DataType::DWord => {
-                let val = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
+                let val = utils::getters::get_dword(&buffer, 0);
                 Value::Int(val as i32)
             }
             S7DataType::DInt => {
-                let val = i32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
+                let val = utils::getters::get_dint(&buffer, 0);
                 Value::Int(val)
             }
             S7DataType::Real => {
-                let val = f32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
+                let val = utils::getters::get_real(&buffer, 0);
                 Value::Float(val as f64)
             }
         };
@@ -279,17 +286,17 @@ impl S7Connector {
         Ok(())
     }
 
-    async fn write_mapping(&self, mapping: &S7Mapping) -> Result<()> {
+    pub async fn write_mapping(&self, mapping: &S7Mapping) -> Result<()> {
         // Get value from signal bus
         let value = match self.bus.get(&mapping.signal) {
             Ok(v) => v,
             Err(_) => return Ok(()), // Signal doesn't exist yet
         };
         
-        let mut guard = self.client.lock().await;
-        let client = guard.as_mut().ok_or_else(|| PlcError::Config("Not connected".into()))?;
+        let guard = self.client.lock().await;
+        let client = guard.as_ref().ok_or_else(|| PlcError::Config("Not connected".into()))?;
         
-        // Convert Petra value to bytes
+        // Convert Petra value to bytes using rust-snap7 utils
         let mut buffer = match (&mapping.data_type, &value) {
             (S7DataType::Bool, _) => {
                 // For bool, we need to read-modify-write
@@ -304,23 +311,22 @@ impl S7Connector {
                             &mut existing,
                         ).map_err(|e| PlcError::Io(std::io::Error::new(
                             std::io::ErrorKind::Other, 
-                            format!("DB read error: {}", e)
+                            format!("DB read error: {:?}", e)
                         )))?;
                     }
-                    S7Area::Q | S7Area::M => {
+                    _ => {
                         client.read_area(
-                            mapping.area.to_snap7_area(),
+                            mapping.area.to_rust_snap7_area(),
                             0,
                             mapping.address as i32,
                             1,
-                            1,
+                            rust_snap7::WordLenTable::Byte,
                             &mut existing,
                         ).map_err(|e| PlcError::Io(std::io::Error::new(
                             std::io::ErrorKind::Other, 
-                            format!("Area read error: {}", e)
+                            format!("Area read error: {:?}", e)
                         )))?;
                     }
-                    _ => return Err(PlcError::Config("Cannot write bool to this area".into())),
                 }
                 
                 let bit_val = value.as_bool().unwrap_or(false);
@@ -332,27 +338,34 @@ impl S7Connector {
                 existing
             }
             (S7DataType::Byte, _) => {
-                vec![value.as_int().unwrap_or(0) as u8]
+                let mut buf = vec![0u8; 1];
+                utils::setters::set_byte(&mut buf, 0, value.as_int().unwrap_or(0) as u8);
+                buf
             }
             (S7DataType::Word, _) => {
-                let val = value.as_int().unwrap_or(0) as u16;
-                val.to_be_bytes().to_vec()
+                let mut buf = vec![0u8; 2];
+                utils::setters::set_word(&mut buf, 0, value.as_int().unwrap_or(0) as u16);
+                buf
             }
             (S7DataType::Int, _) => {
-                let val = value.as_int().unwrap_or(0) as i16;
-                val.to_be_bytes().to_vec()
+                let mut buf = vec![0u8; 2];
+                utils::setters::set_int(&mut buf, 0, value.as_int().unwrap_or(0) as i16);
+                buf
             }
             (S7DataType::DWord, _) => {
-                let val = value.as_int().unwrap_or(0) as u32;
-                val.to_be_bytes().to_vec()
+                let mut buf = vec![0u8; 4];
+                utils::setters::set_dword(&mut buf, 0, value.as_int().unwrap_or(0) as u32);
+                buf
             }
             (S7DataType::DInt, _) => {
-                let val = value.as_int().unwrap_or(0);
-                val.to_be_bytes().to_vec()
+                let mut buf = vec![0u8; 4];
+                utils::setters::set_dint(&mut buf, 0, value.as_int().unwrap_or(0));
+                buf
             }
             (S7DataType::Real, _) => {
-                let val = value.as_float().unwrap_or(0.0) as f32;
-                val.to_be_bytes().to_vec()
+                let mut buf = vec![0u8; 4];
+                utils::setters::set_real(&mut buf, 0, value.as_float().unwrap_or(0.0) as f32);
+                buf
             }
         };
         
@@ -366,20 +379,20 @@ impl S7Connector {
                     &mut buffer,
                 ).map_err(|e| PlcError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other, 
-                    format!("DB write error: {}", e)
+                    format!("DB write error: {:?}", e)
                 )))?;
             }
             S7Area::Q | S7Area::M => {
                 client.write_area(
-                    mapping.area.to_snap7_area(),
+                    mapping.area.to_rust_snap7_area(),
                     0,
                     mapping.address as i32,
                     buffer.len(),
-                    1,
+                    rust_snap7::WordLenTable::Byte,
                     &mut buffer,
                 ).map_err(|e| PlcError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other, 
-                    format!("Area write error: {}", e)
+                    format!("Area write error: {:?}", e)
                 )))?;
             }
             S7Area::I => {
