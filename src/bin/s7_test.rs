@@ -19,7 +19,7 @@ struct Cli {
     rack: u16,
     
     /// Slot number
-    #[arg(short, long, default_value = "2")]
+    #[arg(short, long, default_value = "1")]
     slot: u16,
     
     #[command(subcommand)]
