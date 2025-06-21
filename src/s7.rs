@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
-use tracing::{info, warn, debug};
+use tracing::{info, warn, debug, error};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S7Config {
@@ -89,8 +89,6 @@ fn default_poll_interval() -> u64 { 100 }
 fn default_timeout() -> u32 { 5000 }
 fn default_direction() -> Direction { Direction::ReadWrite }
 
-
-
 impl S7DataType {
     fn size(&self) -> usize {
         match self {
@@ -121,7 +119,7 @@ impl S7Connector {
     }
 
     pub async fn connect(&self) -> Result<()> {
-        use std::net::IpAddr;
+        use std::net::{IpAddr, SocketAddr};
 
         let addr: IpAddr = self
             .config
@@ -141,20 +139,37 @@ impl S7Connector {
             }
         };
 
-        let mut opts = tcp::Options::new(addr, self.config.rack, self.config.slot, conn_type);
+        // Create SocketAddr for the connection
+        let socket_addr = SocketAddr::new(addr, 102); // S7 uses port 102
+
+        let mut opts = tcp::Options::new(socket_addr, self.config.rack, self.config.slot, conn_type);
         let timeout = Duration::from_millis(self.config.timeout_ms as u64);
-        opts.read_timeout = timeout;
-        opts.write_timeout = timeout;
+        opts.read_timeout = Some(timeout);
+        opts.write_timeout = Some(timeout);
 
-        let transport = tcp::Transport::connect(opts)?;
-        let client = Client::new(transport)?;
+        match tcp::Transport::connect(opts) {
+            Ok(transport) => {
+                let client = Client::new(transport)
+                    .map_err(|e| PlcError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to create S7 client: {:?}", e)
+                    )))?;
 
-        *self.client.lock().await = Some(client);
-        info!(
-            "Connected to S7 PLC at {}:{}:{}",
-            self.config.ip, self.config.rack, self.config.slot
-        );
-        Ok(())
+                *self.client.lock().await = Some(client);
+                info!(
+                    "Connected to S7 PLC at {}:{}:{}",
+                    self.config.ip, self.config.rack, self.config.slot
+                );
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to connect to S7 PLC: {:?}", e);
+                Err(PlcError::Io(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionRefused,
+                    format!("S7 connection failed: {:?}", e)
+                )))
+            }
+        }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -165,6 +180,16 @@ impl S7Connector {
         
         while *self.running.lock().await {
             ticker.tick().await;
+            
+            // Check if we're still connected
+            if self.client.lock().await.is_none() {
+                warn!("S7 client disconnected, attempting reconnect...");
+                if let Err(e) = self.connect().await {
+                    error!("Reconnection failed: {}", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            }
             
             // Read cycle
             for mapping in &self.mappings {
@@ -194,7 +219,7 @@ impl S7Connector {
         info!("S7 connector stopped");
     }
 
-    pub async fn read_mapping(&self, mapping: &S7Mapping) -> Result<()> {
+    async fn read_mapping(&self, mapping: &S7Mapping) -> Result<()> {
         let mut guard = self.client.lock().await;
         let client = guard.as_mut().ok_or_else(|| PlcError::Config("Not connected".into()))?;
         let size = mapping.data_type.size();
@@ -202,18 +227,27 @@ impl S7Connector {
         // Read data from PLC
         let mut buffer = vec![0u8; size];
 
-        match mapping.area {
-            S7Area::DB => client.ag_read(
-                mapping.db_number as i32,
-                mapping.address as i32,
-                size as i32,
-                &mut buffer,
-            )?,
-            S7Area::I => client.eb_read(mapping.address as i32, size as i32, &mut buffer)?,
-            S7Area::Q => client.ab_read(mapping.address as i32, size as i32, &mut buffer)?,
-            S7Area::M => client.mb_read(mapping.address as i32, size as i32, &mut buffer)?,
-            _ => return Err(PlcError::Config("Unsupported area".into())),
-        }
+        // Convert our area enum to S7 crate's Area enum
+        let area = match mapping.area {
+            S7Area::DB => s7::Area::DataBlocks,
+            S7Area::I => s7::Area::ProcessInputs,
+            S7Area::Q => s7::Area::ProcessOutputs,
+            S7Area::M => s7::Area::Flags,
+            S7Area::C => s7::Area::Counters,
+            S7Area::T => s7::Area::Timers,
+        };
+
+        // Use the correct read method from the s7 crate
+        client.read_area(
+            area,
+            mapping.db_number as u32,
+            mapping.address,
+            size,
+            &mut buffer
+        ).map_err(|e| PlcError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("S7 read error: {:?}", e)
+        )))?;
         
         // Convert to Petra value
         let value = match mapping.data_type {
@@ -254,7 +288,7 @@ impl S7Connector {
         Ok(())
     }
 
-    pub async fn write_mapping(&self, mapping: &S7Mapping) -> Result<()> {
+    async fn write_mapping(&self, mapping: &S7Mapping) -> Result<()> {
         // Get value from signal bus
         let value = match self.bus.get(&mapping.signal) {
             Ok(v) => v,
@@ -265,23 +299,30 @@ impl S7Connector {
         let client = guard.as_mut().ok_or_else(|| PlcError::Config("Not connected".into()))?;
         
         // Convert Petra value to bytes
-        let buffer = match (&mapping.data_type, &value) {
+        let mut buffer = match (&mapping.data_type, &value) {
             (S7DataType::Bool, _) => {
                 // For bool, we need to read-modify-write
                 let mut existing = vec![0u8; 1];
 
-                match mapping.area {
-                    S7Area::DB => client.ag_read(
-                        mapping.db_number as i32,
-                        mapping.address as i32,
-                        1,
-                        &mut existing,
-                    )?,
-                    S7Area::I => client.eb_read(mapping.address as i32, 1, &mut existing)?,
-                    S7Area::Q => client.ab_read(mapping.address as i32, 1, &mut existing)?,
-                    S7Area::M => client.mb_read(mapping.address as i32, 1, &mut existing)?,
-                    _ => return Err(PlcError::Config("Unsupported area".into())),
-                }
+                let area = match mapping.area {
+                    S7Area::DB => s7::Area::DataBlocks,
+                    S7Area::I => s7::Area::ProcessInputs,
+                    S7Area::Q => s7::Area::ProcessOutputs,
+                    S7Area::M => s7::Area::Flags,
+                    S7Area::C => s7::Area::Counters,
+                    S7Area::T => s7::Area::Timers,
+                };
+
+                client.read_area(
+                    area,
+                    mapping.db_number as u32,
+                    mapping.address,
+                    1,
+                    &mut existing
+                ).map_err(|e| PlcError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("S7 read error: {:?}", e)
+                )))?;
                 
                 let bit_val = value.as_bool().unwrap_or(false);
                 if bit_val {
@@ -317,18 +358,24 @@ impl S7Connector {
         };
         
         // Write to PLC
-        match mapping.area {
-            S7Area::DB => client.ag_write(
-                mapping.db_number as i32,
-                mapping.address as i32,
-                buffer.len() as i32,
-                &mut buffer.clone(),
-            )?,
-            S7Area::I => client.eb_write(mapping.address as i32, buffer.len() as i32, &mut buffer.clone())?,
-            S7Area::Q => client.ab_write(mapping.address as i32, buffer.len() as i32, &mut buffer.clone())?,
-            S7Area::M => client.mb_write(mapping.address as i32, buffer.len() as i32, &mut buffer.clone())?,
-            _ => return Err(PlcError::Config("Unsupported area".into())),
-        }
+        let area = match mapping.area {
+            S7Area::DB => s7::Area::DataBlocks,
+            S7Area::I => s7::Area::ProcessInputs,
+            S7Area::Q => s7::Area::ProcessOutputs,
+            S7Area::M => s7::Area::Flags,
+            S7Area::C => s7::Area::Counters,
+            S7Area::T => s7::Area::Timers,
+        };
+
+        client.write_area(
+            area,
+            mapping.db_number as u32,
+            mapping.address,
+            &buffer
+        ).map_err(|e| PlcError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("S7 write error: {:?}", e)
+        )))?;
         
         debug!("Wrote {} = {} to S7", mapping.signal, value);
         Ok(())
@@ -350,17 +397,16 @@ pub fn optimize_mappings(mappings: &[S7Mapping]) -> Vec<ReadRequest> {
     // Create optimized read requests
     let mut requests = Vec::new();
     
-    for ((area, db_number), mappings) in grouped {
+    for ((area, db_number), mut mappings) in grouped {
         // Sort by address
-        let mut sorted = mappings;
-        sorted.sort_by_key(|m| m.address);
+        mappings.sort_by_key(|m| m.address);
         
         // Find contiguous ranges
-        let mut current_start = sorted[0].address;
-        let mut current_end = current_start + sorted[0].data_type.size() as u32;
-        let mut current_mappings = vec![sorted[0]];
+        let mut current_start = mappings[0].address;
+        let mut current_end = current_start + mappings[0].data_type.size() as u32;
+        let mut current_mappings = vec![mappings[0]];
         
-        for mapping in &sorted[1..] {
+        for mapping in &mappings[1..] {
             if mapping.address <= current_end + 4 { // Allow small gaps
                 current_end = mapping.address + mapping.data_type.size() as u32;
                 current_mappings.push(mapping);
@@ -382,32 +428,3 @@ pub fn optimize_mappings(mappings: &[S7Mapping]) -> Vec<ReadRequest> {
         
         // Add final request
         requests.push(ReadRequest {
-            area,
-            db_number,
-            start_address: current_start,
-            length: (current_end - current_start) as usize,
-            mappings: current_mappings.into_iter().cloned().collect(),
-        });
-    }
-    
-    requests
-}
-
-#[derive(Debug, Clone)]
-pub struct ReadRequest {
-    pub area: S7Area,
-    pub db_number: u16,
-    pub start_address: u32,
-    pub length: usize,
-    pub mappings: Vec<S7Mapping>,
-}
-
-// Add S7 error handling
-impl From<s7::error::Error> for PlcError {
-    fn from(err: s7::error::Error) -> Self {
-        PlcError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("S7 error: {:?}", err),
-        ))
-    }
-}
