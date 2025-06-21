@@ -17,7 +17,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rumqttc = "0.24"
 chrono = "0.4"
 # S7 communication library
-s7 = "0.2"
+s7 = "0.1.9"
 
 [profile.release]
 lto = true
