@@ -148,15 +148,10 @@ impl S7Connector {
     pub async fn connect(&self) -> Result<()> {
         let client = S7Client::create();
         
-        // Set connection parameters
-        client.set_param(
-            InternalParam::PDURequest,
-            InternalParamValue::U16(960)
-        ).map_err(|e| PlcError::Config(format!("Failed to set PDU size: {:?}", e)))?;
-        
+        // Set connection parameters - only set the ones that are known to work
         client.set_param(
             InternalParam::RemotePort,
-            InternalParamValue::U16(102)
+            InternalParamValue::U16(102)  // Standard S7 port
         ).map_err(|e| PlcError::Config(format!("Failed to set remote port: {:?}", e)))?;
         
         // Connect to PLC
