@@ -4,6 +4,7 @@ use petra::{SignalBus, S7Connector, Value};
 use tracing::{info, error};
 use tracing_subscriber;
 use clap::{Parser, Subcommand};
+use rust_snap7::{S7Client, InternalParam, InternalParamValue};
 
 #[derive(Parser)]
 #[command(name = "s7_test")]
@@ -155,36 +156,40 @@ async fn test_connection(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
 async fn test_info(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     info!("Getting PLC info from {}", cli.ip);
     
-    // Create a snap7 client directly for info commands
-    let mut client = snap7::S7Client::new();
+    // Create a rust-snap7 client directly for info commands
+    let client = S7Client::create();
+    
+    // Set connection parameters
+    client.set_param(InternalParam::RemotePort, InternalParamValue::U16(102))?;
+    
+    // Connect
     client.connect_to(&cli.ip, cli.rack as i32, cli.slot as i32)?;
     
     // Get order code
-    let mut order_code = vec![0u8; 20];
-    if let Ok(_) = client.get_order_code(&mut order_code) {
-        let order = String::from_utf8_lossy(&order_code);
-        info!("Order Code: {}", order.trim());
-    }
+    let order_code = client.get_order_code()?;
+    info!("Order Code: {}", order_code.order_code);
     
     // Get CPU info
-    let mut cpu_info = snap7::S7CpuInfo::default();
-    if let Ok(_) = client.get_cpu_info(&mut cpu_info) {
-        info!("CPU Info:");
-        info!("  Module Name: {}", String::from_utf8_lossy(&cpu_info.module_name));
-        info!("  Serial Number: {}", String::from_utf8_lossy(&cpu_info.serial_number));
-        info!("  AS Name: {}", String::from_utf8_lossy(&cpu_info.as_name));
-        info!("  Module Type: {}", String::from_utf8_lossy(&cpu_info.module_type_name));
-    }
+    let cpu_info = client.get_cpu_info()?;
+    info!("CPU Info:");
+    info!("  Module Name: {}", cpu_info.module_name);
+    info!("  Serial Number: {}", cpu_info.serial_number);
+    info!("  AS Name: {}", cpu_info.as_name);
+    info!("  Module Type Name: {}", cpu_info.module_type_name);
     
     // Get PLC status
-    let status = client.get_plc_status()?;
-    let status_text = match status {
-        0x00 => "Unknown",
-        0x04 => "Stop",
-        0x08 => "Run",
-        _ => "Other",
-    };
-    info!("PLC Status: {}", status_text);
+    let status = client.plc_status()?;
+    info!("PLC Status: {:?}", status);
+    
+    // Get protection info
+    if let Ok(protection) = client.get_protection() {
+        info!("Protection Info:");
+        info!("  Read Protection: {:?}", protection.sch_schal);
+        info!("  Write Protection: {:?}", protection.sch_par);
+        info!("  Run/Stop Protection: {:?}", protection.sch_rel);
+        info!("  Block Protection: {:?}", protection.bart_sch);
+        info!("  Operational Lock: {:?}", protection.anl_sch);
+    }
     
     client.disconnect()?;
     Ok(())
@@ -203,64 +208,6 @@ async fn test_read(
     
     info!("Reading {} from {}{}:{} bit {}", 
         data_type, area, 
-        if matches!(area_enum, S7Area::DB) { format!("{}", db) } else { "".to_string() },
-        address, bit
-    );
-    
-    let mapping = S7Mapping {
-        signal: "test_signal".to_string(),
-        area: area_enum,
-        db_number: db,
-        address,
-        data_type: type_enum,
-        bit,
-        direction: Direction::Read,
-    };
-
-    let config = S7Config {
-        ip: cli.ip.clone(),
-        rack: cli.rack,
-        slot: cli.slot,
-        connection_type: "PG".to_string(),
-        poll_interval_ms: 1000,
-        timeout_ms: 5000,
-        mappings: vec![mapping.clone()],
-    };
-    
-    let bus = SignalBus::new();
-    let connector = S7Connector::new(config, bus.clone())?;
-    connector.connect().await?;
-
-    // Do one read cycle
-    connector.read_mapping(&mapping).await?;
-    
-    let value = bus.get("test_signal")?;
-    info!("✓ Read value: {}", value);
-    
-    Ok(())
-}
-
-async fn test_write(
-    cli: &Cli,
-    area: String,
-    db: u16,
-    address: u32,
-    data_type: String,
-    bit: u8,
-    value_str: String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let area_enum = parse_area(&area)?;
-    let type_enum = parse_data_type(&data_type)?;
-    
-    // Parse value based on type
-    let value = match type_enum {
-        S7DataType::Bool => Value::Bool(value_str.parse::<bool>()?),
-        S7DataType::Real => Value::Float(value_str.parse::<f64>()?),
-        _ => Value::Int(value_str.parse::<i32>()?),
-    };
-    
-    info!("Writing {} = {} to {}{}:{} bit {}", 
-        data_type, value, area,
         if matches!(area_enum, S7Area::DB) { format!("{}", db) } else { "".to_string() },
         address, bit
     );
@@ -392,3 +339,61 @@ fn parse_data_type(dtype: &str) -> Result<S7DataType, String> {
         _ => Err(format!("Invalid data type: {}", dtype)),
     }
 }
+        area: area_enum,
+        db_number: db,
+        address,
+        data_type: type_enum,
+        bit,
+        direction: Direction::Read,
+    };
+
+    let config = S7Config {
+        ip: cli.ip.clone(),
+        rack: cli.rack,
+        slot: cli.slot,
+        connection_type: "PG".to_string(),
+        poll_interval_ms: 1000,
+        timeout_ms: 5000,
+        mappings: vec![mapping.clone()],
+    };
+    
+    let bus = SignalBus::new();
+    let connector = S7Connector::new(config, bus.clone())?;
+    connector.connect().await?;
+
+    // Do one read cycle
+    connector.read_mapping(&mapping).await?;
+    
+    let value = bus.get("test_signal")?;
+    info!("✓ Read value: {}", value);
+    
+    Ok(())
+}
+
+async fn test_write(
+    cli: &Cli,
+    area: String,
+    db: u16,
+    address: u32,
+    data_type: String,
+    bit: u8,
+    value_str: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let area_enum = parse_area(&area)?;
+    let type_enum = parse_data_type(&data_type)?;
+    
+    // Parse value based on type
+    let value = match type_enum {
+        S7DataType::Bool => Value::Bool(value_str.parse::<bool>()?),
+        S7DataType::Real => Value::Float(value_str.parse::<f64>()?),
+        _ => Value::Int(value_str.parse::<i32>()?),
+    };
+    
+    info!("Writing {} = {} to {}{}:{} bit {}", 
+        data_type, value, area,
+        if matches!(area_enum, S7Area::DB) { format!("{}", db) } else { "".to_string() },
+        address, bit
+    );
+    
+    let mapping = S7Mapping {
+        signal: "test_signal".to_string(),
