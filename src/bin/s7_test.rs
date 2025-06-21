@@ -95,17 +95,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let cli = Cli::parse();
-    
-    match cli.command {
+
+    match &cli.command {
         Commands::Connect => test_connection(&cli).await?,
         Commands::Read { area, db, address, data_type, bit } => {
-            test_read(&cli, area, db, address, data_type, bit).await?
+            test_read(&cli, area.clone(), *db, *address, data_type.clone(), *bit).await?
         },
         Commands::Write { area, db, address, data_type, bit, value } => {
-            test_write(&cli, area, db, address, data_type, bit, value).await?
+            test_write(&cli, area.clone(), *db, *address, data_type.clone(), *bit, value.clone()).await?
         },
         Commands::Monitor { config } => {
-            monitor_values(&cli, config).await?
+            monitor_values(&cli, config.clone()).await?
         },
     }
     
@@ -169,7 +169,7 @@ async fn test_read(
         bit,
         direction: Direction::Read,
     };
-    
+
     let config = S7Config {
         ip: cli.ip.clone(),
         rack: cli.rack,
@@ -177,15 +177,15 @@ async fn test_read(
         connection_type: "PG".to_string(),
         poll_interval_ms: 1000,
         timeout_ms: 5000,
-        mappings: vec![mapping],
+        mappings: vec![mapping.clone()],
     };
     
     let bus = SignalBus::new();
     let connector = S7Connector::new(config, bus.clone())?;
     connector.connect().await?;
-    
+
     // Do one read cycle
-    connector.read_mapping(&connector.mappings[0]).await?;
+    connector.read_mapping(&mapping).await?;
     
     let value = bus.get("test_signal")?;
     info!("✓ Read value: {}", value);
@@ -235,7 +235,7 @@ async fn test_write(
         connection_type: "PG".to_string(),
         poll_interval_ms: 1000,
         timeout_ms: 5000,
-        mappings: vec![mapping],
+        mappings: vec![mapping.clone()],
     };
     
     let bus = SignalBus::new();
@@ -243,9 +243,9 @@ async fn test_write(
     
     let connector = S7Connector::new(config, bus)?;
     connector.connect().await?;
-    
+
     // Do one write cycle
-    connector.write_mapping(&connector.mappings[0]).await?;
+    connector.write_mapping(&mapping).await?;
     
     info!("✓ Successfully wrote value");
     

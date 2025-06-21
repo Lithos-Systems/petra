@@ -194,7 +194,7 @@ impl S7Connector {
         info!("S7 connector stopped");
     }
 
-    async fn read_mapping(&self, mapping: &S7Mapping) -> Result<()> {
+    pub async fn read_mapping(&self, mapping: &S7Mapping) -> Result<()> {
         let mut guard = self.client.lock().await;
         let client = guard.as_mut().ok_or_else(|| PlcError::Config("Not connected".into()))?;
         let size = mapping.data_type.size();
@@ -254,7 +254,7 @@ impl S7Connector {
         Ok(())
     }
 
-    async fn write_mapping(&self, mapping: &S7Mapping) -> Result<()> {
+    pub async fn write_mapping(&self, mapping: &S7Mapping) -> Result<()> {
         // Get value from signal bus
         let value = match self.bus.get(&mapping.signal) {
             Ok(v) => v,
