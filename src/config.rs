@@ -1,5 +1,7 @@
+// Updates to src/config.rs
 use crate::error::*;
 use crate::mqtt::MqttConfig;
+use crate::s7::S7Config;  // Add this import
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -12,72 +14,130 @@ pub struct Config {
     pub scan_time_ms: u64,
     #[serde(default)]
     pub mqtt: MqttConfig,
+    #[serde(default)]
+    pub s7: Option<S7Config>,  // Add S7 configuration
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SignalConfig {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub signal_type: String,
-    #[serde(default)]
-    pub initial: serde_yaml::Value,
-}
+// ... rest of the config.rs file remains the same ...
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockConfig {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub block_type: String,
-    #[serde(default)]
-    pub inputs: HashMap<String, String>,
-    #[serde(default)]
-    pub outputs: HashMap<String, String>,
-    #[serde(default)]
-    pub params: HashMap<String, serde_yaml::Value>,
-}
+// Updates to src/main.rs
+use petra::{Config, Engine, MqttHandler, S7Connector, Result};
+use tokio::signal;
+use tokio::sync::mpsc;
+use tracing::{error, info};
+use tracing_subscriber;
 
-fn default_scan_time() -> u64 {
-    100
-}
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("petra=info".parse().unwrap()),
+        )
+        .init();
 
-impl Config {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        let config: Self = serde_yaml::from_str(&content)?;
-        config.validate()?;
-        Ok(config)
-    }
+    info!("Petra v{} starting", petra::VERSION);
 
-    pub fn from_yaml(yaml: &str) -> Result<Self> {
-        let config: Self = serde_yaml::from_str(yaml)?;
-        config.validate()?;
-        Ok(config)
-    }
+    let config_path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| {
+            error!("Usage: {} <config.yaml>", std::env::args().next().unwrap());
+            std::process::exit(1);
+        });
 
-    fn validate(&self) -> Result<()> {
-        let mut seen = std::collections::HashSet::new();
+    let config = Config::from_file(&config_path)?;
+    info!("Loaded {} signals, {} blocks", config.signals.len(), config.blocks.len());
 
-        for signal in &self.signals {
-            if !seen.insert(&signal.name) {
-                return Err(PlcError::Config(format!("Duplicate signal: {}", signal.name)));
+    let mut engine = Engine::new(config.clone())?;
+    let bus = engine.bus().clone();
+
+    // Create channel for signal changes
+    let (signal_tx, signal_rx) = mpsc::channel(100);
+    
+    engine.set_signal_change_channel(signal_tx.clone());
+    
+    // Start MQTT if configured
+    let mqtt_handle = if !config.mqtt.broker_host.is_empty() {
+        let mut mqtt = MqttHandler::new(bus.clone(), config.mqtt)?;
+        mqtt.set_signal_change_channel(signal_rx);
+        mqtt.start().await?;
+        
+        Some(tokio::spawn(async move {
+            if let Err(e) = mqtt.run().await {
+                error!("MQTT error: {}", e);
             }
-            match signal.signal_type.as_str() {
-                "bool" | "int" | "float" => {}
-                _ => return Err(PlcError::Config(format!("Invalid signal type: {}", signal.signal_type))),
+        }))
+    } else {
+        None
+    };
+    
+    // Start S7 connector if configured
+    let s7_handle = if let Some(s7_config) = config.s7 {
+        info!("Starting S7 connector for {}", s7_config.ip);
+        let s7 = S7Connector::new(s7_config, bus.clone())?;
+        s7.connect().await?;
+        
+        Some(tokio::spawn(async move {
+            if let Err(e) = s7.run().await {
+                error!("S7 error: {}", e);
+            }
+        }))
+    } else {
+        None
+    };
+
+    let ctrl_c = signal::ctrl_c();
+    
+    tokio::select! {
+        _ = ctrl_c => {
+            info!("Received shutdown signal");
+            engine.stop();
+        }
+        res = engine.run() => {
+            if let Err(e) = res {
+                error!("Engine error: {}", e);
+                std::process::exit(1);
             }
         }
-
-        seen.clear();
-        for block in &self.blocks {
-            if !seen.insert(&block.name) {
-                return Err(PlcError::Config(format!("Duplicate block: {}", block.name)));
-            }
-        }
-
-        if self.scan_time_ms < 10 || self.scan_time_ms > 10000 {
-            return Err(PlcError::Config("Scan time must be 10–10000ms".into()));
-        }
-
-        Ok(())
     }
+
+    // Clean shutdown
+    if let Some(handle) = mqtt_handle {
+        handle.abort();
+    }
+    if let Some(handle) = s7_handle {
+        handle.abort();
+    }
+
+    info!("Engine stopped normally");
+
+    let stats = engine.stats();
+    info!(
+        "Final stats: {} scans, {} errors, uptime: {}s",
+        stats.scan_count, stats.error_count, stats.uptime_secs
+    );
+
+    Ok(())
 }
+
+// Updates to src/lib.rs
+//! Petra v2.0 - Production-ready PLC with MQTT and S7 integration
+
+pub mod error;
+pub mod value;
+pub mod signal;
+pub mod block;
+pub mod config;
+pub mod engine;
+pub mod mqtt;
+pub mod s7;  // Add S7 module
+
+pub use error::{PlcError, Result};
+pub use value::Value;
+pub use signal::SignalBus;
+pub use config::Config;
+pub use engine::{Engine, EngineStats};
+pub use mqtt::{MqttHandler, MqttMessage};
+pub use s7::{S7Connector, S7Config};  // Export S7 types
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
