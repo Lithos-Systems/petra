@@ -1,8 +1,9 @@
 [package]
 name = "petra"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
+description = "Programmable Engine for Telemetry, Runtime, and Automation with S7 PLC support"
 
 [dependencies]
 tokio = { version = "1.40", features = ["rt-multi-thread", "time", "signal", "macros", "sync"] }
@@ -15,8 +16,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rumqttc = "0.24"
 chrono = "0.4"
+# S7 communication library
+s7 = "0.2"
 
 [profile.release]
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[features]
+default = ["s7-support"]
+s7-support = []
