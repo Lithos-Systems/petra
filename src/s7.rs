@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
-use tracing::{info, warn, error, debug};
+use tracing::{info, warn, debug};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S7Config {
@@ -265,7 +265,7 @@ impl S7Connector {
         let client = guard.as_mut().ok_or_else(|| PlcError::Config("Not connected".into()))?;
         
         // Convert Petra value to bytes
-        let mut buffer = match (&mapping.data_type, &value) {
+        let buffer = match (&mapping.data_type, &value) {
             (S7DataType::Bool, _) => {
                 // For bool, we need to read-modify-write
                 let mut existing = vec![0u8; 1];
@@ -393,13 +393,13 @@ pub fn optimize_mappings(mappings: &[S7Mapping]) -> Vec<ReadRequest> {
     requests
 }
 
-#[derive(Debug)]
-struct ReadRequest {
-    area: S7Area,
-    db_number: u16,
-    start_address: u32,
-    length: usize,
-    mappings: Vec<S7Mapping>,
+#[derive(Debug, Clone)]
+pub struct ReadRequest {
+    pub area: S7Area,
+    pub db_number: u16,
+    pub start_address: u32,
+    pub length: usize,
+    pub mappings: Vec<S7Mapping>,
 }
 
 // Add S7 error handling
