@@ -1,4 +1,4 @@
-use petra::{Config, Engine, MqttHandler, Result};
+use petra::{Config, Engine, MqttHandler, S7Connector, Result};
 use tokio::signal;
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -33,9 +33,46 @@ async fn main() -> Result<()> {
     
     engine.set_signal_change_channel(signal_tx);
     
-    let mut mqtt = MqttHandler::new(bus, config.mqtt)?;
-    mqtt.set_signal_change_channel(signal_rx);
-    mqtt.start().await?;
+    // Setup MQTT if configured
+    let mqtt_handle = if !config.mqtt.broker_host.is_empty() {
+        let mut mqtt = MqttHandler::new(bus.clone(), config.mqtt)?;
+        mqtt.set_signal_change_channel(signal_rx);
+        mqtt.start().await?;
+        
+        Some(tokio::spawn(async move {
+            if let Err(e) = mqtt.run().await {
+                error!("MQTT error: {}", e);
+            }
+        }))
+    } else {
+        info!("MQTT not configured, skipping");
+        None
+    };
+
+    // Setup S7 if configured
+    let s7_handle = if let Some(s7_config) = config.s7 {
+        info!("Starting S7 connector");
+        let s7 = S7Connector::new(s7_config, bus.clone())?;
+        
+        // Connect to PLC
+        match s7.connect().await {
+            Ok(_) => {
+                info!("S7 PLC connected successfully");
+                Some(tokio::spawn(async move {
+                    if let Err(e) = s7.run().await {
+                        error!("S7 error: {}", e);
+                    }
+                }))
+            }
+            Err(e) => {
+                error!("Failed to connect to S7 PLC: {}", e);
+                None
+            }
+        }
+    } else {
+        info!("S7 not configured, skipping");
+        None
+    };
 
     let ctrl_c = signal::ctrl_c();
     
@@ -44,25 +81,20 @@ async fn main() -> Result<()> {
             info!("Received shutdown signal");
             engine.stop();
         }
-        res = async {
-            // Run MQTT and Engine concurrently
-            let mqtt_task = tokio::spawn(async move {
-                if let Err(e) = mqtt.run().await {
-                    error!("MQTT error: {}", e);
-                }
-            });
-            
-            let engine_result = engine.run().await;
-            
-            // Clean shutdown
-            mqtt_task.abort();
-            engine_result
-        } => {
+        res = engine.run() => {
             if let Err(e) = res {
                 error!("Engine error: {}", e);
                 std::process::exit(1);
             }
         }
+    }
+
+    // Clean shutdown
+    if let Some(handle) = mqtt_handle {
+        handle.abort();
+    }
+    if let Some(handle) = s7_handle {
+        handle.abort();
     }
 
     info!("Engine stopped normally");
