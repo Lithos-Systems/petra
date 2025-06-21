@@ -5,6 +5,7 @@ pub mod value;
 pub mod signal;
 pub mod block;
 pub mod config;
+pub mod s7;
 pub mod engine;
 pub mod mqtt;
 
