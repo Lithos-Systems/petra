@@ -16,9 +16,17 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rumqttc = "0.24"
 chrono = "0.4"
-# S7 communication library
-s7 = "0.1.9"
+# S7 communication library - using snap7
+snap7 = "1.1"
 clap = { version = "4", features = ["derive"] }
+
+[[bin]]
+name = "petra"
+path = "src/main.rs"
+
+[[bin]]
+name = "s7_test"
+path = "src/bin/s7_test.rs"
 
 [profile.release]
 lto = true
