@@ -1,6 +1,6 @@
 // src/s7.rs
 use crate::{error::*, value::Value, signal::SignalBus};
-use rust_snap7::{S7Client, InternalParam, InternalParamValue, AreaCode, utils};
+use rust_snap7::{S7Client, InternalParam, InternalParamValue, AreaTable, WordLenTable, utils};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -114,14 +114,14 @@ impl S7DataType {
 }
 
 impl S7Area {
-    fn to_rust_snap7_area(&self) -> AreaCode {
+    fn to_rust_snap7_area(&self) -> AreaTable {
         match self {
-            S7Area::I => AreaCode::S7AreaPE,    // Process Inputs
-            S7Area::Q => AreaCode::S7AreaPA,    // Process Outputs
-            S7Area::M => AreaCode::S7AreaMK,    // Merkers
-            S7Area::DB => AreaCode::S7AreaDB,   // Data Blocks
-            S7Area::C => AreaCode::S7AreaCT,    // Counters
-            S7Area::T => AreaCode::S7AreaTM,    // Timers
+            S7Area::I => AreaTable::S7AreaPE,    // Process Inputs
+            S7Area::Q => AreaTable::S7AreaPA,    // Process Outputs
+            S7Area::M => AreaTable::S7AreaMK,    // Merkers
+            S7Area::DB => AreaTable::S7AreaDB,   // Data Blocks
+            S7Area::C => AreaTable::S7AreaCT,    // Counters
+            S7Area::T => AreaTable::S7AreaTM,    // Timers
         }
     }
 }
@@ -150,7 +150,7 @@ impl S7Connector {
         
         // Set connection parameters
         client.set_param(
-            InternalParam::PduSizeRequested, 
+            InternalParam::PDURequest,
             InternalParamValue::U16(960)
         ).map_err(|e| PlcError::Config(format!("Failed to set PDU size: {:?}", e)))?;
         
@@ -224,7 +224,7 @@ impl S7Connector {
                 client.db_read(
                     mapping.db_number as i32,
                     mapping.address as i32,
-                    size,
+                    size as i32,
                     &mut buffer,
                 ).map_err(|e| PlcError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other, 
@@ -236,8 +236,8 @@ impl S7Connector {
                     mapping.area.to_rust_snap7_area(),
                     0, // DB number (not used for non-DB areas)
                     mapping.address as i32,
-                    size,
-                    rust_snap7::WordLenTable::Byte,
+                    size as i32,
+                    WordLenTable::S7WLByte,
                     &mut buffer,
                 ).map_err(|e| PlcError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other, 
@@ -320,7 +320,7 @@ impl S7Connector {
                             0,
                             mapping.address as i32,
                             1,
-                            rust_snap7::WordLenTable::Byte,
+                            WordLenTable::S7WLByte,
                             &mut existing,
                         ).map_err(|e| PlcError::Io(std::io::Error::new(
                             std::io::ErrorKind::Other, 
@@ -375,7 +375,7 @@ impl S7Connector {
                 client.db_write(
                     mapping.db_number as i32,
                     mapping.address as i32,
-                    buffer.len(),
+                    buffer.len() as i32,
                     &mut buffer,
                 ).map_err(|e| PlcError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other, 
@@ -387,8 +387,8 @@ impl S7Connector {
                     mapping.area.to_rust_snap7_area(),
                     0,
                     mapping.address as i32,
-                    buffer.len(),
-                    rust_snap7::WordLenTable::Byte,
+                    buffer.len() as i32,
+                    WordLenTable::S7WLByte,
                     &mut buffer,
                 ).map_err(|e| PlcError::Io(std::io::Error::new(
                     std::io::ErrorKind::Other, 
