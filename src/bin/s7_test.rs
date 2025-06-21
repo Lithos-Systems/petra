@@ -4,8 +4,7 @@ use petra::{SignalBus, S7Connector, Value};
 use tracing::{info, error};
 use tracing_subscriber;
 use clap::{Parser, Subcommand};
-use rust_snap7::{S7Client, InternalParam, InternalParamValue, TS7OrderCode, TS7CpuInfo};
-use std::ffi::CStr;
+use rust_snap7::{S7Client, InternalParam, InternalParamValue};
 
 #[derive(Parser)]
 #[command(name = "s7_test")]
@@ -123,29 +122,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn test_connection(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     info!("Testing connection to {}:{}:{}", cli.ip, cli.rack, cli.slot);
     
-    let config = S7Config {
-        ip: cli.ip.clone(),
-        rack: cli.rack,
-        slot: cli.slot,
-        connection_type: "PG".to_string(),
-        poll_interval_ms: 1000,
-        timeout_ms: 5000,
-        mappings: vec![],
-    };
+    // Create a simple client for testing
+    let client = S7Client::create();
     
-    let bus = SignalBus::new();
-    let connector = S7Connector::new(config, bus)?;
+    // Set only the remote port parameter
+    client.set_param(InternalParam::RemotePort, InternalParamValue::U16(102))?;
     
-    match connector.connect().await {
+    match client.connect_to(&cli.ip, cli.rack as i32, cli.slot as i32) {
         Ok(_) => {
             info!("✓ Successfully connected to PLC!");
             info!("  IP: {}", cli.ip);
             info!("  Rack: {}", cli.rack);
             info!("  Slot: {}", cli.slot);
             info!("  Ready for data exchange");
+            
+            // Test disconnection
+            client.disconnect()?;
+            info!("✓ Disconnected successfully");
         },
         Err(e) => {
-            error!("✗ Connection failed: {}", e);
+            error!("✗ Connection failed: {:?}", e);
             error!("  Check IP address, rack/slot numbers, and PLC accessibility");
             return Err(e.into());
         }
@@ -162,37 +158,17 @@ async fn test_info(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     client.set_param(InternalParam::RemotePort, InternalParamValue::U16(102))?;
     client.connect_to(&cli.ip, cli.rack as i32, cli.slot as i32)?;
     
-    // Get order code
-    let mut order_code: TS7OrderCode = unsafe { std::mem::zeroed() };
-    if let Ok(_) = client.get_order_code(&mut order_code) {
-        let order = unsafe { CStr::from_ptr(order_code.Code.as_ptr()) };
-        info!("Order Code: {}", order.to_string_lossy().trim());
-    }
-    
-    // Get CPU info
-    let mut cpu_info: TS7CpuInfo = unsafe { std::mem::zeroed() };
-    if let Ok(_) = client.get_cpu_info(&mut cpu_info) {
-        info!("CPU Info:");
-        let module_name = unsafe { CStr::from_ptr(cpu_info.ModuleName.as_ptr()) };
-        let serial = unsafe { CStr::from_ptr(cpu_info.SerialNumber.as_ptr()) };
-        let as_name = unsafe { CStr::from_ptr(cpu_info.ASName.as_ptr()) };
-        let module_type = unsafe { CStr::from_ptr(cpu_info.ModuleTypeName.as_ptr()) };
-        info!("  Module Name: {}", module_name.to_string_lossy());
-        info!("  Serial Number: {}", serial.to_string_lossy());
-        info!("  AS Name: {}", as_name.to_string_lossy());
-        info!("  Module Type: {}", module_type.to_string_lossy());
-    }
-    
     // Get PLC status
     let mut status: i32 = 0;
-    client.get_plc_status(&mut status)?;
-    let status_text = match status {
-        0x00 => "Unknown",
-        0x04 => "Stop",
-        0x08 => "Run",
-        _ => "Other",
-    };
-    info!("PLC Status: {}", status_text);
+    if let Ok(_) = client.get_plc_status(&mut status) {
+        let status_text = match status {
+            0x00 => "Unknown",
+            0x04 => "Stop",
+            0x08 => "Run",
+            _ => "Other",
+        };
+        info!("PLC Status: {} (0x{:02X})", status_text, status);
+    }
     
     client.disconnect()?;
     Ok(())
@@ -384,19 +360,19 @@ fn parse_area(area: &str) -> Result<S7Area, String> {
         "M" => Ok(S7Area::M),
         "C" => Ok(S7Area::C),
         "T" => Ok(S7Area::T),
-        _ => Err(format!("Invalid area: {}", area)),
-    }
+        _ => Err(format!("Invalid area_ => Err(format!("Invalid area: {}", area)),
+   }
 }
 
 fn parse_data_type(dtype: &str) -> Result<S7DataType, String> {
-    match dtype.to_lowercase().as_str() {
-        "bool" => Ok(S7DataType::Bool),
-        "byte" => Ok(S7DataType::Byte),
-        "word" => Ok(S7DataType::Word),
-        "int" => Ok(S7DataType::Int),
-        "dword" => Ok(S7DataType::DWord),
-        "dint" => Ok(S7DataType::DInt),
-        "real" => Ok(S7DataType::Real),
-        _ => Err(format!("Invalid data type: {}", dtype)),
-    }
+   match dtype.to_lowercase().as_str() {
+       "bool" => Ok(S7DataType::Bool),
+       "byte" => Ok(S7DataType::Byte),
+       "word" => Ok(S7DataType::Word),
+       "int" => Ok(S7DataType::Int),
+       "dword" => Ok(S7DataType::DWord),
+       "dint" => Ok(S7DataType::DInt),
+       "real" => Ok(S7DataType::Real),
+       _ => Err(format!("Invalid data type: {}", dtype)),
+   }
 }
