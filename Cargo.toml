@@ -48,3 +48,7 @@ panic = "abort"
 [features]
 default = ["s7-support"]
 s7-support = []
+
+[[bin]]
+name = "twilio_test"
+path = "src/bin/twilio_test.rs"
