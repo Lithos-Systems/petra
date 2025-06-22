@@ -24,3 +24,5 @@ pub use mqtt::{MqttHandler, MqttMessage};
 pub use s7::{S7Connector, S7Config, S7Mapping, S7Area, S7DataType, Direction};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub use twilio::{TwilioConnector, TwilioConfig, TwilioAction, TwilioActionType};
