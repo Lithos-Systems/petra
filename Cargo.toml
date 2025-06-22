@@ -21,12 +21,12 @@ rust-snap7 = "1.142.2"
 clap = { version = "4", features = ["derive"] }
 # HTTP client for Twilio API
 reqwest = { version = "0.11", features = ["json"] }
-htmlescape = "0.3"
 # Base64 encoding for auth
 base64 = "0.21"
 # URL encoding
 urlencoding = "2.1"
-
+# HTML encoding for TwiML
+htmlescape = "0.3"
 
 [[bin]]
 name = "petra"
