@@ -39,6 +39,27 @@ async fn main() -> Result<()> {
     mqtt.set_signal_change_channel(signal_rx);
     mqtt.start().await?;
 
+    // Setup Twilio
+    let twilio_handle = if let Some(twilio_config) = config.twilio {
+        info!("Twilio configuration found, starting Twilio connector");
+        let twilio_connector = TwilioConnector::new(twilio_config, bus.clone())?;
+        
+        // Spawn Twilio task
+        Some(tokio::spawn(async move {
+            if let Err(e) = twilio_connector.run().await {
+                error!("Twilio connector error: {}", e);
+            }
+        }))
+    } else {
+        info!("No Twilio configuration found");
+        None
+    };
+    
+    // In cleanup section:
+    if let Some(twilio_task) = twilio_handle {
+        twilio_task.abort();
+    }
+
     // Setup S7 connector if configured
     let s7_handle = if let Some(s7_config) = config.s7 {
         info!("S7 configuration found, starting S7 connector");
