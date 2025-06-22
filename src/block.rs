@@ -1,6 +1,7 @@
 use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
 use std::time::Instant;
 use tracing::trace;
+use crate::twilio_block::TwilioBlock;
 
 pub trait Block: Send + Sync {
     fn execute(&mut self, bus: &SignalBus) -> Result<()>;
@@ -320,6 +321,45 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
                 input2: in2.clone(),
                 output: output.clone(),
             }))
+        }
+        // Add to the create_block function
+        "TWILIO" => {
+            let trigger = config.inputs.get("trigger")
+                .ok_or_else(|| PlcError::Config("TWILIO block requires 'trigger' input".into()))?;
+            let success = config.outputs.get("success")
+                .ok_or_else(|| PlcError::Config("TWILIO block requires 'success' output".into()))?;
+            
+            let action_type = config.params.get("action_type")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| PlcError::Config("TWILIO block requires 'action_type' param".into()))?;
+            
+            let to_number = config.params.get("to_number")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| PlcError::Config("TWILIO block requires 'to_number' param".into()))?;
+            
+            let from_number = config.params.get("from_number")
+                .and_then(|v| v.as_str())
+                .or_else(|| std::env::var("TWILIO_PHONE_NUMBER").ok())
+                .ok_or_else(|| PlcError::Config("TWILIO block requires 'from_number' param".into()))?;
+            
+            let content = config.params.get("content")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| PlcError::Config("TWILIO block requires 'content' param".into()))?;
+            
+            let cooldown_ms = config.params.get("cooldown_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(300000); // 5 minutes default
+            
+            Ok(Box::new(TwilioBlock::new(
+                config.name.clone(),
+                trigger.clone(),
+                success.clone(),
+                action_type.to_string(),
+                to_number.to_string(),
+                from_number.to_string(),
+                content.to_string(),
+                cooldown_ms,
+            )?))
         }
         
         _ => Err(PlcError::Config(format!("Unknown block type: {}", config.block_type))),
