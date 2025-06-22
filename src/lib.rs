@@ -7,6 +7,8 @@ pub mod block;
 pub mod config;
 pub mod engine;
 pub mod mqtt;
+pub mod twilio;
+pub mod twilio_block;
 
 #[cfg(feature = "s7-support")]
 pub mod s7;
