@@ -8,6 +8,7 @@
 - **Built for Pure Function** - No nonsense, no fluff
 - **S7 PLC Integration** - Direct communication with Siemens S7 PLCs via rust-snap7
 - **MQTT Support** - Built-in MQTT client for IoT integration
+- **Twilio Integration** - Send SMS and make phone calls directly from PLC logic
     
 ## Quick Start
 
@@ -24,6 +25,217 @@
    ```bash
    cargo run --release configs/example-mqtt.yaml
    ```
+
+## Twilio Integration
+
+Petra includes powerful Twilio integration for sending SMS messages and making phone calls directly from your PLC logic. This is perfect for:
+- Critical alarm notifications
+- Production status updates
+- Emergency response automation
+- Shift change notifications
+- Equipment maintenance alerts
+
+### Getting Started with Twilio
+
+**Prerequisites:**
+1. A Twilio account (sign up free at [twilio.com](https://twilio.com))
+2. A verified phone number for sending messages/calls
+3. Your Twilio credentials
+
+**Step 1: Set up your Twilio account**
+
+After creating your Twilio account:
+1. Go to the [Twilio Console](https://console.twilio.com)
+2. Find your **Account SID** and **Auth Token** on the dashboard
+3. Buy a phone number (Phone Numbers → Manage → Buy a number)
+4. Verify your personal phone number for testing (if using trial account)
+
+**Step 2: Configure environment variables**
+
+Set these environment variables with your Twilio credentials:
+```bash
+export TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxx"
+export TWILIO_AUTH_TOKEN="your_auth_token_here"
+export TWILIO_FROM_NUMBER="+1234567890"  # Your Twilio phone number
+```
+
+**Important:** Phone numbers must be in [E.164 format](https://www.twilio.com/docs/glossary/what-e164) (e.g., +1234567890)
+
+### Twilio Configuration Methods
+
+Petra offers two ways to use Twilio:
+
+#### Method 1: Direct Block Integration
+Add Twilio blocks directly to your PLC logic:
+
+```yaml
+blocks:
+  - name: "emergency_sms"
+    type: "TWILIO"
+    inputs:
+      trigger: "emergency_alarm"
+    outputs:
+      success: "sms_sent"
+    params:
+      action_type: "sms"
+      to_number: "+1234567890"
+      content: "EMERGENCY: Production line stopped!"
+      cooldown_ms: 300000  # 5 minutes between messages
+```
+
+#### Method 2: Signal-Based Connector
+Use the Twilio connector for more complex scenarios:
+
+```yaml
+twilio:
+  from_number: "+1987654321"
+  poll_interval_ms: 500
+  actions:
+    - name: "temp_warning"
+      trigger_signal: "high_temp_alarm"
+      action_type: "sms"
+      to_number: "+1234567890"
+      content: "Temperature warning: {{value}}°C"
+      cooldown_seconds: 1800
+```
+
+### Testing Your Setup
+
+**Test 1: Simple SMS**
+```bash
+cargo run --bin twilio_test sms --to "+1234567890" --message "Hello from Petra!"
+```
+
+**Test 2: Voice Call**
+```bash
+cargo run --bin twilio_test call --to "+1234567890" --message "This is a test call from Petra PLC system"
+```
+
+**Test 3: Signal-Based Trigger**
+```bash
+# Using a config file with Twilio actions
+cargo run --bin twilio_test signal --config configs/twilio-example.yaml --signal "emergency_stop" --value "true"
+```
+
+### Twilio Block Parameters
+
+| Parameter | Required | Description | Example |
+|-----------|----------|-------------|---------|
+| `action_type` | Yes | "sms" or "call" | `"sms"` |
+| `to_number` | Yes | Destination phone (E.164) | `"+1234567890"` |
+| `content` | Yes | Message text or TwiML | `"Motor fault detected"` |
+| `cooldown_ms` | No | Delay between triggers | `300000` (5 min) |
+| `from_number` | No | Override default sender | `"+1987654321"` |
+
+### Advanced TwiML for Calls
+
+For voice calls, you can use simple text or advanced TwiML:
+
+**Simple text:**
+```yaml
+content: "Emergency alert. Please check the production line immediately."
+```
+
+**Advanced TwiML:**
+```yaml
+content: |
+  <Response>
+    <Say voice="alice" language="en-US">
+      Emergency alert from Petra PLC system.
+      Production line has stopped due to safety alarm.
+    </Say>
+    <Pause length="2"/>
+    <Say>Press 1 to acknowledge this alert.</Say>
+    <Gather timeout="10" numDigits="1" action="https://your-webhook.com/acknowledge">
+      <Say>Waiting for response.</Say>
+    </Gather>
+  </Response>
+```
+
+### Example Configurations
+
+**Emergency Notification System:**
+```yaml
+signals:
+  - name: "emergency_stop"
+    type: "bool"
+    initial: false
+  - name: "notification_sent"
+    type: "bool"
+    initial: false
+
+blocks:
+  - name: "emergency_call"
+    type: "TWILIO"
+    inputs:
+      trigger: "emergency_stop"
+    outputs:
+      success: "notification_sent"
+    params:
+      action_type: "call"
+      to_number: "+1234567890"
+      content: "Emergency stop activated. Immediate attention required."
+      cooldown_ms: 600000  # 10 minutes
+```
+
+**Temperature Monitoring with Escalation:**
+```yaml
+twilio:
+  actions:
+    # Level 1: SMS warning
+    - name: "temp_warning"
+      trigger_signal: "high_temp_warning"
+      action_type: "sms"
+      to_number: "+1111111111"  # Operator
+      content: "Temperature warning: approaching limit"
+      cooldown_seconds: 900  # 15 minutes
+      result_signal: "warning_sent"
+    
+    # Level 2: Emergency call
+    - name: "temp_emergency"
+      trigger_signal: "high_temp_alarm"
+      action_type: "call"
+      to_number: "+2222222222"  # Supervisor
+      content: "Critical temperature alarm. Immediate shutdown required."
+      cooldown_seconds: 300  # 5 minutes
+```
+
+### Troubleshooting Twilio
+
+**Common Issues:**
+
+1. **"Phone number not verified" (Trial accounts)**
+   - Verify recipient numbers in Twilio Console
+   - Upgrade to paid account for unrestricted sending
+
+2. **"Invalid phone number format"**
+   - Ensure E.164 format: `+1234567890`
+   - Include country code (+1 for US/Canada)
+
+3. **"Authentication failed"**
+   - Check `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`
+   - Verify credentials in Twilio Console
+
+4. **"From number not owned"**
+   - Use a number purchased through Twilio
+   - Check `TWILIO_FROM_NUMBER` environment variable
+
+**Testing Connection:**
+```bash
+# Test credentials and basic connectivity
+curl -X GET "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_ACCOUNT_SID/Messages.json" \
+    -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN"
+```
+
+### Twilio Costs
+
+Twilio pricing varies by service and region. SMS typically costs $0.0075-$0.0140 per message, while voice calls cost around $0.0085-$0.025 per minute. Check [Twilio's pricing page](https://www.twilio.com/pricing) for current rates.
+
+**Cost Management Tips:**
+- Use `cooldown_ms` to prevent spam
+- Set up result signals to track success/failure
+- Monitor usage in Twilio Console
+- Consider SMS vs. voice based on urgency
 
 ## S7 PLC Integration
 
@@ -185,6 +397,11 @@ s7:  # Optional - only if using S7 PLC
   poll_interval_ms: 100
   timeout_ms: 5000
   mappings: []
+
+twilio:  # Optional - only if using Twilio
+  from_number: "+1234567890"
+  poll_interval_ms: 1000
+  actions: []
 ```
 
 ## Available Blocks
@@ -194,6 +411,145 @@ s7:  # Optional - only if using S7 PLC
 - **Edge Detection**: R_TRIG (Rising Edge)
 - **Memory**: SR_LATCH (Set-Reset Latch)
 - **Comparison**: GT (Greater Than), LT (Less Than)
+- **Communication**: TWILIO (SMS/Voice)
+
+## Complete Example Scenarios
+
+### 1. Basic Motor Control with Notifications
+```yaml
+signals:
+  - name: "start_button"
+    type: "bool"
+    initial: false
+  - name: "motor_fault"
+    type: "bool"
+    initial: false
+  - name: "motor_running"
+    type: "bool"
+    initial: false
+  - name: "operator_notified"
+    type: "bool"
+    initial: false
+
+blocks:
+  # Start motor on button press
+  - name: "motor_start"
+    type: "AND"
+    inputs:
+      in1: "start_button"
+      in2: "motor_fault"  # NOT gate would be better
+    outputs:
+      out: "motor_running"
+  
+  # Notify operator of faults
+  - name: "fault_notification"
+    type: "TWILIO"
+    inputs:
+      trigger: "motor_fault"
+    outputs:
+      success: "operator_notified"
+    params:
+      action_type: "sms"
+      to_number: "+1234567890"
+      content: "Motor fault detected on Line 1"
+      cooldown_ms: 600000
+
+scan_time_ms: 100
+```
+
+### 2. Temperature Monitoring with Escalation
+```yaml
+signals:
+  - name: "temperature"
+    type: "float"
+    initial: 20.0
+  - name: "temp_limit_warning"
+    type: "float"
+    initial: 75.0
+  - name: "temp_limit_critical"
+    type: "float"
+    initial: 85.0
+  - name: "temp_warning"
+    type: "bool"
+    initial: false
+  - name: "temp_critical"
+    type: "bool"
+    initial: false
+
+blocks:
+  - name: "warning_check"
+    type: "GT"
+    inputs:
+      in1: "temperature"
+      in2: "temp_limit_warning"
+    outputs:
+      out: "temp_warning"
+  
+  - name: "critical_check"
+    type: "GT"
+    inputs:
+      in1: "temperature"
+      in2: "temp_limit_critical"
+    outputs:
+      out: "temp_critical"
+
+twilio:
+  actions:
+    - name: "warning_sms"
+      trigger_signal: "temp_warning"
+      action_type: "sms"
+      to_number: "+1234567890"
+      content: "Temperature warning: {{value}}°C"
+      cooldown_seconds: 900
+    
+    - name: "critical_call"
+      trigger_signal: "temp_critical"
+      action_type: "call"
+      to_number: "+1234567890"
+      content: "Critical temperature alarm requires immediate attention"
+      cooldown_seconds: 300
+```
+
+## Testing Everything
+
+### 1. Test Basic PLC Logic
+```bash
+# Run integration tests
+cargo test
+
+# Run with specific config
+cargo run configs/example.yaml
+```
+
+### 2. Test S7 Connection
+```bash
+# Quick connection test
+cargo run --bin simple_s7_test 192.168.1.100
+
+# Full test with monitoring
+cargo run --bin s7_test -- --ip 192.168.1.100 monitor -c configs/s7-example.yaml
+```
+
+### 3. Test MQTT Integration
+```bash
+# Subscribe to all topics
+mosquitto_sub -h mqtt.lithos.systems -t 'petra/plc/#' -v
+
+# Send commands
+mosquitto_pub -h mqtt.lithos.systems -t 'petra/plc/cmd' -m '{"type":"SetSignal","name":"start_button","value":true}'
+```
+
+### 4. Test Twilio Integration
+```bash
+# Test SMS
+cargo run --bin twilio_test sms --to "+1234567890" --message "Test from Petra"
+
+# Test voice call
+cargo run --bin twilio_test call --to "+1234567890" --message "This is a test call"
+
+# Test with real signals
+cargo run --bin twilio_test signal --config configs/twilio-example.yaml --signal "emergency_stop" --value "true"
+```
 
 ## Production Deployment
 
@@ -207,6 +563,9 @@ s7:  # Optional - only if using S7 PLC
    export RUST_LOG=petra=info
    export MQTT_USERNAME=your_username  # Optional
    export MQTT_PASSWORD=your_password  # Optional
+   export TWILIO_ACCOUNT_SID=ACxxxxx   # Required for Twilio
+   export TWILIO_AUTH_TOKEN=xxxxx      # Required for Twilio
+   export TWILIO_FROM_NUMBER=+1xxxxx   # Required for Twilio
    ```
 
 3. **Systemd Service** (Linux)
@@ -221,6 +580,9 @@ s7:  # Optional - only if using S7 PLC
    Restart=always
    RestartSec=10
    Environment="RUST_LOG=petra=info"
+   Environment="TWILIO_ACCOUNT_SID=ACxxxxx"
+   Environment="TWILIO_AUTH_TOKEN=xxxxx"
+   Environment="TWILIO_FROM_NUMBER=+1xxxxx"
 
    [Install]
    WantedBy=multi-user.target
@@ -230,6 +592,7 @@ s7:  # Optional - only if using S7 PLC
    - Monitor MQTT status topic for health checks
    - Check logs for scan overruns or communication errors
    - Use the S7 test tool for diagnostics
+   - Monitor Twilio usage in Twilio Console
 
 ## Adding Custom Blocks
 
@@ -265,11 +628,19 @@ s7:  # Optional - only if using S7 PLC
 - Check authentication credentials
 - Monitor MQTT logs for connection errors
 
+### Twilio Issues
+- Verify phone numbers are in E.164 format (+1234567890)
+- Check account balance and trial account restrictions
+- Verify phone numbers in Twilio Console (trial accounts)
+- Test credentials with curl or Twilio CLI
+- Monitor rate limits and usage
+
 ## Dependencies
 
 - Rust 1.70+
 - rust-snap7 (includes snap7 library)
 - MQTT broker (optional, e.g., Mosquitto)
+- Twilio account (optional, for SMS/voice features)
 
 ## License
 
@@ -289,3 +660,4 @@ For issues and questions:
 - GitHub Issues: [Report bugs or request features]
 - Documentation: Check the `/docs` folder
 - Examples: See `/configs` for example configurations
+```
