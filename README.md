@@ -16,12 +16,7 @@
    ```bash
    cargo build --release
    ```
-2. **Start Test Environment** (optional - for MQTT testing)
-   ```bash
-   cd node-red
-   docker-compose up -d
-   ```
-3. **Run Petra**
+2. **Run Petra**
    ```bash
    cargo run --release configs/example-mqtt.yaml
    ```
