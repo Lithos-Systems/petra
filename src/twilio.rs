@@ -1,6 +1,6 @@
 // src/twilio.rs
 use crate::{error::*, value::Value, signal::SignalBus};
-use reqwest::{Client, StatusCode};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

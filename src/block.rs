@@ -338,7 +338,7 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
                 .ok_or_else(|| PlcError::Config("TWILIO block requires 'to_number' param".into()))?;
             
             let from_number = config.params.get("from_number")
-                .and_then(|v| v.as_str())
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .or_else(|| std::env::var("TWILIO_PHONE_NUMBER").ok())
                 .ok_or_else(|| PlcError::Config("TWILIO block requires 'from_number' param".into()))?;
             
