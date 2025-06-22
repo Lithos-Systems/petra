@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
-use tracing::{info, warn, debug, error};
+use tracing::{info, warn, debug};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S7Config {
