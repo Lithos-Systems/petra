@@ -2,8 +2,7 @@
 use crate::{error::*, signal::SignalBus, value::Value, block::Block};
 use reqwest::Client;
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use tracing::{info, warn, error};
 
 /// A block that can send SMS or make calls directly from the PLC logic
@@ -21,6 +20,7 @@ pub struct TwilioBlock {
     client: Client,
     cooldown_ms: u64,
     last_trigger: Option<std::time::Instant>,
+    task_handle: Option<mpsc::Sender<()>>,
 }
 
 impl TwilioBlock {
@@ -38,6 +38,34 @@ impl TwilioBlock {
             .map_err(|_| PlcError::Config("TWILIO_ACCOUNT_SID not set".into()))?;
         let auth_token = std::env::var("TWILIO_AUTH_TOKEN")
             .map_err(|_| PlcError::Config("TWILIO_AUTH_TOKEN not set".into()))?;
+        
+        // Use environment variable if from_number is empty
+        let from_number = if from_number.is_empty() {
+            std::env::var("TWILIO_FROM_NUMBER")
+                .map_err(|_| PlcError::Config("TWILIO_FROM_NUMBER not set and from_number not provided".into()))?
+        } else {
+            from_number
+        };
+        
+        // Validate phone numbers
+        if !to_number.starts_with('+') {
+            return Err(PlcError::Config(
+                format!("to_number must be in E.164 format, got: {}", to_number)
+            ));
+        }
+        
+        if !from_number.starts_with('+') {
+            return Err(PlcError::Config(
+                format!("from_number must be in E.164 format, got: {}", from_number)
+            ));
+        }
+        
+        // Validate action type
+        if action_type != "sms" && action_type != "call" {
+            return Err(PlcError::Config(
+                format!("action_type must be 'sms' or 'call', got: {}", action_type)
+            ));
+        }
         
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -58,6 +86,7 @@ impl TwilioBlock {
             client,
             cooldown_ms,
             last_trigger: None,
+            task_handle: None,
         })
     }
 }
@@ -79,7 +108,7 @@ impl Block for TwilioBlock {
             info!("{}: Triggered, executing {} action", self.name, self.action_type);
             self.last_trigger = Some(std::time::Instant::now());
             
-            // Execute in background to avoid blocking PLC scan
+            // Clone values for the async task
             let action_type = self.action_type.clone();
             let to = self.to_number.clone();
             let from = self.from_number.clone();
@@ -89,6 +118,11 @@ impl Block for TwilioBlock {
             let client = self.client.clone();
             let output = self.success_output.clone();
             let bus_clone = bus.clone();
+            let block_name = self.name.clone();
+            
+            // Create a channel to track the task
+            let (tx, mut rx) = mpsc::channel(1);
+            self.task_handle = Some(tx);
             
             tokio::spawn(async move {
                 let result = if action_type == "sms" {
@@ -99,11 +133,16 @@ impl Block for TwilioBlock {
                 
                 let success = result.is_ok();
                 if let Err(e) = result {
-                    error!("Twilio action failed: {}", e);
+                    error!("{}: Twilio action failed: {}", block_name, e);
                 }
                 
                 // Set success output
-                let _ = bus_clone.set(&output, Value::Bool(success));
+                if let Err(e) = bus_clone.set(&output, Value::Bool(success)) {
+                    warn!("{}: Failed to set output signal: {}", block_name, e);
+                }
+                
+                // Signal completion
+                let _ = rx.recv().await;
             });
         }
         
@@ -151,7 +190,9 @@ async fn send_sms_async(
     if response.status().is_success() {
         Ok(())
     } else {
-        Err(PlcError::Config(format!("SMS send failed: {}", response.status())))
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(PlcError::Config(format!("SMS send failed: {} - {}", status, body)))
     }
 }
 
@@ -168,7 +209,7 @@ async fn make_call_async(
         account_sid
     );
     
-    let twiml = if content.starts_with("<Response>") {
+    let twiml = if content.trim().starts_with("<Response>") {
         content
     } else {
         format!("<Response><Say>{}</Say></Response>", htmlescape::encode_minimal(&content))
@@ -193,6 +234,8 @@ async fn make_call_async(
     if response.status().is_success() {
         Ok(())
     } else {
-        Err(PlcError::Config(format!("Call initiation failed: {}", response.status())))
+        let status = response.status();
+        let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(PlcError::Config(format!("Call initiation failed: {} - {}", status, body)))
     }
 }
