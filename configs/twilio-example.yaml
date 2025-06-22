@@ -1,7 +1,11 @@
 # configs/twilio-example.yaml
 signals:
-  # Alarm signals
+  # Process monitoring
   - name: "high_temp_alarm"
+    type: "bool"
+    initial: false
+  
+  - name: "low_pressure_alarm"
     type: "bool"
     initial: false
   
@@ -9,11 +13,11 @@ signals:
     type: "bool"
     initial: false
   
-  - name: "sms_sent"
+  - name: "shift_manager_notified"
     type: "bool"
     initial: false
   
-  - name: "call_made"
+  - name: "maintenance_called"
     type: "bool"
     initial: false
   
@@ -21,12 +25,20 @@ signals:
     type: "float"
     initial: 20.0
   
+  - name: "pressure"
+    type: "float"
+    initial: 100.0
+  
   - name: "temp_limit"
     type: "float"
     initial: 80.0
+  
+  - name: "pressure_limit"
+    type: "float"
+    initial: 50.0
 
 blocks:
-  # Temperature monitoring
+  # Process monitoring
   - name: "temp_check"
     type: "GT"
     inputs:
@@ -35,70 +47,46 @@ blocks:
     outputs:
       out: "high_temp_alarm"
   
-  # SMS alert using block
-  - name: "sms_alert"
+  - name: "pressure_check"
+    type: "LT"
+    inputs:
+      in1: "pressure"
+      in2: "pressure_limit"
+    outputs:
+      out: "low_pressure_alarm"
+  
+  # Combined alarm logic
+  - name: "any_process_alarm"
+    type: "OR"
+    inputs:
+      in1: "high_temp_alarm"
+      in2: "low_pressure_alarm"
+    outputs:
+      out: "process_alarm"
+  
+  # SMS alert for shift manager
+  - name: "shift_manager_sms"
     type: "TWILIO"
     inputs:
-      trigger: "high_temp_alarm"
+      trigger: "process_alarm"
     outputs:
-      success: "sms_sent"
+      success: "shift_manager_notified"
     params:
       action_type: "sms"
-      to_number: "+1234567890"  # Replace with actual number
-      content: "ALERT: High temperature detected in PLC system!"
+      to_number: "+1234567890"  # Shift manager
+      content: "Process alarm: Check system immediately. Temp: high_temp_alarm, Pressure: low_pressure_alarm"
       cooldown_ms: 300000  # 5 minutes
-  
-  # Emergency call using block
-  - name: "emergency_call"
+
+  # Emergency call for critical situations
+  - name: "emergency_voice_call"
     type: "TWILIO"
     inputs:
       trigger: "emergency_stop"
     outputs:
-      success: "call_made"
+      success: "maintenance_called"
     params:
       action_type: "call"
-      to_number: "+1234567890"  # Replace with actual number
-      content: "Emergency stop activated on production line. Immediate attention required."
-      cooldown_ms: 600000  # 10 minutes
-
-scan_time_ms: 100
-
-mqtt:
-  broker_host: "mqtt.lithos.systems"
-  broker_port: 1883
-  client_id: "petra-twilio-demo"
-  topic_prefix: "petra/plc"
-
-# Twilio connector configuration (alternative to blocks)
-twilio:
-  from_number: "+1987654321"  # Your Twilio number
-  poll_interval_ms: 1000
-  actions:
-    - name: "temp_warning_sms"
-      trigger_signal: "high_temp_alarm"
-      action_type: "sms"
-      to_number: "+1234567890"
-      content: "Temperature warning: System temperature exceeds safe limits"
-      trigger_value: true
-      cooldown_seconds: 300
-      result_signal: "sms_sent"
-    
-    - name: "emergency_voice_alert"
-      trigger_signal: "emergency_stop"
-      action_type: "call"
-      to_number: "+1234567890"
+      to_number: "+1234567890"  # Maintenance on-call
       content: |
         <Response>
-          <Say voice="alice" loop="2">
-            Urgent: Emergency stop activated on production line. 
-            Please respond immediately.
-          </Say>
-          <Pause length="2"/>
-          <Say>Press any key to acknowledge this alert.</Say>
-          <Gather timeout="10" numDigits="1">
-            <Say>Waiting for acknowledgment.</Say>
-          </Gather>
-        </Response>
-      trigger_value: true
-      cooldown_seconds: 600
-      result_signal: "call_made"
+          <Say voice="alice"
