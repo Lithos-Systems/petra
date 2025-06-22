@@ -1,6 +1,5 @@
 // src/twilio.rs
 use crate::{error::*, value::Value, signal::SignalBus};
-use base64::{Engine as _, engine::general_purpose};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,7 +7,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 use tracing::{info, warn, error, debug};
-use urlencoding::encode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TwilioConfig {
@@ -46,6 +44,8 @@ pub struct TwilioAction {
     pub cooldown_seconds: u64,
     /// Optional signal to set after action
     pub result_signal: Option<String>,
+    /// Optional from number override for this action
+    pub from_number: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +93,13 @@ struct CallResponse {
     error_message: Option<String>,
 }
 
+/// State tracking for triggers
+#[derive(Debug, Clone)]
+struct TriggerState {
+    last_value: Option<Value>,
+    last_trigger_time: Option<std::time::Instant>,
+}
+
 pub struct TwilioConnector {
     config: TwilioConfig,
     client: Client,
@@ -100,7 +107,7 @@ pub struct TwilioConnector {
     account_sid: String,
     auth_token: String,
     running: Arc<Mutex<bool>>,
-    last_trigger_times: Arc<Mutex<HashMap<String, std::time::Instant>>>,
+    trigger_states: Arc<Mutex<HashMap<String, TriggerState>>>,
 }
 
 impl TwilioConnector {
@@ -118,15 +125,35 @@ impl TwilioConnector {
             .or_else(|| std::env::var("TWILIO_AUTH_TOKEN").ok())
             .ok_or_else(|| PlcError::Config("TWILIO_AUTH_TOKEN not provided".into()))?;
         
-        if config.from_number.is_empty() {
-            return Err(PlcError::Config("Twilio from_number is required".into()));
-        }
+        // Get default from number from config or environment
+        let from_number = if config.from_number.is_empty() {
+            std::env::var("TWILIO_FROM_NUMBER")
+                .map_err(|_| PlcError::Config("TWILIO_FROM_NUMBER not provided".into()))?
+        } else {
+            config.from_number.clone()
+        };
         
         // Validate phone number format
-        if !config.from_number.starts_with('+') {
+        if !from_number.starts_with('+') {
             return Err(PlcError::Config(
                 "Phone numbers must be in E.164 format (e.g., +1234567890)".into()
             ));
+        }
+        
+        // Validate all action phone numbers
+        for action in &config.actions {
+            if !action.to_number.starts_with('+') {
+                return Err(PlcError::Config(
+                    format!("Action '{}' to_number must be in E.164 format", action.name)
+                ));
+            }
+            if let Some(ref from) = action.from_number {
+                if !from.starts_with('+') {
+                    return Err(PlcError::Config(
+                        format!("Action '{}' from_number must be in E.164 format", action.name)
+                    ));
+                }
+            }
         }
         
         let client = Client::builder()
@@ -134,20 +161,34 @@ impl TwilioConnector {
             .build()
             .map_err(|e| PlcError::Config(format!("Failed to create HTTP client: {}", e)))?;
         
+        let mut updated_config = config;
+        updated_config.from_number = from_number;
+        
         Ok(Self {
-            config,
+            config: updated_config,
             client,
             bus,
             account_sid,
             auth_token,
             running: Arc::new(Mutex::new(false)),
-            last_trigger_times: Arc::new(Mutex::new(HashMap::new())),
+            trigger_states: Arc::new(Mutex::new(HashMap::new())),
         })
     }
     
     pub async fn run(&self) -> Result<()> {
         *self.running.lock().await = true;
         info!("Twilio connector started with {} actions", self.config.actions.len());
+        
+        // Initialize trigger states
+        {
+            let mut states = self.trigger_states.lock().await;
+            for action in &self.config.actions {
+                states.insert(action.name.clone(), TriggerState {
+                    last_value: None,
+                    last_trigger_time: None,
+                });
+            }
+        }
         
         let mut ticker = interval(Duration::from_millis(self.config.poll_interval_ms));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -172,31 +213,65 @@ impl TwilioConnector {
     }
     
     async fn check_and_execute_action(&self, action: &TwilioAction) -> Result<()> {
+        let mut states = self.trigger_states.lock().await;
+        let state = states.get_mut(&action.name)
+            .ok_or_else(|| PlcError::Config("Invalid state".into()))?;
+        
         // Check cooldown
-        let mut last_triggers = self.last_trigger_times.lock().await;
-        if let Some(last_time) = last_triggers.get(&action.name) {
+        if let Some(last_time) = state.last_trigger_time {
             if last_time.elapsed().as_secs() < action.cooldown_seconds {
                 return Ok(()); // Still in cooldown
             }
         }
         
-        // Check trigger condition
-        let current_value = self.bus.get(&action.trigger_signal)?;
+        // Get current signal value
+        let current_value = match self.bus.get(&action.trigger_signal) {
+            Ok(v) => v,
+            Err(_) => {
+                debug!("Signal '{}' not found yet", action.trigger_signal);
+                return Ok(());
+            }
+        };
         
+        // Determine if we should trigger
         let should_trigger = if let Some(ref trigger_value) = action.trigger_value {
-            &current_value == trigger_value
+            // Trigger on specific value match and edge detection
+            let matches = &current_value == trigger_value;
+            let edge = state.last_value.as_ref()
+                .map(|last| last != &current_value)
+                .unwrap_or(true);
+            matches && edge
         } else {
-            // If no specific value, trigger on any truthy value
-            match current_value {
+            // Trigger on rising edge of truthy value
+            let is_truthy = match current_value {
                 Value::Bool(b) => b,
                 Value::Int(i) => i != 0,
                 Value::Float(f) => f.abs() > f64::EPSILON,
-            }
+            };
+            
+            let was_truthy = state.last_value.as_ref()
+                .map(|last| match last {
+                    Value::Bool(b) => *b,
+                    Value::Int(i) => *i != 0,
+                    Value::Float(f) => f.abs() > f64::EPSILON,
+                })
+                .unwrap_or(false);
+            
+            is_truthy && !was_truthy // Rising edge
         };
+        
+        // Update state
+        state.last_value = Some(current_value.clone());
         
         if should_trigger {
             info!("Triggering Twilio action '{}' due to signal '{}' = {}", 
                 action.name, action.trigger_signal, current_value);
+            
+            // Update trigger time
+            state.last_trigger_time = Some(std::time::Instant::now());
+            
+            // Release lock before async operations
+            drop(states);
             
             // Execute action
             let result = match action.action_type {
@@ -204,13 +279,12 @@ impl TwilioConnector {
                 TwilioActionType::Call => self.make_call(action).await,
             };
             
-            // Update last trigger time
-            last_triggers.insert(action.name.clone(), std::time::Instant::now());
-            
             // Set result signal if configured
             if let Some(ref result_signal) = action.result_signal {
                 let success = result.is_ok();
-                self.bus.set(result_signal, Value::Bool(success))?;
+                if let Err(e) = self.bus.set(result_signal, Value::Bool(success)) {
+                    warn!("Failed to set result signal '{}': {}", result_signal, e);
+                }
             }
             
             result?;
@@ -225,14 +299,19 @@ impl TwilioConnector {
             self.account_sid
         );
         
+        let from_number = action.from_number.as_ref()
+            .unwrap_or(&self.config.from_number);
+        
         let mut params = HashMap::new();
         params.insert("To", action.to_number.as_str());
-        params.insert("From", self.config.from_number.as_str());
+        params.insert("From", from_number.as_str());
         params.insert("Body", action.content.as_str());
         
         if let Some(ref callback_url) = self.config.status_callback_url {
             params.insert("StatusCallback", callback_url.as_str());
         }
+        
+        debug!("Sending SMS from {} to {}", from_number, action.to_number);
         
         let response = self.client
             .post(&url)
@@ -252,13 +331,27 @@ impl TwilioConnector {
         )))?;
         
         if status.is_success() {
-            let msg: MessageResponse = serde_json::from_str(&body)
-                .map_err(|e| PlcError::Config(format!("Invalid response: {}", e)))?;
-            info!("SMS sent successfully: SID={}, Status={}", msg.sid, msg.status);
-            Ok(())
+            match serde_json::from_str::<MessageResponse>(&body) {
+                Ok(msg) => {
+                    info!("SMS sent successfully: SID={}, Status={}", msg.sid, msg.status);
+                    Ok(())
+                }
+                Err(e) => {
+                    warn!("Failed to parse success response: {}", e);
+                    Ok(()) // Still consider it success if status was 2xx
+                }
+            }
         } else {
             error!("SMS send failed: Status={}, Body={}", status, body);
-            Err(PlcError::Config(format!("SMS send failed: {}", status)))
+            
+            // Try to parse error details
+            if let Ok(response) = serde_json::from_str::<MessageResponse>(&body) {
+                if let Some(error_msg) = response.error_message {
+                    return Err(PlcError::Config(format!("SMS failed: {}", error_msg)));
+                }
+            }
+            
+            Err(PlcError::Config(format!("SMS send failed with status {}", status)))
         }
     }
     
@@ -268,24 +361,29 @@ impl TwilioConnector {
             self.account_sid
         );
         
+        let from_number = action.from_number.as_ref()
+            .unwrap_or(&self.config.from_number);
+        
         // Generate TwiML for the call
-        let twiml = if action.content.starts_with("<Response>") {
+        let twiml = if action.content.trim().starts_with("<Response>") {
             // Already TwiML
             action.content.clone()
         } else {
-            // Convert plain text to Say TwiML
+            // Convert plain text to Say TwiML with safe encoding
             format!("<Response><Say>{}</Say></Response>", 
                 htmlescape::encode_minimal(&action.content))
         };
         
         let mut params = HashMap::new();
         params.insert("To", action.to_number.as_str());
-        params.insert("From", self.config.from_number.as_str());
+        params.insert("From", from_number.as_str());
         params.insert("Twiml", twiml.as_str());
         
         if let Some(ref callback_url) = self.config.status_callback_url {
             params.insert("StatusCallback", callback_url.as_str());
         }
+        
+        debug!("Making call from {} to {}", from_number, action.to_number);
         
         let response = self.client
             .post(&url)
@@ -305,13 +403,27 @@ impl TwilioConnector {
         )))?;
         
         if status.is_success() {
-            let call: CallResponse = serde_json::from_str(&body)
-                .map_err(|e| PlcError::Config(format!("Invalid response: {}", e)))?;
-            info!("Call initiated successfully: SID={}, Status={}", call.sid, call.status);
-            Ok(())
+            match serde_json::from_str::<CallResponse>(&body) {
+                Ok(call) => {
+                    info!("Call initiated successfully: SID={}, Status={}", call.sid, call.status);
+                    Ok(())
+                }
+                Err(e) => {
+                    warn!("Failed to parse success response: {}", e);
+                    Ok(()) // Still consider it success if status was 2xx
+                }
+            }
         } else {
             error!("Call initiation failed: Status={}, Body={}", status, body);
-            Err(PlcError::Config(format!("Call initiation failed: {}", status)))
+            
+            // Try to parse error details
+            if let Ok(response) = serde_json::from_str::<CallResponse>(&body) {
+                if let Some(error_msg) = response.error_message {
+                    return Err(PlcError::Config(format!("Call failed: {}", error_msg)));
+                }
+            }
+            
+            Err(PlcError::Config(format!("Call initiation failed with status {}", status)))
         }
     }
 }
