@@ -5,6 +5,7 @@ use crate::s7::S7Config;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use crate::twilio::TwilioConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -16,6 +17,8 @@ pub struct Config {
     pub mqtt: MqttConfig,
     #[serde(default)]
     pub s7: Option<S7Config>,
+    #[serde(default)]
+    pub twilio: Option<TwilioConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
