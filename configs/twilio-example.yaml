@@ -1,0 +1,104 @@
+# configs/twilio-example.yaml
+signals:
+  # Alarm signals
+  - name: "high_temp_alarm"
+    type: "bool"
+    initial: false
+  
+  - name: "emergency_stop"
+    type: "bool"
+    initial: false
+  
+  - name: "sms_sent"
+    type: "bool"
+    initial: false
+  
+  - name: "call_made"
+    type: "bool"
+    initial: false
+  
+  - name: "temperature"
+    type: "float"
+    initial: 20.0
+  
+  - name: "temp_limit"
+    type: "float"
+    initial: 80.0
+
+blocks:
+  # Temperature monitoring
+  - name: "temp_check"
+    type: "GT"
+    inputs:
+      in1: "temperature"
+      in2: "temp_limit"
+    outputs:
+      out: "high_temp_alarm"
+  
+  # SMS alert using block
+  - name: "sms_alert"
+    type: "TWILIO"
+    inputs:
+      trigger: "high_temp_alarm"
+    outputs:
+      success: "sms_sent"
+    params:
+      action_type: "sms"
+      to_number: "+1234567890"  # Replace with actual number
+      content: "ALERT: High temperature detected in PLC system!"
+      cooldown_ms: 300000  # 5 minutes
+  
+  # Emergency call using block
+  - name: "emergency_call"
+    type: "TWILIO"
+    inputs:
+      trigger: "emergency_stop"
+    outputs:
+      success: "call_made"
+    params:
+      action_type: "call"
+      to_number: "+1234567890"  # Replace with actual number
+      content: "Emergency stop activated on production line. Immediate attention required."
+      cooldown_ms: 600000  # 10 minutes
+
+scan_time_ms: 100
+
+mqtt:
+  broker_host: "mqtt.lithos.systems"
+  broker_port: 1883
+  client_id: "petra-twilio-demo"
+  topic_prefix: "petra/plc"
+
+# Twilio connector configuration (alternative to blocks)
+twilio:
+  from_number: "+1987654321"  # Your Twilio number
+  poll_interval_ms: 1000
+  actions:
+    - name: "temp_warning_sms"
+      trigger_signal: "high_temp_alarm"
+      action_type: "sms"
+      to_number: "+1234567890"
+      content: "Temperature warning: System temperature exceeds safe limits"
+      trigger_value: true
+      cooldown_seconds: 300
+      result_signal: "sms_sent"
+    
+    - name: "emergency_voice_alert"
+      trigger_signal: "emergency_stop"
+      action_type: "call"
+      to_number: "+1234567890"
+      content: |
+        <Response>
+          <Say voice="alice" loop="2">
+            Urgent: Emergency stop activated on production line. 
+            Please respond immediately.
+          </Say>
+          <Pause length="2"/>
+          <Say>Press any key to acknowledge this alert.</Say>
+          <Gather timeout="10" numDigits="1">
+            <Say>Waiting for acknowledgment.</Say>
+          </Gather>
+        </Response>
+      trigger_value: true
+      cooldown_seconds: 600
+      result_signal: "call_made"
