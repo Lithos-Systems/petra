@@ -90,3 +90,84 @@ blocks:
       content: |
         <Response>
           <Say voice="alice"
+          content: |
+       <Response>
+         <Say voice="alice" language="en-US">
+           This is an automated emergency alert from the Petra PLC system.
+           Emergency stop has been activated on the production line.
+           Immediate attention required.
+         </Say>
+         <Pause length="2"/>
+         <Say>Press 1 to acknowledge this alert, or press 2 to hear this message again.</Say>
+         <Gather timeout="10" numDigits="1" action="https://your-webhook.com/acknowledge">
+           <Say>Waiting for your response.</Say>
+         </Gather>
+         <Say>No response received. Alert will be escalated.</Say>
+       </Response>
+     cooldown_ms: 600000  # 10 minutes
+     from_number: "+1987654321"  # Override for emergency calls
+
+scan_time_ms: 100
+
+mqtt:
+ broker_host: "mqtt.lithos.systems"
+ broker_port: 1883
+ client_id: "petra-twilio-demo"
+ topic_prefix: "petra/plc"
+ qos: 1
+ publish_on_change: true
+
+# Twilio connector for more complex scenarios
+twilio:
+ # from_number can be omitted if using TWILIO_FROM_NUMBER env var
+ from_number: "+1987654321"
+ poll_interval_ms: 500  # Faster polling for critical alerts
+ status_callback_url: "https://your-webhook.com/twilio-status"
+ actions:
+   # Temperature trending alert
+   - name: "temp_warning_sms"
+     trigger_signal: "temperature"
+     action_type: "sms"
+     to_number: "+1234567890"
+     content: "Warning: Temperature at {{value}}°C approaching limit of 80°C"
+     trigger_value: 
+       float: 75.0  # Trigger at specific value
+     cooldown_seconds: 1800  # 30 minutes
+     result_signal: "temp_warning_sent"
+   
+   # Shift change notification
+   - name: "shift_change_call"
+     trigger_signal: "shift_change"
+     action_type: "call"
+     to_number: "+1234567890"
+     content: |
+       <Response>
+         <Say voice="alice">
+           Shift change reminder: Please complete handover checklist.
+           Current system status: All systems operational.
+         </Say>
+         <Play>https://your-domain.com/shift-change-tone.mp3</Play>
+       </Response>
+     trigger_value:
+       bool: true
+     cooldown_seconds: 28800  # 8 hours
+     from_number: "+1555555555"  # Different number for routine calls
+   
+   # Multi-recipient escalation (using result signals)
+   - name: "escalation_level_1"
+     trigger_signal: "critical_fault"
+     action_type: "sms"
+     to_number: "+1111111111"  # Operator
+     content: "CRITICAL: System fault detected. Please investigate immediately."
+     cooldown_seconds: 300
+     result_signal: "level_1_notified"
+   
+   - name: "escalation_level_2"
+     trigger_signal: "level_1_notified"
+     action_type: "call"
+     to_number: "+2222222222"  # Supervisor
+     content: "Critical system fault requires supervisor attention. Operator has been notified."
+     trigger_value:
+       bool: false  # Trigger if level 1 notification failed
+     cooldown_seconds: 600
+     result_signal: "level_2_notified"
