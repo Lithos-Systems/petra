@@ -15,7 +15,7 @@ use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
 use parquet::basic::Compression;
 use std::fs::{self, File};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryConfig {
@@ -257,7 +257,7 @@ impl HistoryManager {
         Ok(())
     }
 
-    async fn record_signal_change(&self, name: &str, value: Value) {
+    async fn record_signal_change(&mut self, name: &str, value: Value) {
         let now = Instant::now();
         let timestamp = Utc::now();
         
@@ -400,7 +400,7 @@ impl HistoryManager {
         Ok(())
     }
 
-    fn close_writer(&self, mut writer: ParquetWriter) -> Result<()> {
+    fn close_writer(&self, writer: ParquetWriter) -> Result<()> {
         writer.writer.close()
             .map_err(|e| PlcError::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
