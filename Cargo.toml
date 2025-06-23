@@ -60,6 +60,20 @@ async-trait = "0.1"
 # For history features
 futures = { version = "0.3" }
 
+# Dashboard 
+eframe = "0.29"
+egui = "0.29"
+egui_plot = "0.29"
+
+# Update the [[bin]] section to include new binaries
+[[bin]]
+name = "storage_test"
+path = "src/bin/storage_test.rs"
+
+[[bin]]
+name = "petra_dashboard"
+path = "src/bin/petra_dashboard.rs"
+
 [[bin]]
 name = "petra"
 path = "src/main.rs"
