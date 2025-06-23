@@ -23,74 +23,6 @@ pub struct TwilioBlock {
     task_handle: Option<mpsc::Sender<()>>,
 }
 
-impl TwilioBlock {
-    pub fn new(
-        name: String,
-        trigger_input: String,
-        success_output: String,
-        action_type: String,
-        to_number: String,
-        from_number: String,
-        content: String,
-        cooldown_ms: u64,
-    ) -> Result<Self> {
-        let account_sid = std::env::var("TWILIO_ACCOUNT_SID")
-            .map_err(|_| PlcError::Config("TWILIO_ACCOUNT_SID not set".into()))?;
-        let auth_token = std::env::var("TWILIO_AUTH_TOKEN")
-            .map_err(|_| PlcError::Config("TWILIO_AUTH_TOKEN not set".into()))?;
-        
-        // Use environment variable if from_number is empty
-        let from_number = if from_number.is_empty() {
-            std::env::var("TWILIO_FROM_NUMBER")
-                .map_err(|_| PlcError::Config("TWILIO_FROM_NUMBER not set and from_number not provided".into()))?
-        } else {
-            from_number
-        };
-        
-        // Validate phone numbers
-        if !to_number.starts_with('+') {
-            return Err(PlcError::Config(
-                format!("to_number must be in E.164 format, got: {}", to_number)
-            ));
-        }
-        
-        if !from_number.starts_with('+') {
-            return Err(PlcError::Config(
-                format!("from_number must be in E.164 format, got: {}", from_number)
-            ));
-        }
-        
-        // Validate action type
-        if action_type != "sms" && action_type != "call" {
-            return Err(PlcError::Config(
-                format!("action_type must be 'sms' or 'call', got: {}", action_type)
-            ));
-        }
-        
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| PlcError::Config(format!("Failed to create HTTP client: {}", e)))?;
-        
-        Ok(Self {
-            name,
-            trigger_input,
-            success_output,
-            action_type,
-            to_number,
-            from_number,
-            content,
-            account_sid,
-            auth_token,
-            last_state: false,
-            client,
-            cooldown_ms,
-            last_trigger: None,
-            task_handle: None,
-        })
-    }
-}
-
 impl Block for TwilioBlock {
     fn execute(&mut self, bus: &SignalBus) -> Result<()> {
         let current = bus.get_bool(&self.trigger_input)?;
@@ -120,10 +52,7 @@ impl Block for TwilioBlock {
             let bus_clone = bus.clone();
             let block_name = self.name.clone();
             
-            // Create a channel to track the task
-            let (tx, mut rx) = mpsc::channel(1);
-            self.task_handle = Some(tx);
-            
+            // Spawn without channel - task completes naturally
             tokio::spawn(async move {
                 let result = if action_type == "sms" {
                     send_sms_async(client, account_sid, auth_token, from, to, content).await
@@ -140,9 +69,6 @@ impl Block for TwilioBlock {
                 if let Err(e) = bus_clone.set(&output, Value::Bool(success)) {
                     warn!("{}: Failed to set output signal: {}", block_name, e);
                 }
-                
-                // Signal completion
-                let _ = rx.recv().await;
             });
         }
         
