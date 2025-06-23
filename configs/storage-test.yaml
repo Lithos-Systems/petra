@@ -1,0 +1,62 @@
+# configs/storage-test.yaml
+signals:
+  - name: "test_input"
+    type: "float"
+    initial: 0.0
+  
+  - name: "test_output"
+    type: "float"
+    initial: 0.0
+  
+  - name: "data_generator"
+    type: "bool"
+    initial: true
+  
+  - name: "sample_count"
+    type: "int"
+    initial: 0
+
+blocks:
+  # Simple data generator that creates sine wave data
+  - name: "data_gen"
+    type: "DATA_GENERATOR"
+    inputs:
+      enable: "data_generator"
+    outputs:
+      sine_out: "test_input"
+      count_out: "sample_count"
+    params:
+      frequency: 0.1
+      amplitude: 10.0
+  
+  # Simple processing block
+  - name: "data_processor"
+    type: "MULTIPLY"
+    inputs:
+      in1: "test_input"
+      in2: 2.0
+    outputs:
+      out: "test_output"
+
+scan_time_ms: 100
+
+mqtt:
+  broker_host: "mqtt.lithos.systems"
+  broker_port: 1883
+  client_id: "petra-storage-test"
+  topic_prefix: "petra/storage_test"
+  qos: 1
+  publish_on_change: true
+
+# Enable local storage for testing
+storage:
+  local:
+    data_dir: "./data/storage_test"
+    max_file_size_mb: 10
+    compression: "zstd"
+    retention_days: 7
+    compact_after_hours: 1
+  wal:
+    wal_dir: "./data/wal"
+    max_wal_size_mb: 50
+    sync_on_write: true
