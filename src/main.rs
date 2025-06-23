@@ -6,7 +6,7 @@ use tracing_subscriber;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use std::net::SocketAddr;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
     // Initialize Prometheus metrics endpoint
     let metrics_addr: SocketAddr = "0.0.0.0:9090".parse().unwrap();
     PrometheusBuilder::new()
-        .listen_address(metrics_addr)
+        .with_http_listener(metrics_addr)
         .install()
         .expect("Failed to install Prometheus recorder");
 
@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
         let mut history_manager = HistoryManager::new(history_config, bus.clone())?;
         history_manager.set_signal_change_channel(history_rx);
         
-        Some(tokio::spawn(async move {
+        Some(tokio::task::spawn_local(async move {
             if let Err(e) = history_manager.run().await {
                 error!("History manager error: {}", e);
             }
