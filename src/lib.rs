@@ -9,6 +9,7 @@ pub mod engine;
 pub mod mqtt;
 pub mod twilio;
 pub mod twilio_block;
+pub mod history;
 
 #[cfg(feature = "s7-support")]
 pub mod s7;
@@ -22,6 +23,7 @@ pub use mqtt::{MqttHandler, MqttMessage};
 
 #[cfg(feature = "s7-support")]
 pub use s7::{S7Connector, S7Config, S7Mapping, S7Area, S7DataType, Direction};
+pub use history::{HistoryManager, HistoryConfig, SignalHistory};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
