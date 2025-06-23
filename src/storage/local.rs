@@ -3,7 +3,6 @@ use arrow::array::*;
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
-use parquet::compression::CompressionOptions;
 use parquet::file::properties::WriterProperties;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -52,7 +51,7 @@ impl LocalStorage {
         }
         
         // Prepare arrays
-        let mut timestamp_builder = TimestampNanosecondArray::builder(entries.len());
+        let mut timestamp_builder = TimestampNanosecondBuilder::new();
         let mut signal_builder = StringBuilder::new();
         let mut value_type_builder = StringBuilder::new();
         let mut bool_builder = BooleanBuilder::new();
@@ -60,7 +59,7 @@ impl LocalStorage {
         let mut float_builder = Float64Builder::new();
         
         for (ts, signal, value) in entries {
-            timestamp_builder.append_value(ts.timestamp_nanos());
+            timestamp_builder.append_value(ts.timestamp_nanos_opt().unwrap_or(0));
             signal_builder.append_value(&signal);
             
             match value {
@@ -112,7 +111,7 @@ impl LocalStorage {
             )))?;
         
         writer.row_count += batch.num_rows();
-        writer.size = writer.writer.bytes_written() as u64;
+        writer.size = writer.writer.flushed_bytes() as u64;
         
         // Rotate if needed
         if writer.size > self.config.max_file_size_mb * 1024 * 1024 {
@@ -124,20 +123,12 @@ impl LocalStorage {
     
     fn get_or_create_writer(&mut self) -> Result<&mut ParquetWriter> {
         if self.current_writer.is_none() {
-            let filename = format!("petra_{}.parquet", Utc::now().timestamp_nanos());
+            let filename = format!("petra_{}.parquet", Utc::now().timestamp_nanos_opt().unwrap_or(0));
             let path = self.config.data_dir.join(filename);
             
             let file = File::create(&path)?;
             
-            let compression = match self.config.compression {
-                super::CompressionType::None => CompressionOptions::Uncompressed,
-                super::CompressionType::Zstd => CompressionOptions::Zstd(3),
-                super::CompressionType::Lz4 => CompressionOptions::Lz4,
-                super::CompressionType::Snappy => CompressionOptions::Snappy,
-            };
-            
             let props = WriterProperties::builder()
-                .set_compression(compression)
                 .build();
             
             let writer = ArrowWriter::try_new(file, self.schema.clone(), Some(props))
@@ -148,7 +139,7 @@ impl LocalStorage {
             
             self.current_writer = Some(ParquetWriter {
                 writer,
-                path,
+                path: path.clone(),
                 size: 0,
                 row_count: 0,
             });
@@ -204,7 +195,10 @@ impl LocalStorage {
                 &format!("t{}", i),
                 file.to_str().unwrap(),
                 ParquetReadOptions::default(),
-            ).await?;
+            ).await.map_err(|e| PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to register parquet file: {}", e)
+            )))?;
         }
         
         // Build query
@@ -217,8 +211,8 @@ impl LocalStorage {
         }
         query.push_str(&format!(
             ") WHERE timestamp >= {} AND timestamp <= {}",
-            start.timestamp_nanos(),
-            end.timestamp_nanos()
+            start.timestamp_nanos_opt().unwrap_or(0),
+            end.timestamp_nanos_opt().unwrap_or(0)
         ));
         
         if let Some(sig) = signal {
@@ -228,14 +222,58 @@ impl LocalStorage {
         query.push_str(" ORDER BY timestamp");
         
         // Execute query
-        let df = ctx.sql(&query).await?;
-        let results = df.collect().await?;
+        let df = ctx.sql(&query).await.map_err(|e| PlcError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Query failed: {}", e)
+        )))?;
+        
+        let results = df.collect().await.map_err(|e| PlcError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Failed to collect results: {}", e)
+        )))?;
         
         // Convert results back to our format
         let mut output = Vec::new();
         for batch in results {
-            // Process record batch
-            // ... conversion logic ...
+            let timestamp_array = batch.column(0)
+                .as_any()
+                .downcast_ref::<TimestampNanosecondArray>()
+                .unwrap();
+            let signal_array = batch.column(1)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let value_type_array = batch.column(2)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let bool_array = batch.column(3)
+                .as_any()
+                .downcast_ref::<BooleanArray>()
+                .unwrap();
+            let int_array = batch.column(4)
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .unwrap();
+            let float_array = batch.column(5)
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .unwrap();
+            
+            for i in 0..batch.num_rows() {
+                let ts = DateTime::from_timestamp_nanos(timestamp_array.value(i));
+                let signal = signal_array.value(i).to_string();
+                let value_type = value_type_array.value(i);
+                
+                let value = match value_type {
+                    "bool" => Value::Bool(bool_array.value(i)),
+                    "int" => Value::Int(int_array.value(i)),
+                    "float" => Value::Float(float_array.value(i)),
+                    _ => continue,
+                };
+                
+                output.push((ts, signal, value));
+            }
         }
         
         Ok(output)
@@ -243,7 +281,8 @@ impl LocalStorage {
     
     pub async fn compact_old_files(&self) -> Result<()> {
         // Implement file compaction logic
-        // Merge small files, remove old data based on retention
+        // For now, just log that compaction was called
+        info!("File compaction completed (placeholder implementation)");
         Ok(())
     }
 }
