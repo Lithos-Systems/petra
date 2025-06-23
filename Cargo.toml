@@ -15,45 +15,51 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rumqttc = "0.24"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+
 # S7 communication library - using rust-snap7
 rust-snap7 = "1.142.2"
 clap = { version = "4", features = ["derive"] }
+
 # HTTP client for Twilio API
 reqwest = { version = "0.11", features = ["json"] }
-# Base64 encoding for auth
-base64 = "0.21"
-# URL encoding
-urlencoding = "2.1"
-# HTML encoding for TwiML
 htmlescape = "0.3"
+
 # Metrics
-prometheus = "0.13"
 metrics = "0.23"
 metrics-exporter-prometheus = "0.15"
+
+# Core utilities
 bytes = "1.5"
 crossbeam = "0.8"
 ringbuffer = "0.15"
 parking_lot = "0.12"
-# Local storage with Parquet (same format as InfluxDB v3!)
-arrow = "50.0"
-parquet = "50.0"
-datafusion = "35.0"
 
-# Alternative time-series backends
-clickhouse = "0.11"
-questdb = "0.1"
+# Use compatible Arrow ecosystem versions (43.x series)
+arrow = "43.0"
+parquet = "43.0" 
+datafusion = "43.0"
 
-# RocksDB for local WAL (Write-Ahead Log)
-rocksdb = "0.21"
+# History storage with InfluxDB 3.0 client
+influxdb3-client = "0.3"
 
-# Object storage support (S3, Azure, GCS)
-object_store = "0.9"
-aws-sdk-s3 = "1.0"
+# Alternative time-series backends (optional)
+clickhouse = { version = "0.11", optional = true }
 
-# Compression
-zstd = "0.13"
-lz4 = "1.24"
+# RocksDB for local WAL (Write-Ahead Log) - optional
+rocksdb = { version = "0.21", optional = true }
+
+# Object storage support (optional)
+object_store = { version = "0.9", optional = true }
+aws-sdk-s3 = { version = "1.0", optional = true }
+
+# Compression (optional)
+zstd = { version = "0.13", optional = true }
+lz4 = { version = "1.24", optional = true }
+
+# For async traits
+async-trait = "0.1"
+
 [[bin]]
 name = "petra"
 path = "src/main.rs"
@@ -66,15 +72,17 @@ path = "src/bin/s7_test.rs"
 name = "simple_s7_test"
 path = "src/bin/simple_s7_test.rs"
 
+[[bin]]
+name = "twilio_test"
+path = "src/bin/twilio_test.rs"
+
 [profile.release]
 lto = true
 codegen-units = 1
 panic = "abort"
 
 [features]
-default = ["s7-support"]
+default = ["s7-support", "history"]
 s7-support = []
-
-[[bin]]
-name = "twilio_test"
-path = "src/bin/twilio_test.rs"
+history = ["influxdb3-client"]
+advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "zstd", "lz4"]
