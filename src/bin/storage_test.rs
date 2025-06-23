@@ -6,7 +6,6 @@ use tokio::time::sleep;
 use tokio::sync::mpsc;
 use tracing::{info, error, debug};
 use tracing_subscriber;
-use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<()> {
