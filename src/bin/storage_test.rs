@@ -7,6 +7,9 @@ use tokio::sync::mpsc;
 use tracing::{info, error, debug};
 use tracing_subscriber;
 
+// Add the missing arrow imports
+use arrow::array::{Float64Array, StringArray, BooleanArray, Int32Array};
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -203,21 +206,20 @@ async fn check_storage_results() -> Result<()> {
     
     if let Ok(entries) = std::fs::read_dir(data_dir) {
         for entry in entries.flatten() {
-            if let Some(extension) = entry.path().extension() {
-                if extension == "parquet" {
-                    parquet_files += 1;
-                    if let Ok(metadata) = entry.metadata() {
-                        total_size += metadata.len();
-                    }
-                    
-                    // Try to read and count rows
-                    if let Ok(row_count) = count_parquet_rows(&entry.path()) {
-                        total_rows += row_count;
-                        info!("Found parquet file: {:?} ({} rows, {} bytes)", 
-                             entry.path(), row_count, entry.metadata().unwrap().len());
-                    } else {
-                        info!("Found parquet file: {:?} (could not read)", entry.path());
-                    }
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("parquet") {
+                parquet_files += 1;
+                if let Ok(metadata) = entry.metadata() {
+                    total_size += metadata.len();
+                }
+                
+                // Try to read and count rows
+                if let Ok(row_count) = count_parquet_rows(&path) {
+                    total_rows += row_count;
+                    info!("Found parquet file: {:?} ({} rows, {} bytes)", 
+                         path, row_count, entry.metadata().unwrap().len());
+                } else {
+                    info!("Found parquet file: {:?} (could not read)", path);
                 }
             }
         }
