@@ -3,7 +3,6 @@ use std::time::Instant;
 use tracing::trace;
 use crate::twilio_block::TwilioBlock;
 use std::f64::consts::PI;
-use std::collections::HashMap;
 
 // Data generator block for testing
 pub struct DataGenerator {
@@ -452,7 +451,7 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
                 .ok_or_else(|| PlcError::Config("MULTIPLY requires 'in1' input".into()))?;
             
             // Handle in2 as either a signal name or a direct value
-            let in2_value = if let Some(in2_str) = config.inputs.get("in2") {
+            let input2_value = if let Some(in2_str) = config.inputs.get("in2") {
                 // Try to parse as a number first
                 in2_str.parse::<f64>().unwrap_or(1.0)
             } else {
