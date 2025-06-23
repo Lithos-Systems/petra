@@ -40,26 +40,16 @@ async fn main() -> Result<()> {
 
     // Create channels for signal changes
     let (signal_tx, signal_rx) = mpsc::channel(1000);
+    let (mqtt_tx, mqtt_rx) = mpsc::channel(1000);
     let (history_tx, history_rx) = mpsc::channel(1000);
     
-    // Clone sender for multiple consumers
-    let signal_tx_clone = signal_tx.clone();
-    engine.set_signal_change_channel(signal_tx);
+    engine.set_signal_change_channel(signal_tx.clone());
     
     // Setup History Manager if configured
     let history_handle = if let Some(history_config) = config.history {
         info!("History configuration found, starting history manager");
         let mut history_manager = HistoryManager::new(history_config, bus.clone())?;
         history_manager.set_signal_change_channel(history_rx);
-        
-        // Forward signal changes to history
-        let history_tx_clone = history_tx.clone();
-        tokio::spawn(async move {
-            let mut rx = signal_rx;
-            while let Some(change) = rx.recv().await {
-                let _ = history_tx_clone.send(change).await;
-            }
-        });
         
         Some(tokio::spawn(async move {
             if let Err(e) = history_manager.run().await {
@@ -73,15 +63,13 @@ async fn main() -> Result<()> {
     
     // Setup MQTT handler
     let mut mqtt = MqttHandler::new(bus.clone(), config.mqtt)?;
-    // Create a new receiver that forwards from the original
-    let (mqtt_tx, mqtt_rx) = mpsc::channel(100);
     mqtt.set_signal_change_channel(mqtt_rx);
     
-    // Forward changes to MQTT
+    // Forward signal changes to both MQTT and history
     tokio::spawn(async move {
         let mut rx = signal_rx;
         while let Some(change) = rx.recv().await {
-            let _ = mqtt_tx.send(change).await;
+            let _ = mqtt_tx.send(change.clone()).await;
             let _ = history_tx.send(change).await;
         }
     });
@@ -93,7 +81,6 @@ async fn main() -> Result<()> {
         info!("Twilio configuration found, starting Twilio connector");
         let twilio_connector = TwilioConnector::new(twilio_config, bus.clone())?;
         
-        // Spawn Twilio task
         Some(tokio::spawn(async move {
             if let Err(e) = twilio_connector.run().await {
                 error!("Twilio connector error: {}", e);
@@ -103,11 +90,6 @@ async fn main() -> Result<()> {
         info!("No Twilio configuration found");
         None
     };
-    
-    // In cleanup section:
-    if let Some(twilio_task) = twilio_handle {
-        twilio_task.abort();
-    }
 
     // Setup S7 connector if configured
     let s7_handle = if let Some(s7_config) = config.s7 {
@@ -117,7 +99,6 @@ async fn main() -> Result<()> {
         // Connect to PLC
         s7_connector.connect().await?;
         
-        // Spawn S7 task
         Some(tokio::spawn(async move {
             if let Err(e) = s7_connector.run().await {
                 error!("S7 connector error: {}", e);
@@ -150,7 +131,12 @@ async fn main() -> Result<()> {
             if let Some(history_task) = history_handle {
                 history_task.abort();
             }
-            // ... abort other tasks ...
+            if let Some(twilio_task) = twilio_handle {
+                twilio_task.abort();
+            }
+            if let Some(s7_task) = s7_handle {
+                s7_task.abort();
+            }
             
             engine_result
         } => {
@@ -163,10 +149,10 @@ async fn main() -> Result<()> {
 
     info!("Engine stopped normally");
 
-    let stats = engine.detailed_stats();
+    let stats = engine.stats();
     info!(
-        "Final stats: {} scans, {} errors, uptime: {}s, avg scan time: {:?}",
-        stats.scan_count, stats.error_count, stats.uptime_secs, stats.avg_scan_time
+        "Final stats: {} scans, {} errors, uptime: {}s",
+        stats.scan_count, stats.error_count, stats.uptime_secs
     );
 
     Ok(())
