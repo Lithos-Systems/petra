@@ -40,9 +40,6 @@ arrow = "43.0"
 parquet = "43.0" 
 datafusion = "43.0"
 
-# History storage with InfluxDB 3.0 client
-influxdb3-client = "0.3"
-
 # Alternative time-series backends (optional)
 clickhouse = { version = "0.11", optional = true }
 
