@@ -1,12 +1,13 @@
 // src/bin/storage_test.rs
-use petra::{Config, Engine, HistoryManager, Value, Result};
+use petra::{Config, Engine, HistoryManager, Result};
 use std::path::Path;
 use std::time::Duration;
-use tokio::time::{interval, sleep};
+use tokio::time::sleep;
+use tokio::task::LocalSet;
 use tracing::{info, error};
 use tracing_subscriber;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter("storage_test=info,petra=debug")
@@ -20,18 +21,22 @@ async fn main() -> Result<()> {
 
     let config = Config::from_file("configs/storage-test.yaml")?;
     let mut engine = Engine::new(config.clone())?;
+
+    let local = LocalSet::new();
+
+    local.run_until(async move {
     
-    // Initialize history manager if storage is configured
-    let _history_handle = if let Some(storage_config) = config.storage {
+    // Initialize history manager if history is configured
+    let _history_handle = if let Some(history_config) = config.history {
         info!("Starting storage manager for testing");
-        let mut history_manager = HistoryManager::new(storage_config, engine.bus().clone())?;
+        let mut history_manager = HistoryManager::new(history_config, engine.bus().clone())?;
         
         // Set up signal change tracking
         let (tx, rx) = tokio::sync::mpsc::channel(1000);
         engine.set_signal_change_channel(tx);
         history_manager.set_signal_change_channel(rx);
         
-        Some(tokio::spawn(async move {
+        Some(tokio::task::spawn_local(async move {
             if let Err(e) = history_manager.run().await {
                 error!("History manager error: {}", e);
             }
@@ -44,7 +49,7 @@ async fn main() -> Result<()> {
     let test_duration = Duration::from_secs(30);
     info!("Running storage test for {:?}", test_duration);
 
-    let engine_handle = tokio::spawn(async move {
+    let _engine_handle = tokio::task::spawn_local(async move {
         if let Err(e) = engine.run().await {
             error!("Engine error: {}", e);
         }
@@ -58,6 +63,9 @@ async fn main() -> Result<()> {
     // Check if parquet files were created
     check_storage_results().await?;
     
+        Ok::<(), petra::PlcError>(())
+    }).await?;
+
     Ok(())
 }
 

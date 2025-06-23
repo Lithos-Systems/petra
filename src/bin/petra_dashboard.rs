@@ -1,7 +1,7 @@
 // src/bin/petra_dashboard.rs
 use eframe::egui::{self, Context, CentralPanel, SidePanel, TopBottomPanel};
 use egui_plot::{Line, Plot, PlotPoints, PlotPoint};
-use petra::{Config, Engine, SignalBus, Value, Result};
+use petra::{Config, Engine, SignalBus, Value};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -215,7 +215,7 @@ impl eframe::App for PetraApp {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     
