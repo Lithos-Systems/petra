@@ -446,19 +446,26 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
             }))
         }
         
+        // In the create_block function, update the MULTIPLY case:
         "MULTIPLY" => {
             let in1 = config.inputs.get("in1")
                 .ok_or_else(|| PlcError::Config("MULTIPLY requires 'in1' input".into()))?;
-            let in2_value = config.inputs.get("in2")
-                .and_then(|v| v.parse::<f64>().ok())
-                .unwrap_or(1.0);
+            
+            // Handle in2 as either a signal name or a direct value
+            let in2_value = if let Some(in2_str) = config.inputs.get("in2") {
+                // Try to parse as a number first
+                in2_str.parse::<f64>().unwrap_or(1.0)
+            } else {
+                1.0
+            };
+            
             let output = config.outputs.get("out")
                 .ok_or_else(|| PlcError::Config("MULTIPLY requires 'out' output".into()))?;
             
             Ok(Box::new(Multiply {
                 name: config.name.clone(),
                 input1: in1.clone(),
-                input2_value: in2_value,
+                input2_value,
                 output: output.clone(),
             }))
         }
