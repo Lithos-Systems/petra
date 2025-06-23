@@ -35,8 +35,8 @@ ringbuffer = "0.15"
 parking_lot = "0.12"
 
 # Use compatible Arrow ecosystem versions (v43 series works well)
-arrow = "55.2"
-parquet = "55.2"
+arrow = "55.1"
+parquet = "55.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 
 # Alternative time-series backends (optional)
