@@ -147,7 +147,6 @@ pub struct HistoryManager {
     running: Arc<RwLock<bool>>,
     current_writer: Option<ParquetWriter>,
     schema: Arc<Schema>,
-    start_instant: Instant,
 }
 
 impl HistoryManager {
@@ -174,7 +173,6 @@ impl HistoryManager {
             running: Arc::new(RwLock::new(false)),
             current_writer: None,
             schema,
-            start_instant: Instant::now(),
         })
     }
 

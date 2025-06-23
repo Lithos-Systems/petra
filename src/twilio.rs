@@ -77,8 +77,6 @@ struct MessageResponse {
     sid: String,
     status: String,
     #[serde(default)]
-    error_code: Option<String>,
-    #[serde(default)]
     error_message: Option<String>,
 }
 
@@ -87,8 +85,6 @@ struct MessageResponse {
 struct CallResponse {
     sid: String,
     status: String,
-    #[serde(default)]
-    error_code: Option<String>,
     #[serde(default)]
     error_message: Option<String>,
 }
