@@ -2,7 +2,7 @@
 use crate::{error::*, signal::SignalBus, value::Value, block::Block};
 use reqwest::Client;
 use std::collections::HashMap;
-use tokio::sync::mpsc;
+use std::time::Duration;
 use tracing::{info, warn, error};
 
 /// A block that can send SMS or make calls directly from the PLC logic
@@ -20,7 +20,57 @@ pub struct TwilioBlock {
     client: Client,
     cooldown_ms: u64,
     last_trigger: Option<std::time::Instant>,
-    task_handle: Option<mpsc::Sender<()>>,
+}
+
+impl TwilioBlock {
+    pub fn new(
+        name: String,
+        trigger_input: String,
+        success_output: String,
+        action_type: String,
+        to_number: String,
+        from_number: String,
+        content: String,
+        cooldown_ms: u64,
+    ) -> Result<Self> {
+        // Get credentials from environment
+        let account_sid = std::env::var("TWILIO_ACCOUNT_SID")
+            .map_err(|_| PlcError::Config("TWILIO_ACCOUNT_SID environment variable not set".into()))?;
+        
+        let auth_token = std::env::var("TWILIO_AUTH_TOKEN")
+            .map_err(|_| PlcError::Config("TWILIO_AUTH_TOKEN environment variable not set".into()))?;
+        
+        // Validate phone numbers
+        if !to_number.starts_with('+') || !from_number.starts_with('+') {
+            return Err(PlcError::Config("Phone numbers must be in E.164 format (+1234567890)".into()));
+        }
+        
+        // Validate action type
+        if action_type != "sms" && action_type != "call" {
+            return Err(PlcError::Config("action_type must be 'sms' or 'call'".into()));
+        }
+        
+        let client = Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| PlcError::Config(format!("Failed to create HTTP client: {}", e)))?;
+        
+        Ok(Self {
+            name,
+            trigger_input,
+            success_output,
+            action_type,
+            to_number,
+            from_number,
+            content,
+            account_sid,
+            auth_token,
+            last_state: false,
+            client,
+            cooldown_ms,
+            last_trigger: None,
+        })
+    }
 }
 
 impl Block for TwilioBlock {
@@ -52,7 +102,7 @@ impl Block for TwilioBlock {
             let bus_clone = bus.clone();
             let block_name = self.name.clone();
             
-            // Spawn without channel - task completes naturally
+            // Spawn async task
             tokio::spawn(async move {
                 let result = if action_type == "sms" {
                     send_sms_async(client, account_sid, auth_token, from, to, content).await
