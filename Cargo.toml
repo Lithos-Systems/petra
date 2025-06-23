@@ -17,7 +17,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rumqttc = "0.24"
 chrono = { version = "0.4", features = ["serde"] }
 
-# S7 communication library - using rust-snap7
+# S7 communication library
 rust-snap7 = "1.142.2"
 clap = { version = "4", features = ["derive"] }
 
@@ -35,20 +35,21 @@ crossbeam = "0.8"
 ringbuffer = "0.15"
 parking_lot = "0.12"
 
-# Use compatible Arrow ecosystem versions (43.x series)
-arrow = "43.0"
-parquet = "43.0" 
-datafusion = "43.0"
+# Use stable versions of Arrow ecosystem
+arrow = "50.0"
+parquet = "50.0"
+datafusion = "35.0"
 
 # Alternative time-series backends (optional)
 clickhouse = { version = "0.11", optional = true }
 
-# RocksDB for local WAL (Write-Ahead Log) - optional
+# RocksDB for local WAL (Write-Ahead Log)
 rocksdb = { version = "0.21", optional = true }
 
 # Object storage support (optional)
 object_store = { version = "0.9", optional = true }
 aws-sdk-s3 = { version = "1.0", optional = true }
+aws-config = { version = "1.0", optional = true }
 
 # Compression (optional)
 zstd = { version = "0.13", optional = true }
@@ -56,6 +57,11 @@ lz4 = { version = "1.24", optional = true }
 
 # For async traits
 async-trait = "0.1"
+
+# For history - using InfluxDB v2 client
+influxdb2 = { version = "0.5", optional = true }
+influxdb2-derive = { version = "0.1", optional = true }
+futures = { version = "0.3", optional = true }
 
 [[bin]]
 name = "petra"
@@ -81,4 +87,5 @@ panic = "abort"
 [features]
 default = ["s7-support", "history"]
 s7-support = []
-advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "zstd", "lz4"]
+history = ["influxdb2", "influxdb2-derive", "futures"]
+advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
