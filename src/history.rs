@@ -1,5 +1,4 @@
 use crate::{error::*, value::Value, signal::SignalBus};
-use influxdb3_client::{Client, Precision, WriteQuery, Point};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,6 +7,15 @@ use parking_lot::RwLock;
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration, Instant};
 use tracing::{info, warn, error, debug};
+use chrono::Utc;
+
+// Only import influxdb2 if the history feature is enabled
+#[cfg(feature = "history")]
+use influxdb2::models::{DataPoint, WriteDataPoint};
+#[cfg(feature = "history")]
+use influxdb2::Client;
+#[cfg(feature = "history")]
+use futures::stream;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryConfig {
