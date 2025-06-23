@@ -35,10 +35,10 @@ crossbeam = "0.8"
 ringbuffer = "0.15"
 parking_lot = "0.12"
 
-# Use stable versions of Arrow ecosystem
-arrow = "50.0"
-parquet = "50.0"
-datafusion = "35.0"
+# Use compatible Arrow ecosystem versions (v43 series works well)
+arrow = "43.0"
+parquet = "43.0"
+datafusion = { version = "30.0", optional = true }
 
 # Alternative time-series backends (optional)
 clickhouse = { version = "0.11", optional = true }
@@ -47,12 +47,12 @@ clickhouse = { version = "0.11", optional = true }
 rocksdb = { version = "0.21", optional = true }
 
 # Object storage support (optional)
-object_store = { version = "0.9", optional = true }
-aws-sdk-s3 = { version = "1.0", optional = true }
-aws-config = { version = "1.0", optional = true }
+object_store = { version = "0.7", optional = true }
+aws-sdk-s3 = { version = "0.31", optional = true }
+aws-config = { version = "0.56", optional = true }
 
 # Compression (optional)
-zstd = { version = "0.13", optional = true }
+zstd = { version = "0.12", optional = true }
 lz4 = { version = "1.24", optional = true }
 
 # For async traits
@@ -88,4 +88,4 @@ panic = "abort"
 default = ["s7-support", "history"]
 s7-support = []
 history = ["influxdb2", "influxdb2-derive", "futures"]
-advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
+advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4", "datafusion"]
