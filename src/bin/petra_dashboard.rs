@@ -1,12 +1,12 @@
 // src/bin/petra_dashboard.rs
 use eframe::egui::{self, Context, CentralPanel, SidePanel, TopBottomPanel};
 use egui_plot::{Line, Plot, PlotPoints};
-use petra::{Config, Engine, SignalBus, Value, Result};
+use petra::{Config, Engine, SignalBus, Value};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
-use tracing::{info, error, warn};
+use tracing::{error, warn};
 
 const MAX_POINTS: usize = 1000;
 
@@ -81,7 +81,7 @@ impl PetraApp {
         signal_data: Arc<Mutex<Vec<SignalData>>>,
         current_values: Arc<Mutex<std::collections::HashMap<String, Value>>>,
         start_time: Instant
-    ) -> Result<SignalBus> {
+    ) -> petra::Result<SignalBus> {
         let config = Config::from_file("configs/storage-test.yaml")?;
         let mut engine = Engine::new(config)?;
         let bus = engine.bus().clone();
@@ -132,10 +132,11 @@ impl eframe::App for PetraApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(Duration::from_millis(100));
         
-        if let Some(error) = &self.error_message {
+        // Fix the borrowing issue by cloning the error message
+        if let Some(error) = self.error_message.clone() {
             CentralPanel::default().show(ctx, |ui| {
                 ui.colored_label(egui::Color32::RED, "Error:");
-                ui.label(error);
+                ui.label(&error);
                 ui.separator();
                 ui.label("Make sure configs/storage-test.yaml exists and is valid.");
                 if ui.button("Retry").clicked() {
@@ -219,19 +220,17 @@ impl eframe::App for PetraApp {
                 ui.separator();
                 
                 if ui.button("📁 Open Data Folder").clicked() {
-                    if let Err(e) = std::process::Command::new("explorer")
+                    let _result = std::process::Command::new("explorer")
                         .arg("data\\storage_test")
                         .spawn()
-                    {
-                        // Try different commands for different OS
-                        let _ = std::process::Command::new("open")
+                        .or_else(|_| std::process::Command::new("open")
                             .arg("data/storage_test")
                             .spawn()
-                            .or_else(|_| std::process::Command::new("xdg-open")
-                                .arg("data/storage_test")
-                                .spawn()
-                            );
-                    }
+                        )
+                        .or_else(|_| std::process::Command::new("xdg-open")
+                            .arg("data/storage_test")
+                            .spawn()
+                        );
                 }
             }
         });
@@ -292,7 +291,7 @@ impl eframe::App for PetraApp {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter("petra_dashboard=info,petra=info")
