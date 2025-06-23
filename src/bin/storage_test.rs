@@ -232,12 +232,18 @@ async fn check_storage_results() -> Result<()> {
         
         // Sample some data
         if let Some(entry) = std::fs::read_dir(data_dir).ok()
-            .and_then(|mut entries| entries.find(|e| 
-                e.as_ref().ok()
-                    .and_then(|entry| entry.path().extension())
-                    .map(|ext| ext == "parquet")
-                    .unwrap_or(false)
-            )) {
+            .and_then(|mut entries| entries.find(|e| {
+                match e {
+                    Ok(dir_entry) => {
+                        dir_entry
+                            .path()
+                            .extension()
+                            .map(|ext| ext == "parquet")
+                            .unwrap_or(false)
+                    }
+                    Err(_) => false,
+                }
+            })) {
             if let Ok(entry) = entry {
                 info!("📋 Sample data from {}:", entry.path().display());
                 if let Err(e) = sample_parquet_data(&entry.path()) {
@@ -274,7 +280,7 @@ fn sample_parquet_data(path: &Path) -> std::result::Result<(), Box<dyn std::erro
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
     use std::fs::File;
     // Import the array types from arrow
-    use arrow::array::{Float64Array, StringArray, BooleanArray, Int32Array};
+    use arrow::array::{Array, Float64Array, StringArray, BooleanArray, Int32Array};
     
     let file = File::open(path)?;
     let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
