@@ -7,9 +7,6 @@ use tokio::sync::mpsc;
 use tracing::{info, error, debug};
 use tracing_subscriber;
 
-// Add the missing arrow imports
-use arrow::array::{Float64Array, StringArray, BooleanArray, Int32Array};
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -276,6 +273,8 @@ fn count_parquet_rows(path: &Path) -> std::result::Result<usize, Box<dyn std::er
 fn sample_parquet_data(path: &Path) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
     use std::fs::File;
+    // Import the array types from arrow
+    use arrow::array::{Float64Array, StringArray, BooleanArray, Int32Array};
     
     let file = File::open(path)?;
     let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
