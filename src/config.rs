@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use crate::twilio::TwilioConfig;
+use crate::history::HistoryConfig;
+
+
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -19,6 +23,8 @@ pub struct Config {
     pub s7: Option<S7Config>,
     #[serde(default)]
     pub twilio: Option<TwilioConfig>,
+    #[serde(default)]
+    pub history: Option<HistoryConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
