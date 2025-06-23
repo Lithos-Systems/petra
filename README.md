@@ -1,17 +1,28 @@
 # PETRA
-#### Programmable Engine for Telemetry, Runtime, and Automation
 
-Petra is a programmable automation engine implemented in Rust. The project is structured as a Cargo workspace with a single crate (petra). Key directories:
+**Programmable Engine for Telemetry, Runtime, and Automation**
+A high-performance, modular automation engine built in **Rust**.
 
-Cargo.toml        – crate manifest
-configs/          – example YAML configurations
-src/              – library and binary sources
-tests/            – integration tests
+---
+
+## Project Structure
+
+This repository is a single-crate Cargo workspace:
+
+```text
+Cargo.toml        – crate manifest  
+configs/          – example YAML configurations  
+src/              – library and binary sources  
+tests/            – integration tests  
+```
+
+---
 
 ## Core Modules
 
-The main library exposes functionality through src/lib.rs, which re-exports the major modules:
+The main library (via `src/lib.rs`) re-exports these modules:
 
+```rust
 pub mod error;
 pub mod value;
 pub mod signal;
@@ -30,41 +41,40 @@ pub mod s7;
 
 #[cfg(feature = "advanced-storage")]
 pub mod storage;
+```
 
-## Important components:
+### Key Components
 
-    Value (src/value.rs) – enum wrapper for Bool, Int, and Float signals with conversion helpers.
+| Module       | Description                                                                                                       |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `value.rs`   | Unified enum for `Bool`, `Int`, and `Float` values, with type-safe conversion methods.                            |
+| `signal.rs`  | The **SignalBus** — a thread-safe store (using `dashmap`) for signal state.                                       |
+| `block.rs`   | The `Block` trait and factory — defines reusable logic blocks like gates, timers, comparisons, and `TwilioBlock`. |
+| `engine.rs`  | PLC-style scan engine — initializes from config, executes blocks, manages state.                                  |
+| `mqtt.rs`    | MQTT I/O handler — publishes signal changes and accepts commands.                                                 |
+| `twilio.rs`  | Async interface to Twilio API — sends SMS or makes calls from logic.                                              |
+| `s7.rs`      | Communicates with **Siemens S7 PLCs** using `rust-snap7`.                                                         |
+| `history.rs` | \[Feature: `history`] Logs signals to **Parquet**, supports downsampling/retention.                               |
+| `storage/`   | \[Feature: `advanced-storage`] RocksDB, ClickHouse, S3 backends, WAL manager.                                     |
 
-    SignalBus (src/signal.rs) – thread‑safe store for signal values using dashmap.
-
-    Blocks (src/block.rs) – trait Block plus built‑in blocks (logic gates, timers, latches, comparisons) and a factory to create them from YAML config. A notable block is TwilioBlock for SMS/call actions.
-
-    Engine (src/engine.rs) – drives the PLC scan cycle: initializes signals from configuration, executes blocks each cycle, and reports statistics.
-
-    MQTT Handler (src/mqtt.rs) – publishes signal updates and accepts commands via MQTT.
-
-    Twilio Connector (src/twilio.rs) – asynchronous integration with the Twilio API, enabling message/voice actions triggered by signals.
-
-    S7 Connector (src/s7.rs) – communicates with Siemens S7 PLCs via rust-snap7.
-
-    History Manager (src/history.rs) – optional feature to log signal values to Parquet files with downsampling and retention.
-
-    Advanced Storage (src/storage/) – optional modules for write‑ahead logging (RocksDB), local Parquet storage, remote backends (ClickHouse, S3), and a manager orchestrating them.
+---
 
 ## Binary Targets
 
-The crate defines multiple binaries:
+| Binary           | Description                                                                   |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `petra`          | Main runtime: loads YAML config, launches scan engine, MQTT, Twilio, S7, etc. |
+| `s7_test`        | Tool for testing S7 connectivity.                                             |
+| `simple_s7_test` | Minimal S7 interaction demo.                                                  |
+| `twilio_test`    | Tool for testing Twilio credentials and simulated SMS/call triggers.          |
 
-    petra (src/main.rs) – main application. Loads a YAML configuration, starts the engine, MQTT handler, Twilio connector, optional S7 connector, and history manager.
+---
 
-    s7_test, simple_s7_test – utilities for testing S7 PLC connectivity.
+## Configuration Overview
 
-    twilio_test – CLI tool for sending test SMS/voice calls or running signal-based triggers.
+Petra is configured via YAML. Example:
 
-## Configuration
-
-Configurations are YAML files (see configs/). Example snippet from README.md shows typical fields:
-
+```yaml
 signals:
   - name: "signal_name"
     type: "bool"
@@ -88,7 +98,7 @@ mqtt:
   qos: 1
   publish_on_change: true
 
-s7:  # optional
+s7:
   ip: "192.168.1.100"
   rack: 0
   slot: 2
@@ -96,55 +106,56 @@ s7:  # optional
   timeout_ms: 5000
   mappings: []
 
-twilio:  # optional
+twilio:
   from_number: "+1234567890"
   poll_interval_ms: 1000
   actions: []
+```
 
+Environment variables may be used for credentials:
 
-# Build Petra
+* `MQTT_USERNAME`, `MQTT_PASSWORD`
+* `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`
+
+---
+
+## Build & Run
+
+```bash
+# Build the release binary
 cargo build --release
 
-# Run with example MQTT configuration
+# Run with an example configuration
 cargo run --release configs/example-mqtt.yaml
 
-# Test S7 connection
+# Test S7 connectivity
 cargo run --bin s7_test -- --ip 192.168.1.100 connect
 
-# Read a value
+# Read a value from S7 PLC
 cargo run --bin s7_test -- --ip 192.168.1.100 read -a DB -d 100 -A 0 -t bool -b 0
+```
 
-## Uniqueness
+---
 
-Petra combines multiple industrial automation features in a single Rust-based engine:
+## Unique Features
 
-    Direct PLC Control – communicates with Siemens S7 PLCs via rust-snap7.
+* **PLC Control**: Direct integration with Siemens S7 (via Snap7).
+* **MQTT Messaging**: Bi-directional MQTT interface for IoT/SCADA.
+* **Twilio Alerts**: Voice and SMS actions triggered by signals.
+* **Parquet History Logging**: Optional long-term signal retention.
+* **Modular Blocks**: Extend the logic system by implementing the `Block` trait.
+* **Prometheus Metrics**: Exposes `/metrics` on port **9090** when running.
 
-    MQTT Integration – exposes a command/status interface for IoT and SCADA use.
+---
 
-    Twilio Actions – send SMS or voice notifications triggered by logic blocks or connector rules.
+## Advanced Tools
 
-    Historical Data Logging – optional Parquet writer with configurable downsampling and retention.
+```bash
+# Test Twilio functionality
+cargo run --bin twilio_test
 
-    Extensibility – new block types can be implemented by defining a struct that implements the Block trait and adding a case in create_block().
+# Use twilio_test to simulate signal-driven SMS/call alerts
 
-## How to Use
-
-    Build and run using one of the example configuration files:
-
-cargo build --release
-cargo run --release configs/example-mqtt.yaml
-
-Configure signals, logic blocks, MQTT, Twilio, and optional S7 settings in a YAML file similar to those in configs/.
-
-Environment variables may supply credentials for MQTT or Twilio (MQTT_USERNAME, MQTT_PASSWORD, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER).
-
-## Advanced tools:
-
-    Use cargo run --bin twilio_test to verify Twilio credentials or simulate signal triggers.
-
-    Use cargo run --bin s7_test to connect to and test an S7 PLC.
-
-## Metrics – the main binary exports Prometheus metrics on port 9090 (/metrics endpoint) when running.
-
+# Test S7 read/write
+cargo run --bin s7_test -- --help
 ```
