@@ -27,7 +27,15 @@ base64 = "0.21"
 urlencoding = "2.1"
 # HTML encoding for TwiML
 htmlescape = "0.3"
-
+# Metrics
+influxdb3-client = "0.1"
+prometheus = "0.13"
+metrics = "0.23"
+metrics-exporter-prometheus = "0.15"
+bytes = "1.5"
+crossbeam = "0.8"
+ringbuffer = "0.15"
+parking_lot = "0.12"
 [[bin]]
 name = "petra"
 path = "src/main.rs"
