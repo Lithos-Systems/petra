@@ -28,8 +28,9 @@ async fn main() -> Result<()> {
     // Simple local storage writer
     let storage_handle = tokio::spawn(async move {
         let mut data_points = Vec::new();
-        let mut flush_interval = tokio::time::interval(Duration::from_secs(2));
+        let mut flush_interval = tokio::time::interval(Duration::from_secs(5));
         let start_time = std::time::Instant::now();
+        let mut file_counter = 0;
         
         loop {
             tokio::select! {
@@ -40,10 +41,11 @@ async fn main() -> Result<()> {
                 }
                 _ = flush_interval.tick() => {
                     if !data_points.is_empty() {
-                        if let Err(e) = write_to_parquet(&data_points).await {
+                        file_counter += 1;
+                        if let Err(e) = write_to_parquet(&data_points, file_counter).await {
                             error!("Failed to write parquet: {}", e);
                         } else {
-                            info!("Wrote {} data points to parquet", data_points.len());
+                            info!("Wrote {} data points to parquet file {}", data_points.len(), file_counter);
                             data_points.clear();
                         }
                     }
@@ -67,12 +69,12 @@ async fn main() -> Result<()> {
     
     // Stop everything
     engine_handle.abort();
+    
+    // Give storage a moment to finish current write
+    sleep(Duration::from_secs(2)).await;
     storage_handle.abort();
     
     info!("Test completed, checking results...");
-    
-    // Give a moment for final writes
-    sleep(Duration::from_secs(2)).await;
     
     // Check if parquet files were created
     check_storage_results().await?;
@@ -80,7 +82,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn write_to_parquet(data_points: &[(f64, String, Value)]) -> Result<()> {
+async fn write_to_parquet(data_points: &[(f64, String, Value)], file_number: i32) -> Result<()> {
     use arrow::array::*;
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
@@ -92,6 +94,8 @@ async fn write_to_parquet(data_points: &[(f64, String, Value)]) -> Result<()> {
     if data_points.is_empty() {
         return Ok(());
     }
+    
+    info!("Writing {} data points to parquet file", data_points.len());
     
     // Create schema
     let schema = Arc::new(Schema::new(vec![
@@ -154,11 +158,7 @@ async fn write_to_parquet(data_points: &[(f64, String, Value)]) -> Result<()> {
     )))?;
     
     // Write to file
-    let filename = format!("./data/storage_test/petra_test_{}.parquet", 
-                          std::time::SystemTime::now()
-                              .duration_since(std::time::UNIX_EPOCH)
-                              .unwrap()
-                              .as_secs());
+    let filename = format!("./data/storage_test/petra_test_{:03}.parquet", file_number);
     
     let file = File::create(&filename)
         .map_err(|e| petra::PlcError::Io(e))?;
@@ -213,7 +213,8 @@ async fn check_storage_results() -> Result<()> {
                     // Try to read and count rows
                     if let Ok(row_count) = count_parquet_rows(&entry.path()) {
                         total_rows += row_count;
-                        info!("Found parquet file: {:?} ({} rows)", entry.path(), row_count);
+                        info!("Found parquet file: {:?} ({} rows, {} bytes)", 
+                             entry.path(), row_count, entry.metadata().unwrap().len());
                     } else {
                         info!("Found parquet file: {:?} (could not read)", entry.path());
                     }
@@ -224,16 +225,31 @@ async fn check_storage_results() -> Result<()> {
     
     if parquet_files > 0 {
         info!("✅ Storage test PASSED:");
-        info!("   - {} parquet files created", parquet_files);
-        info!("   - Total rows: {}", total_rows);
-        info!("   - Total size: {} bytes", total_size);
-        info!("   - Average file size: {} bytes", total_size / parquet_files);
+        info!("   📁 {} parquet files created", parquet_files);
+        info!("   📊 {} total data rows", total_rows);
+        info!("   💾 {} total bytes", total_size);
+        info!("   📈 {:.1} rows/second average", total_rows as f64 / 30.0);
+        info!("   📏 {} bytes/file average", total_size / parquet_files.max(1));
         
-        if total_rows > 0 {
-            info!("   - Data collection rate: {:.1} rows/second", total_rows as f64 / 30.0);
+        // Sample some data
+        if let Some(entry) = std::fs::read_dir(data_dir).ok()
+            .and_then(|mut entries| entries.find(|e| 
+                e.as_ref().ok()
+                    .and_then(|entry| entry.path().extension())
+                    .map(|ext| ext == "parquet")
+                    .unwrap_or(false)
+            )) {
+            if let Ok(entry) = entry {
+                info!("📋 Sample data from {}:", entry.path().display());
+                if let Err(e) = sample_parquet_data(&entry.path()) {
+                    error!("   Could not read sample data: {}", e);
+                }
+            }
         }
     } else {
         error!("❌ Storage test FAILED: No parquet files found");
+        error!("   Check that the DATA_GENERATOR block is creating signals");
+        error!("   Make sure the engine is running and processing blocks");
     }
     
     Ok(())
@@ -253,4 +269,50 @@ fn count_parquet_rows(path: &Path) -> std::result::Result<usize, Box<dyn std::er
     }
     
     Ok(total_rows)
+}
+
+fn sample_parquet_data(path: &Path) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+    use std::fs::File;
+    
+    let file = File::open(path)?;
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
+    let mut reader = builder.build()?;
+    
+    if let Some(batch) = reader.next() {
+        let batch = batch?;
+        let num_rows = batch.num_rows().min(5); // Show first 5 rows
+        
+        for row in 0..num_rows {
+            let timestamp = batch.column(0).as_any().downcast_ref::<Float64Array>()
+                .map(|arr| arr.value(row)).unwrap_or(0.0);
+            let signal = batch.column(1).as_any().downcast_ref::<StringArray>()
+                .map(|arr| arr.value(row)).unwrap_or("unknown");
+            let value_type = batch.column(2).as_any().downcast_ref::<StringArray>()
+                .map(|arr| arr.value(row)).unwrap_or("unknown");
+            
+            let value_str = match value_type {
+                "bool" => {
+                    batch.column(3).as_any().downcast_ref::<BooleanArray>()
+                        .and_then(|arr| if arr.is_null(row) { None } else { Some(arr.value(row).to_string()) })
+                        .unwrap_or("null".to_string())
+                }
+                "int" => {
+                    batch.column(4).as_any().downcast_ref::<Int32Array>()
+                        .and_then(|arr| if arr.is_null(row) { None } else { Some(arr.value(row).to_string()) })
+                        .unwrap_or("null".to_string())
+                }
+                "float" => {
+                    batch.column(5).as_any().downcast_ref::<Float64Array>()
+                        .and_then(|arr| if arr.is_null(row) { None } else { Some(format!("{:.3}", arr.value(row))) })
+                        .unwrap_or("null".to_string())
+                }
+                _ => "unknown".to_string()
+            };
+            
+            info!("   [{:.1}s] {} = {}", timestamp, signal, value_str);
+        }
+    }
+    
+    Ok(())
 }
