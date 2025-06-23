@@ -81,5 +81,4 @@ panic = "abort"
 [features]
 default = ["s7-support", "history"]
 s7-support = []
-history = ["influxdb3-client"]
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "zstd", "lz4"]
