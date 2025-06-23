@@ -28,7 +28,6 @@ urlencoding = "2.1"
 # HTML encoding for TwiML
 htmlescape = "0.3"
 # Metrics
-influxdb3-client = "0.1"
 prometheus = "0.13"
 metrics = "0.23"
 metrics-exporter-prometheus = "0.15"
@@ -36,6 +35,25 @@ bytes = "1.5"
 crossbeam = "0.8"
 ringbuffer = "0.15"
 parking_lot = "0.12"
+# Local storage with Parquet (same format as InfluxDB v3!)
+arrow = "50.0"
+parquet = "50.0"
+datafusion = "35.0"
+
+# Alternative time-series backends
+clickhouse = "0.11"
+questdb = "0.1"
+
+# RocksDB for local WAL (Write-Ahead Log)
+rocksdb = "0.21"
+
+# Object storage support (S3, Azure, GCS)
+object_store = "0.9"
+aws-sdk-s3 = "1.0"
+
+# Compression
+zstd = "0.13"
+lz4 = "1.24"
 [[bin]]
 name = "petra"
 path = "src/main.rs"
