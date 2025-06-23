@@ -23,13 +23,12 @@ mqtt:
   topic_prefix: "petra/plc"
 
 history:
-  url: "http://localhost:8086"
-  database: "petra_production"
-  token: "${INFLUX_TOKEN}"  # From environment
-  org: "your-org"
+  data_dir: "./data/history"
+  max_file_size_mb: 100
   batch_size: 5000
   flush_interval_ms: 1000
   buffer_size: 100000
+  retention_days: 30
   downsample_rules:
     - signal_pattern: "temperature"
       min_interval_ms: 1000  # Max 1 sample per second
