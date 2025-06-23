@@ -34,7 +34,7 @@ blocks:
     type: "MULTIPLY"
     inputs:
       in1: "test_input"
-      in2: 2.0
+      in2: "2.0"
     outputs:
       out: "test_output"
 
@@ -47,12 +47,3 @@ mqtt:
   topic_prefix: "petra/storage_test"
   qos: 1
   publish_on_change: true
-
-# Use the existing history system for local storage
-history:
-  url: "http://localhost:8086"  # This won't be used for local storage
-  database: "petra_test"
-  batch_size: 100
-  flush_interval_ms: 1000
-  buffer_size: 10000
-  tracked_signals: ["test_input", "test_output", "sample_count"]
