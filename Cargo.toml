@@ -85,4 +85,4 @@ panic = "abort"
 default = ["s7-support", "history"]
 s7-support = []
 history = []
-advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4", "datafusion"]
+advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
