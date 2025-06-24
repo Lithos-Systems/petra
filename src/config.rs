@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 
