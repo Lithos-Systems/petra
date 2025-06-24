@@ -1,6 +1,8 @@
 // src/storage/manager.rs - Complete implementation
 use super::*;
 use crate::{error::*, value::Value, signal::SignalBus};
+use super::remote::{RemoteStorage, S3Storage};
+use super::clickhouse::ClickHouseStorage;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use tokio::sync::{mpsc, Mutex};
