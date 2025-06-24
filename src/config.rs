@@ -21,6 +21,9 @@ pub struct Config {
     pub twilio: Option<TwilioConfig>,
     #[serde(default)]
     pub history: Option<HistoryConfig>,
+    #[cfg(feature = "advanced-storage")]
+    #[serde(default)]
+    pub storage: Option<crate::storage::StorageConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
