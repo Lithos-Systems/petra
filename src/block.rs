@@ -493,6 +493,24 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
                 output: output.clone(),
             }))
         }
+        // Add to create_block function:
+        "COUNTER" => {
+            let enable = config.inputs.get("enable")
+                .ok_or_else(|| PlcError::Config("COUNTER requires 'enable' input".into()))?;
+            let count = config.outputs.get("count")
+                .ok_or_else(|| PlcError::Config("COUNTER requires 'count' output".into()))?;
+            let increment = config.params.get("increment")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(1) as i32;
+            
+            Ok(Box::new(Counter {
+                name: config.name.clone(),
+                enable_input: enable.clone(),
+                count_output: count.clone(),
+                increment,
+                count: 0,
+            }))
+        }
         
         _ => Err(PlcError::Config(format!("Unknown block type: {}", config.block_type))),
     }
