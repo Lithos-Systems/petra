@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    // Initialize Prometheus metrics endpoint
+    // Initialize Prometheus metrics endpoint. test
     let metrics_addr: SocketAddr = "0.0.0.0:9090".parse().unwrap();
     PrometheusBuilder::new()
         .with_http_listener(metrics_addr)
