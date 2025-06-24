@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn, error, debug};
 use async_trait::async_trait;
-use super::RemoteStorage;
+use super::remote::RemoteStorage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SignalRow {

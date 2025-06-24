@@ -3,8 +3,8 @@ use rocksdb::{DB, Options, WriteBatch};
 use std::path::Path;
 use std::sync::Arc;
 use parking_lot::Mutex;
-use bytes::{Bytes, BytesMut, BufMut};
-use tracing::{info, error, debug};
+use bytes::{BytesMut, BufMut};
+use tracing::{info, debug};
 
 pub struct WriteAheadLog {
     db: Arc<Mutex<DB>>,
