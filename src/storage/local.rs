@@ -6,10 +6,10 @@ use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
 use parquet::basic::Compression;
 use std::fs::{self, File};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use chrono::{DateTime, Utc};
-use tracing::{info, debug, error};
+use tracing::info;
 
 pub struct LocalStorage {
     config: super::LocalStorageConfig,

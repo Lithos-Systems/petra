@@ -274,7 +274,11 @@ impl StorageManager {
             
             StorageStrategy::Parallel => {
                 // Write to both in parallel
-                let local_future = self.local.lock().await.write_batch(entries.clone());
+                let local = Arc::clone(&self.local);
+                let entries_clone = entries.clone();
+                let local_future = async move {
+                    local.lock().await.write_batch(entries_clone).await
+                };
                 
                 let remote_future = async {
                     if let Some(remote) = &self.remote {

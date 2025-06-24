@@ -1,10 +1,9 @@
 // src/storage/remote.rs - Complete the existing file
 use crate::{error::*, value::Value};
 use chrono::{DateTime, Utc};
-use tracing::{info, error, debug};
+use tracing::debug;
 use std::path::Path;
 
-use super::clickhouse::ClickHouseStorage;
 
 #[async_trait::async_trait]
 pub trait RemoteStorage: Send + Sync {
