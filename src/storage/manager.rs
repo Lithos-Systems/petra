@@ -327,7 +327,7 @@ impl StorageManager {
                         // Check if file is complete (not being written)
                         if let Ok(metadata) = entry.metadata() {
                             if let Ok(modified) = metadata.modified() {
-                                if modified.elapsed().unwrap_or_if modified.elapsed().unwrap_or_default() > Duration::from_secs(60) {
+                                if modified.elapsed().unwrap_or_default() > Duration::from_secs(60) {
                                    // File hasn't been modified for 60 seconds, safe to sync
                                    match remote.sync_from_local(&path).await {
                                        Ok(_) => {
