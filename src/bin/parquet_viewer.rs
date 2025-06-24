@@ -1,6 +1,7 @@
 // src/bin/parquet_viewer.rs
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::file::reader::{FileReader, SerializedFileReader};
+use arrow::array::{Array, BooleanArray, Float64Array, Int32Array, StringArray};
 use std::fs::File;
 use std::path::Path;
 use clap::{Parser, Subcommand};
@@ -111,7 +112,12 @@ fn show_info(file: &str) -> Result<(), Box<dyn std::error::Error>> {
     
     println!("Schema:");
     for field in metadata.file_metadata().schema().get_fields() {
-        println!("  {} ({})", field.name(), field.get_basic_info().logical_type());
+        let type_info = if let Some(logical_type) = field.get_basic_info().logical_type() {
+            format!("{:?}", logical_type)
+        } else {
+            format!("{:?}", field.get_basic_info().type_())
+        };
+        println!("  {} ({})", field.name(), type_info);
     }
     
     println!("\nFile Stats:");
@@ -149,11 +155,11 @@ fn show_data(file: &str, max_rows: usize, signal_filter: Option<&str>) -> Result
             }
             
             let timestamp = batch.column(0).as_any()
-                .downcast_ref::<arrow::array::Float64Array>()
+                .downcast_ref::<Float64Array>()
                 .map(|arr| arr.value(row)).unwrap_or(0.0);
             
             let signal = batch.column(1).as_any()
-                .downcast_ref::<arrow::array::StringArray>()
+                .downcast_ref::<StringArray>()
                 .map(|arr| arr.value(row)).unwrap_or("unknown");
             
             // Apply signal filter
@@ -164,22 +170,22 @@ fn show_data(file: &str, max_rows: usize, signal_filter: Option<&str>) -> Result
             }
             
             let value_type = batch.column(2).as_any()
-                .downcast_ref::<arrow::array::StringArray>()
+                .downcast_ref::<StringArray>()
                 .map(|arr| arr.value(row)).unwrap_or("unknown");
             
             let value_str = match value_type {
                 "bool" => {
-                    batch.column(3).as_any().downcast_ref::<arrow::array::BooleanArray>()
+                    batch.column(3).as_any().downcast_ref::<BooleanArray>()
                         .and_then(|arr| if arr.is_null(row) { None } else { Some(arr.value(row).to_string()) })
                         .unwrap_or("null".to_string())
                 }
                 "int" => {
-                    batch.column(4).as_any().downcast_ref::<arrow::array::Int32Array>()
+                    batch.column(4).as_any().downcast_ref::<Int32Array>()
                         .and_then(|arr| if arr.is_null(row) { None } else { Some(arr.value(row).to_string()) })
                         .unwrap_or("null".to_string())
                 }
                 "float" => {
-                    batch.column(5).as_any().downcast_ref::<arrow::array::Float64Array>()
+                    batch.column(5).as_any().downcast_ref::<Float64Array>()
                         .and_then(|arr| if arr.is_null(row) { None } else { Some(format!("{:.3}", arr.value(row))) })
                         .unwrap_or("null".to_string())
                 }
@@ -212,30 +218,30 @@ fn export_csv(file: &str, output: &str) -> Result<(), Box<dyn std::error::Error>
         
         for row in 0..num_rows {
             let timestamp = batch.column(0).as_any()
-                .downcast_ref::<arrow::array::Float64Array>()
+                .downcast_ref::<Float64Array>()
                 .map(|arr| arr.value(row)).unwrap_or(0.0);
             
             let signal = batch.column(1).as_any()
-                .downcast_ref::<arrow::array::StringArray>()
+                .downcast_ref::<StringArray>()
                 .map(|arr| arr.value(row)).unwrap_or("unknown");
             
             let value_type = batch.column(2).as_any()
-                .downcast_ref::<arrow::array::StringArray>()
+                .downcast_ref::<StringArray>()
                 .map(|arr| arr.value(row)).unwrap_or("unknown");
             
             let value_str = match value_type {
                 "bool" => {
-                    batch.column(3).as_any().downcast_ref::<arrow::array::BooleanArray>()
+                    batch.column(3).as_any().downcast_ref::<BooleanArray>()
                         .and_then(|arr| if arr.is_null(row) { None } else { Some(arr.value(row).to_string()) })
                         .unwrap_or("null".to_string())
                 }
                 "int" => {
-                    batch.column(4).as_any().downcast_ref::<arrow::array::Int32Array>()
+                    batch.column(4).as_any().downcast_ref::<Int32Array>()
                         .and_then(|arr| if arr.is_null(row) { None } else { Some(arr.value(row).to_string()) })
                         .unwrap_or("null".to_string())
                 }
                 "float" => {
-                    batch.column(5).as_any().downcast_ref::<arrow::array::Float64Array>()
+                    batch.column(5).as_any().downcast_ref::<Float64Array>()
                         .and_then(|arr| if arr.is_null(row) { None } else { Some(format!("{:.3}", arr.value(row))) })
                         .unwrap_or("null".to_string())
                 }
@@ -335,7 +341,7 @@ fn count_signals(path: &Path) -> Result<std::collections::HashMap<String, usize>
         let num_rows = batch.num_rows();
         
         for row in 0..num_rows {
-            if let Some(signal_array) = batch.column(1).as_any().downcast_ref::<arrow::array::StringArray>() {
+            if let Some(signal_array) = batch.column(1).as_any().downcast_ref::<StringArray>() {
                 let signal = signal_array.value(row);
                 *signal_counts.entry(signal.to_string()).or_insert(0) += 1;
             }
