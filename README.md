@@ -1,6 +1,3 @@
-Looking at your extensive Petra codebase, I'll help you update the README to reflect all the current implementations. Here's a comprehensive updated version:
-
-```markdown
 # PETRA
 
 **Programmable Engine for Telemetry, Runtime, and Automation**
@@ -255,29 +252,29 @@ cargo build --no-default-features
 
 ## Production Features
 
-### 🏭 **Industrial Connectivity**
+### **Industrial Connectivity**
 * **Siemens S7 PLCs**: Direct communication with S7-300/400/1200/1500 series
 * **MQTT Integration**: Bi-directional IoT/SCADA connectivity
 * **Modbus Support**: [Planned] RS485 and TCP Modbus communication
 
-### 📊 **Data Management**
+### **Data Management**
 * **Parquet Logging**: Compressed columnar storage with configurable retention
 * **ClickHouse Integration**: High-performance time-series database backend
 * **S3 Storage**: Cloud archival with automatic lifecycle management
 * **Write-Ahead Log**: RocksDB-based WAL for data durability
 
-### 🚨 **Alerting & Monitoring**
+### **Alerting & Monitoring**
 * **Twilio Integration**: SMS and voice alerts with customizable TwiML
 * **Prometheus Metrics**: Production metrics on port 9090
 * **Real-time Dashboard**: GUI with live signal plots and system status
 
-### 🔧 **Automation Engine**
+### **Automation Engine**
 * **15+ Logic Blocks**: AND, OR, timers, comparisons, PID controllers, data generators
 * **Deterministic Execution**: Configurable scan times (10-10000ms)
 * **Signal Bus**: Thread-safe with concurrent read/write optimization
 * **Hot-swappable Logic**: [Planned] Runtime configuration updates
 
-### 💾 **Enterprise Storage Architecture**
+### **Enterprise Storage Architecture**
 * **Multi-tier Strategy**: Local-first, remote-first, or parallel writes
 * **Automatic Failover**: Seamless switching between storage backends  
 * **Data Compaction**: Background optimization of Parquet files
@@ -359,8 +356,9 @@ Petra is licensed under **AGPL-3.0-or-later**. Key areas for contribution:
 ## License
 
 ```
+Lithos Systems
 PETRA - Programmable Engine for Telemetry, Runtime, and Automation
-Copyright (C) 2024
+Copyright
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -370,15 +368,6 @@ by the Free Software Foundation, either version 3 of the License, or
 
 See `LICENSE` file for full AGPL-3.0 terms.
 ```
-
-This updated README now accurately reflects:
-
-1. **All implemented features**: S7, MQTT, Twilio, History, Advanced Storage
-2. **Complete binary targets**: Including dashboard, storage_test, parquet_viewer
-3. **Feature flags**: Showing what's default vs optional
-4. **Configuration examples**: Comprehensive YAML examples for all features
-5. **Architecture overview**: How all components work together
-6. **Performance characteristics**: Real metrics for production planning
 7. **Use case examples**: Practical applications across industries
 
 The README now properly represents Petra as a production-ready industrial automation platform rather than just a simple PLC simulator.
