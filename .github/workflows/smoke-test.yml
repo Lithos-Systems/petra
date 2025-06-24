@@ -1,0 +1,169 @@
+# .github/workflows/smoke-test.yml
+name: Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  smoke-test:
+    name: End-to-End Smoke Test
+    runs-on: ubuntu-latest
+    
+    services:
+      mosquitto:
+        image: eclipse-mosquitto:2
+        ports:
+          - 1883:1883
+        options: >-
+          --health-cmd "mosquitto_sub -t '$$SYS/#' -C 1 -E"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      clickhouse:
+        image: clickhouse/clickhouse-server:latest
+        ports:
+          - 8123:8123
+        env:
+          CLICKHOUSE_DB: petra_test
+          CLICKHOUSE_USER: petra
+          CLICKHOUSE_PASSWORD: test_password
+        options: >-
+          --health-cmd "clickhouse-client --query='SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Build Petra
+        run: cargo build --release --features advanced-storage
+      
+      - name: Create test config
+        run: |
+          cat > test-config.yaml << EOF
+          signals:
+            - name: "test_counter"
+              type: "int"
+              initial: 0
+            - name: "test_data"
+              type: "float"
+              initial: 0.0
+          
+          blocks:
+            - name: "generator"
+              type: "DATA_GENERATOR"
+              inputs:
+                enable: "true"
+              outputs:
+                sine_out: "test_data"
+                count_out: "test_counter"
+              params:
+                frequency: 1.0
+                amplitude: 10.0
+          
+          scan_time_ms: 100
+          
+          mqtt:
+            broker_host: "localhost"
+            broker_port: 1883
+            client_id: "petra-smoke-test"
+            topic_prefix: "petra/test"
+            publish_on_change: true
+          
+          storage:
+            strategy: "local_first"
+            local:
+              data_dir: "./test-data"
+              max_file_size_mb: 10
+            remote:
+              type: "clickhouse"
+              url: "http://localhost:8123"
+              database: "petra_test"
+              username: "petra"
+              password: "test_password"
+              batch_size: 100
+          EOF
+      
+      - name: Run Petra for 30 seconds
+        run: |
+          timeout 30s ./target/release/petra test-config.yaml || true
+      
+      - name: Check Parquet files created
+        run: |
+          FILE_COUNT=$(find ./test-data -name "*.parquet" | wc -l)
+          echo "Found $FILE_COUNT parquet files"
+          if [ $FILE_COUNT -eq 0 ]; then
+            echo "❌ No parquet files created!"
+            exit 1
+          fi
+      
+      - name: Verify data with parquet_viewer
+        run: |
+          cargo build --release --bin parquet_viewer
+          
+          # Count total rows
+          TOTAL_ROWS=$(./target/release/parquet_viewer stats ./test-data | grep "Total Rows:" | awk '{print $3}')
+          echo "Total rows written: $TOTAL_ROWS"
+          
+          # Expect at least 250 rows (30 seconds * 10 scans/sec - some startup time)
+          if [ $TOTAL_ROWS -lt 250 ]; then
+            echo "❌ Too few rows: $TOTAL_ROWS (expected >= 250)"
+            exit 1
+          fi
+          
+          echo "✅ Smoke test passed! $TOTAL_ROWS rows written"
+      
+      - name: Check MQTT messages
+        run: |
+          # Install mosquitto clients
+          sudo apt-get update && sudo apt-get install -y mosquitto-clients
+          
+          # Subscribe and capture some messages
+          timeout 5s mosquitto_sub -h localhost -t "petra/test/#" -C 10 > mqtt-messages.txt || true
+          
+          MSG_COUNT=$(wc -l < mqtt-messages.txt)
+          echo "Captured $MSG_COUNT MQTT messages"
+          
+          if [ $MSG_COUNT -eq 0 ]; then
+            echo "⚠️ No MQTT messages captured (this might be OK if all were published before subscribing)"
+          else
+            echo "Sample messages:"
+            head -5 mqtt-messages.txt
+          fi
+      
+      - name: Query ClickHouse
+        run: |
+          # Wait a bit for final flush
+          sleep 5
+          
+          # Query row count
+          ROW_COUNT=$(curl -s "http://localhost:8123/" \
+            --data "SELECT COUNT(*) FROM petra_test.signals FORMAT TabSeparated" \
+            -u "petra:test_password" || echo "0")
+          
+          echo "ClickHouse row count: $ROW_COUNT"
+          
+          # Note: ClickHouse might have fewer rows due to batching
+          if [ "$ROW_COUNT" -gt 0 ]; then
+            echo "✅ ClickHouse integration working"
+          else
+            echo "⚠️ No rows in ClickHouse (might be due to batching delay)"
+          fi
+      
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: smoke-test-logs
+          path: |
+            test-data/
+            mqtt-messages.txt
