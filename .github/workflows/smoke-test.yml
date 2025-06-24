@@ -11,7 +11,7 @@ jobs:
   smoke-test:
     name: End-to-End Smoke Test
     runs-on: ubuntu-latest
-    
+
     services:
       mosquitto:
         image: eclipse-mosquitto:2
@@ -39,17 +39,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: dtolnay/rust-toolchain@stable
-      
+
       - uses: Swatinem/rust-cache@v2
-      
+
       - name: Build Petra
         run: cargo build --release --features advanced-storage
-      
+
       - name: Create test config
         run: |
-          cat > test-config.yaml << EOF
+          cat > test-config.yaml << 'EOF'
           signals:
             - name: "test_counter"
               type: "int"
@@ -57,7 +57,7 @@ jobs:
             - name: "test_data"
               type: "float"
               initial: 0.0
-          
+
           blocks:
             - name: "generator"
               type: "DATA_GENERATOR"
@@ -69,16 +69,16 @@ jobs:
               params:
                 frequency: 1.0
                 amplitude: 10.0
-          
+
           scan_time_ms: 100
-          
+
           mqtt:
             broker_host: "localhost"
             broker_port: 1883
             client_id: "petra-smoke-test"
             topic_prefix: "petra/test"
             publish_on_change: true
-          
+
           storage:
             strategy: "local_first"
             local:
@@ -92,73 +92,83 @@ jobs:
               password: "test_password"
               batch_size: 100
           EOF
-      
+
+      # ────────────────────────────────────────────────────────────
+      # NEW: Start MQTT subscriber in the background
+      - name: Start MQTT subscriber
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mosquitto-clients
+          mosquitto_sub -h localhost -t "petra/test/#" > mqtt-messages.txt &
+          echo $! > mqtt.pid
+      # ────────────────────────────────────────────────────────────
+
       - name: Run Petra for 30 seconds
         run: |
           timeout 30s ./target/release/petra test-config.yaml || true
-      
+
+      # ────────────────────────────────────────────────────────────
+      # NEW: Cleanly stop the background subscriber
+      - name: Stop MQTT subscriber
+        run: |
+          if [ -f mqtt.pid ]; then
+            kill "$(cat mqtt.pid)" || true
+          fi
+      # ────────────────────────────────────────────────────────────
+
       - name: Check Parquet files created
         run: |
           FILE_COUNT=$(find ./test-data -name "*.parquet" | wc -l)
           echo "Found $FILE_COUNT parquet files"
-          if [ $FILE_COUNT -eq 0 ]; then
-            echo "❌ No parquet files created!"
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "❌ No Parquet files created!"
             exit 1
           fi
-      
+
       - name: Verify data with parquet_viewer
         run: |
           cargo build --release --bin parquet_viewer
-          
-          # Count total rows
-          TOTAL_ROWS=$(./target/release/parquet_viewer stats ./test-data | grep "Total Rows:" | awk '{print $3}')
+          TOTAL_ROWS=$(./target/release/parquet_viewer stats ./test-data | \
+            grep "Total Rows:" | awk '{print $3}')
           echo "Total rows written: $TOTAL_ROWS"
-          
-          # Expect at least 250 rows (30 seconds * 10 scans/sec - some startup time)
-          if [ $TOTAL_ROWS -lt 250 ]; then
-            echo "❌ Too few rows: $TOTAL_ROWS (expected >= 250)"
+          if [ "$TOTAL_ROWS" -lt 250 ]; then
+            echo "❌ Too few rows: $TOTAL_ROWS (expected ≥ 250)"
             exit 1
           fi
-          
           echo "✅ Smoke test passed! $TOTAL_ROWS rows written"
-      
-      - name: Check MQTT messages
+
+      # ────────────────────────────────────────────────────────────
+      # NEW: Examine messages captured by the subscriber
+      - name: Analyze MQTT messages
         run: |
-          # Install mosquitto clients
-          sudo apt-get update && sudo apt-get install -y mosquitto-clients
-          
-          # Subscribe and capture some messages
-          timeout 5s mosquitto_sub -h localhost -t "petra/test/#" -C 10 > mqtt-messages.txt || true
-          
-          MSG_COUNT=$(wc -l < mqtt-messages.txt)
-          echo "Captured $MSG_COUNT MQTT messages"
-          
-          if [ $MSG_COUNT -eq 0 ]; then
-            echo "⚠️ No MQTT messages captured (this might be OK if all were published before subscribing)"
+          if [ -f mqtt-messages.txt ]; then
+            MSG_COUNT=$(wc -l < mqtt-messages.txt)
+            echo "Captured $MSG_COUNT MQTT messages"
+            if [ "$MSG_COUNT" -eq 0 ]; then
+              echo "⚠️ No MQTT messages captured"
+            else
+              echo "Sample messages:"
+              head -5 mqtt-messages.txt
+            fi
           else
-            echo "Sample messages:"
-            head -5 mqtt-messages.txt
+            echo "❌ mqtt-messages.txt not found"
+            exit 1
           fi
-      
+      # ────────────────────────────────────────────────────────────
+
       - name: Query ClickHouse
         run: |
-          # Wait a bit for final flush
-          sleep 5
-          
-          # Query row count
+          sleep 5  # allow final flush
           ROW_COUNT=$(curl -s "http://localhost:8123/" \
             --data "SELECT COUNT(*) FROM petra_test.signals FORMAT TabSeparated" \
             -u "petra:test_password" || echo "0")
-          
           echo "ClickHouse row count: $ROW_COUNT"
-          
-          # Note: ClickHouse might have fewer rows due to batching
           if [ "$ROW_COUNT" -gt 0 ]; then
             echo "✅ ClickHouse integration working"
           else
-            echo "⚠️ No rows in ClickHouse (might be due to batching delay)"
+            echo "⚠️ No rows in ClickHouse (batching delay?)"
           fi
-      
+
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v3
