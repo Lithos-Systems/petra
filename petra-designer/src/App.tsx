@@ -2,7 +2,6 @@ import { ReactFlow, Background, Controls, MiniMap, Panel } from '@xyflow/react'
 import { Toaster } from 'react-hot-toast'
 import { useFlowStore } from './store/flowStore'
 import { nodeTypes } from './nodes'
-import { edgeTypes } from './edges'
 import Sidebar from './components/Sidebar'
 import PropertiesPanel from './components/PropertiesPanel'
 import YamlPreview from './components/YamlPreview'
@@ -34,7 +33,6 @@ function App() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
             fitView
             className="bg-gray-50"
           >
