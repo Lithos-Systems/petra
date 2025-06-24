@@ -25,3 +25,4 @@ petra-designer/node_modules/
 petra-designer/dist/
 petra-designer/.env
 petra-designer/.env.local
+petra-designer/package-lock.json
