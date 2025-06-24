@@ -67,6 +67,9 @@ egui_plot = "0.29"
 
 csv = "1.3"
 
+# Clickhouse
+clickhouse = { version = "0.12", features = ["lz4"], optional = true }
+
 # Update the [[bin]] section to include new binaries
 [[bin]]
 name = "storage_test"
