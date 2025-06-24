@@ -315,16 +315,23 @@ impl TwilioConnector {
             .form(&params)
             .send()
             .await
-            .map_err(|e| PlcError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("HTTP request failed: {}", e)
-            )))?;
+            .map_err(|e| {
+                PlcError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("HTTP request failed: {}", e),
+                ))
+            })?;
         
         let status = response.status();
-        let body = response.text().await.map_err(|e| PlcError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Failed to read response: {}", e)
-        )))?;
+        let body = response
+            .text()
+            .await
+            .map_err(|e| {
+                PlcError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to read response: {}", e),
+                ))
+            })?;
         
         if status.is_success() {
             match serde_json::from_str::<MessageResponse>(&body) {
@@ -387,16 +394,23 @@ impl TwilioConnector {
             .form(&params)
             .send()
             .await
-            .map_err(|e| PlcError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("HTTP request failed: {}", e)
-            )))?;
+            .map_err(|e| {
+                PlcError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("HTTP request failed: {}", e),
+                ))
+            })?;
         
         let status = response.status();
-        let body = response.text().await.map_err(|e| PlcError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Failed to read response: {}", e)
-        )))?;
+        let body = response
+            .text()
+            .await
+            .map_err(|e| {
+                PlcError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to read response: {}", e),
+                ))
+            })?;
         
         if status.is_success() {
             match serde_json::from_str::<CallResponse>(&body) {

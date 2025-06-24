@@ -158,10 +158,12 @@ async fn send_sms_async(
         .form(&params)
         .send()
         .await
-        .map_err(|e| PlcError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("HTTP request failed: {}", e)
-        )))?;
+        .map_err(|e| {
+            PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("HTTP request failed: {}", e),
+            ))
+        })?;
     
     if response.status().is_success() {
         Ok(())
@@ -202,10 +204,12 @@ async fn make_call_async(
         .form(&params)
         .send()
         .await
-        .map_err(|e| PlcError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("HTTP request failed: {}", e)
-        )))?;
+        .map_err(|e| {
+            PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("HTTP request failed: {}", e),
+            ))
+        })?;
     
     if response.status().is_success() {
         Ok(())
