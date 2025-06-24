@@ -65,6 +65,8 @@ eframe = "0.29"
 egui = "0.29"
 egui_plot = "0.29"
 
+csv = "1.3"
+
 # Update the [[bin]] section to include new binaries
 [[bin]]
 name = "storage_test"
@@ -90,6 +92,10 @@ path = "src/bin/simple_s7_test.rs"
 name = "twilio_test"
 path = "src/bin/twilio_test.rs"
 
+[[bin]]
+name = "parquet_viewer"
+path = "src/bin/parquet_viewer.rs"
+
 [profile.release]
 lto = true
 codegen-units = 1
@@ -100,3 +106,5 @@ default = ["s7-support", "history"]
 s7-support = []
 history = []
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
+
+
