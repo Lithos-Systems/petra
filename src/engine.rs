@@ -1,10 +1,12 @@
 use crate::{error::*, signal::SignalBus, block::*, config::Config, value::Value};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Instant;
-use tokio::time::{interval, Duration};
-use tokio::sync::mpsc;
+use std::time::{Instant, Duration};
+use std::collections::VecDeque;
+use tokio::time::interval;
+use tokio::sync::{mpsc, Mutex};
 use tracing::{info, warn, debug};
+use metrics::{gauge, counter, histogram};
 
 pub struct Engine {
     bus: SignalBus,
@@ -15,6 +17,8 @@ pub struct Engine {
     error_count: Arc<AtomicU64>,
     start_time: Instant,
     signal_change_tx: Option<mpsc::Sender<(String, Value)>>,
+    scan_jitter_buffer: Arc<Mutex<VecDeque<Duration>>>,
+    target_scan_time: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -67,12 +71,14 @@ impl Engine {
         Ok(Self {
             bus,
             blocks,
-            config,
+            config: config.clone(),
             running: Arc::new(AtomicBool::new(false)),
             scan_count: Arc::new(AtomicU64::new(0)),
             error_count: Arc::new(AtomicU64::new(0)),
             start_time: Instant::now(),
             signal_change_tx: None,
+            scan_jitter_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
+            target_scan_time: Duration::from_millis(config.scan_time_ms),
         })
     }
 
@@ -91,11 +97,50 @@ impl Engine {
         let mut ticker = interval(Duration::from_millis(self.config.scan_time_ms));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+        let mut last_scan_start = Instant::now();
+
         while self.running.load(Ordering::Relaxed) {
             ticker.tick().await;
 
             let scan_start = Instant::now();
+            let actual_interval = scan_start.duration_since(last_scan_start);
+            last_scan_start = scan_start;
+            
             let scan_num = self.scan_count.fetch_add(1, Ordering::Relaxed) + 1;
+
+            // Calculate jitter (deviation from target scan time)
+            let jitter = if actual_interval > self.target_scan_time {
+                actual_interval - self.target_scan_time
+            } else {
+                self.target_scan_time - actual_interval
+            };
+
+            // Update jitter metrics
+            {
+                let mut buffer = self.scan_jitter_buffer.lock().await;
+                if buffer.len() >= 100 {
+                    buffer.pop_front();
+                }
+                buffer.push_back(jitter);
+
+                // Calculate average and max jitter
+                let avg_jitter = buffer.iter().sum::<Duration>() / buffer.len() as u32;
+                let max_jitter = buffer.iter().max().copied().unwrap_or(Duration::ZERO);
+                
+                gauge!("petra_scan_jitter_avg_us").set(avg_jitter.as_micros() as f64);
+                gauge!("petra_scan_jitter_max_us").set(max_jitter.as_micros() as f64);
+                gauge!("petra_scan_variance_us").set(jitter.as_micros() as f64);
+
+                // Warn if jitter exceeds 5x scan time
+                if jitter > self.target_scan_time * 5 {
+                    warn!(
+                        "Excessive scan jitter detected: {:?} ({}x scan time)",
+                        jitter,
+                        jitter.as_millis() / self.target_scan_time.as_millis()
+                    );
+                    counter!("petra_scan_jitter_warnings").increment(1);
+                }
+            }
 
             // Take snapshot before processing
             let pre_scan_signals = self.bus.snapshot();
@@ -123,11 +168,16 @@ impl Engine {
 
             let scan_duration = scan_start.elapsed();
 
+            // Update scan duration metrics
+            histogram!("petra_scan_duration_seconds").record(scan_duration.as_secs_f64());
+            gauge!("petra_scan_duration_ms").set(scan_duration.as_millis() as f64);
+
             if scan_duration.as_millis() > self.config.scan_time_ms as u128 {
                 warn!(
                     "Scan {} overrun: {:?} > {}ms",
                     scan_num, scan_duration, self.config.scan_time_ms
                 );
+                counter!("petra_scan_overruns_total").increment(1);
             }
 
             if scan_num % 1000 == 0 {
