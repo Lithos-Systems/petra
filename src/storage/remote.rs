@@ -4,8 +4,7 @@ use chrono::{DateTime, Utc};
 use tracing::{info, error, debug};
 use std::path::Path;
 
-mod clickhouse;
-pub use clickhouse::ClickHouseStorage;
+use super::clickhouse::ClickHouseStorage;
 
 #[async_trait::async_trait]
 pub trait RemoteStorage: Send + Sync {

@@ -3,6 +3,7 @@ pub mod local;
 pub mod remote;
 pub mod wal;
 pub mod manager;
+pub mod clickhouse;
 
 use crate::{error::*, value::Value};
 use serde::{Deserialize, Serialize};
