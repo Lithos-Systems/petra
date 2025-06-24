@@ -1,0 +1,86 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: petra-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    restart: unless-stopped
+
+  # ClickHouse for time-series storage
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: petra-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./clickhouse/data:/var/lib/clickhouse
+      - ./clickhouse/config:/etc/clickhouse-server/config.d
+    environment:
+      CLICKHOUSE_USER: petra
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-petra_secure_password}
+      CLICKHOUSE_DB: petra_timeseries
+    restart: unless-stopped
+
+  # Petra PLC Runtime
+  petra:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: petra-runtime
+    depends_on:
+      - mosquitto
+      - clickhouse
+    volumes:
+      - ./configs:/app/configs
+      - ./data:/app/data
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_USER: petra
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-petra_secure_password}
+      RUST_LOG: petra=info
+    command: /app/petra /app/configs/docker-example.yaml
+    restart: unless-stopped
+
+  # Optional: Petra Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: petra-dashboard
+    depends_on:
+      - petra
+    ports:
+      - "8080:8080"
+    environment:
+      PETRA_API_URL: http://petra:9090
+    restart: unless-stopped
+
+  # Optional: Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: petra-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
