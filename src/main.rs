@@ -6,6 +6,9 @@ use tracing_subscriber;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use std::net::SocketAddr;
 
+#[cfg(feature = "advanced-storage")]
+use petra::storage::{StorageConfig, StorageManager};
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -14,6 +17,25 @@ async fn main() -> Result<()> {
                 .add_directive("petra=info".parse().unwrap()),
         )
         .init();
+    #[cfg(feature = "advanced-storage")]
+    let storage_handle = if let Some(storage_config) = config.storage {
+        info!("Storage configuration found, starting storage manager");
+        
+        let (storage_tx, storage_rx) = mpsc::channel(10000);
+        engine.set_signal_change_channel(storage_tx.clone());
+        
+        let mut storage_manager = StorageManager::new(storage_config, bus.clone()).await?;
+        storage_manager.set_signal_change_channel(storage_rx);
+        
+        Some(tokio::task::spawn_local(async move {
+            if let Err(e) = storage_manager.run().await {
+                error!("Storage manager error: {}", e);
+            }
+        }))
+    } else {
+        info!("No advanced storage configuration found");
+        None
+    };
 
     // Initialize Prometheus metrics endpoint
     let metrics_addr: SocketAddr = "0.0.0.0:9090".parse().unwrap();
