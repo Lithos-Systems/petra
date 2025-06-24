@@ -10,6 +10,9 @@ pub mod mqtt;
 pub mod twilio;
 pub mod twilio_block;
 
+#[cfg(feature = "json-schema")]
+pub mod config_schema;
+
 #[cfg(feature = "history")]
 pub mod history;
 
