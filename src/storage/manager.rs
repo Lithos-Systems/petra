@@ -327,4 +327,256 @@ impl StorageManager {
                         // Check if file is complete (not being written)
                         if let Ok(metadata) = entry.metadata() {
                             if let Ok(modified) = metadata.modified() {
-                                if modified.elapsed().unwrap_or_
+                                if modified.elapsed().unwrap_or_if modified.elapsed().unwrap_or_default() > Duration::from_secs(60) {
+                                   // File hasn't been modified for 60 seconds, safe to sync
+                                   match remote.sync_from_local(&path).await {
+                                       Ok(_) => {
+                                           synced_files.push(path.clone());
+                                           debug!("Synced {} to remote", path.display());
+                                       }
+                                       Err(e) => {
+                                           warn!("Failed to sync {} to remote: {}", path.display(), e);
+                                           // Add to retry queue if not already there
+                                           let mut retry_queue = self.retry_queue.write();
+                                           if retry_queue.len() < MAX_RETRY_QUEUE_SIZE && !retry_queue.contains(&path) {
+                                               retry_queue.push_back(path);
+                                           }
+                                       }
+                                   }
+                               }
+                           }
+                       }
+                   }
+               }
+           }
+           Err(e) => error!("Failed to read data directory: {}", e),
+       }
+       
+       // Archive successfully synced files
+       for path in synced_files {
+           if let Err(e) = self.archive_synced_file(&path).await {
+               error!("Failed to archive {}: {}", path.display(), e);
+           }
+       }
+       
+       self.metrics.retry_queue_size.store(
+           self.retry_queue.read().len() as u64,
+           std::sync::atomic::Ordering::Relaxed
+       );
+   }
+
+   async fn process_retry_queue(&self) {
+       let remote = match &self.remote {
+           Some(r) => r,
+           None => return,
+       };
+       
+       let mut successfully_synced = Vec::new();
+       let queue_size = self.retry_queue.read().len();
+       
+       if queue_size > 0 {
+           info!("Processing {} files in retry queue", queue_size);
+       }
+       
+       for _ in 0..queue_size.min(10) {  // Process max 10 files per cycle
+           let path = match self.retry_queue.write().pop_front() {
+               Some(p) => p,
+               None => break,
+           };
+           
+           if !path.exists() {
+               continue;
+           }
+           
+           match remote.sync_from_local(&path).await {
+               Ok(_) => {
+                   successfully_synced.push(path.clone());
+                   info!("Successfully synced {} from retry queue", path.display());
+               }
+               Err(e) => {
+                   warn!("Retry sync failed for {}: {}", path.display(), e);
+                   // Re-add to end of queue
+                   self.retry_queue.write().push_back(path);
+               }
+           }
+       }
+       
+       // Archive successfully synced files
+       for path in successfully_synced {
+           if let Err(e) = self.archive_synced_file(&path).await {
+               error!("Failed to archive {}: {}", path.display(), e);
+           }
+       }
+   }
+
+   async fn archive_synced_file(&self, path: &PathBuf) -> Result<()> {
+       let archive_dir = self.config.local.data_dir.join("archive");
+       std::fs::create_dir_all(&archive_dir)?;
+       
+       let file_name = path.file_name()
+           .ok_or_else(|| PlcError::Io(std::io::Error::new(
+               std::io::ErrorKind::InvalidInput,
+               "Invalid file path"
+           )))?;
+       
+       let archive_path = archive_dir.join(file_name);
+       std::fs::rename(path, &archive_path)?;
+       
+       debug!("Archived {} to {}", path.display(), archive_path.display());
+       Ok(())
+   }
+
+   async fn compact_local_storage(&self) -> Result<()> {
+       let cutoff_hours = self.config.local.compact_after_hours as i64;
+       let cutoff = Utc::now() - chrono::Duration::hours(cutoff_hours);
+       
+       info!("Starting local storage compaction for files older than {} hours", cutoff_hours);
+       
+       // TODO: Implement Parquet file compaction
+       // This would merge small files into larger ones for better query performance
+       
+       // Clean up old files if retention is set
+       if self.config.local.retention_days > 0 {
+           self.cleanup_old_files().await?;
+       }
+       
+       // Clean up old WAL files
+       if self.config.wal.retention_hours > 0 {
+           self.cleanup_old_wal_files().await?;
+       }
+       
+       Ok(())
+   }
+
+   async fn cleanup_old_files(&self) -> Result<()> {
+       let retention_days = self.config.local.retention_days as i64;
+       let cutoff = Utc::now() - chrono::Duration::days(retention_days);
+       
+       let archive_dir = self.config.local.data_dir.join("archive");
+       if !archive_dir.exists() {
+           return Ok(());
+       }
+       
+       let mut removed_count = 0;
+       let entries = std::fs::read_dir(&archive_dir)?;
+       
+       for entry in entries.flatten() {
+           let path = entry.path();
+           if path.extension().and_then(|s| s.to_str()) == Some("parquet") {
+               if let Ok(metadata) = entry.metadata() {
+                   if let Ok(modified) = metadata.modified() {
+                       let modified_time: DateTime<Utc> = modified.into();
+                       if modified_time < cutoff {
+                           if let Err(e) = std::fs::remove_file(&path) {
+                               warn!("Failed to remove old file {:?}: {}", path, e);
+                           } else {
+                               removed_count += 1;
+                           }
+                       }
+                   }
+               }
+           }
+       }
+       
+       if removed_count > 0 {
+           info!("Cleaned up {} old archived files", removed_count);
+       }
+       
+       Ok(())
+   }
+
+   async fn cleanup_old_wal_files(&self) -> Result<()> {
+       let retention_hours = self.config.wal.retention_hours as i64;
+       let cutoff = Utc::now() - chrono::Duration::hours(retention_hours);
+       
+       // TODO: Implement WAL cleanup based on retention
+       debug!("WAL cleanup not yet implemented");
+       
+       Ok(())
+   }
+
+   async fn recover_from_wal(&mut self) -> Result<()> {
+       let entries = self.wal.read_range(0, u64::MAX)?;
+       
+       if entries.is_empty() {
+           info!("No WAL entries to recover");
+           return Ok(());
+       }
+       
+       info!("Recovering {} entries from WAL", entries.len());
+       
+       let mut batch = Vec::new();
+       for entry in entries {
+           let ts = DateTime::from_timestamp_nanos(entry.timestamp);
+           batch.push((ts, entry.signal, entry.value));
+           
+           if batch.len() >= 10000 {
+               self.local.lock().await.write_batch(batch.clone()).await?;
+               batch.clear();
+           }
+       }
+       
+       if !batch.is_empty() {
+           self.local.lock().await.write_batch(batch).await?;
+       }
+       
+       let last_seq = self.wal.recover_sequence();
+       *self.last_wal_seq.write() = last_seq;
+       self.wal.checkpoint(last_seq)?;
+       
+       info!("WAL recovery complete");
+       Ok(())
+   }
+
+   pub async fn stop(&self) {
+       *self.running.write() = false;
+       
+       // Final flush
+       if let Err(e) = self.flush_buffer().await {
+           error!("Failed to flush during shutdown: {}", e);
+       }
+       
+       // Log final metrics
+       info!(
+           "Storage manager stopped. Total writes: {}, Failed writes: {}, Retry queue: {}",
+           self.metrics.total_writes.load(std::sync::atomic::Ordering::Relaxed),
+           self.metrics.failed_writes.load(std::sync::atomic::Ordering::Relaxed),
+           self.metrics.retry_queue_size.load(std::sync::atomic::Ordering::Relaxed)
+       );
+   }
+}
+
+// Public API for querying stored data
+impl StorageManager {
+   pub async fn query_signal_range(
+       &self,
+       signal: &str,
+       start: DateTime<Utc>,
+       end: DateTime<Utc>,
+   ) -> Result<Vec<(DateTime<Utc>, Value)>> {
+       // For now, just return empty - would need to implement Parquet reading
+       warn!("Query functionality not yet implemented");
+       Ok(Vec::new())
+   }
+   
+   pub async fn get_signal_stats(
+       &self,
+       signal: &str,
+       start: DateTime<Utc>,
+       end: DateTime<Utc>,
+   ) -> Result<SignalStats> {
+       // Would query from ClickHouse aggregation views
+       warn!("Stats functionality not yet implemented");
+       Ok(SignalStats::default())
+   }
+}
+
+#[derive(Debug, Default)]
+pub struct SignalStats {
+   pub count: u64,
+   pub min: Option<f64>,
+   pub max: Option<f64>,
+   pub avg: Option<f64>,
+   pub first: Option<Value>,
+   pub last: Option<Value>,
+}
