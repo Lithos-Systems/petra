@@ -7,7 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Config {
     pub signals: Vec<SignalConfig>,
     pub blocks: Vec<BlockConfig>,
@@ -27,6 +32,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct SignalConfig {
     pub name: String,
     #[serde(rename = "type")]
@@ -36,6 +42,7 @@ pub struct SignalConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct BlockConfig {
     pub name: String,
     #[serde(rename = "type")]
