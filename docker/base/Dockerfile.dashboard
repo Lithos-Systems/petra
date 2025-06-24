@@ -1,0 +1,28 @@
+# Dockerfile.dashboard
+FROM rust:1.82 as builder
+
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+RUN cargo build --release --bin petra_dashboard
+
+# Runtime image  
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    libxcb-render0 \
+    libxcb-shape0 \
+    libxcb-xfixes0 \
+    libxkbcommon0 \
+    libgtk-3-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/petra_dashboard /app/petra_dashboard
+
+WORKDIR /app
+EXPOSE 8080
+
+CMD ["/app/petra_dashboard"]
