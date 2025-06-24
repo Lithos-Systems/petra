@@ -20,6 +20,9 @@ pub struct WalEntry {
 }
 
 impl WriteAheadLog {
+    pub fn recover_sequence(&self) -> u64 {
+        *self.sequence.lock()
+    }
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut opts = Options::default();
         opts.create_if_missing(true);
