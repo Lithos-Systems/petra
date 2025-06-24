@@ -114,8 +114,10 @@ fn show_info(file: &str) -> Result<(), Box<dyn std::error::Error>> {
     for field in metadata.file_metadata().schema().get_fields() {
         let type_info = if let Some(logical_type) = field.get_basic_info().logical_type() {
             format!("{:?}", logical_type)
+        } else if field.is_primitive() {
+            format!("{:?}", field.get_physical_type())
         } else {
-            format!("{:?}", field.get_basic_info().type_())
+            String::from("GROUP")
         };
         println!("  {} ({})", field.name(), type_info);
     }
