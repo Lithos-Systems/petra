@@ -7,80 +7,15 @@ import {
   ReactFlowProvider
 } from '@xyflow/react'
 import { Toaster } from 'react-hot-toast'
-import { useFlowStore } from './store/flowStore.js'  // Note the .js extension
-import { nodeTypes } from './nodes/index.js'
-import Sidebar from './components/Sidebar.js'
-import PropertiesPanel from './components/PropertiesPanel.js'
-import YamlPreview from './components/YamlPreview.js'
-import Toolbar from './components/Toolbar.js'
-import { ErrorBoundary } from './components/ErrorBoundary.js'
-
-// Wrap imports in try-catch to see which one fails
-let useFlowStore: any;
-let nodeTypes: any;
-let Sidebar: any;
-let PropertiesPanel: any;
-let YamlPreview: any;
-let Toolbar: any;
-let ErrorBoundary: any;
-
-try {
-  const storeModule = require('./store/flowStore');
-  useFlowStore = storeModule.useFlowStore;
-  console.log('✓ flowStore loaded');
-} catch (e) {
-  console.error('Failed to load flowStore:', e);
-}
-
-try {
-  const nodesModule = require('./nodes');
-  nodeTypes = nodesModule.nodeTypes;
-  console.log('✓ nodeTypes loaded');
-} catch (e) {
-  console.error('Failed to load nodeTypes:', e);
-}
-
-try {
-  Sidebar = require('./components/Sidebar').default;
-  console.log('✓ Sidebar loaded');
-} catch (e) {
-  console.error('Failed to load Sidebar:', e);
-}
-
-try {
-  PropertiesPanel = require('./components/PropertiesPanel').default;
-  console.log('✓ PropertiesPanel loaded');
-} catch (e) {
-  console.error('Failed to load PropertiesPanel:', e);
-}
-
-try {
-  YamlPreview = require('./components/YamlPreview').default;
-  console.log('✓ YamlPreview loaded');
-} catch (e) {
-  console.error('Failed to load YamlPreview:', e);
-}
-
-try {
-  Toolbar = require('./components/Toolbar').default;
-  console.log('✓ Toolbar loaded');
-} catch (e) {
-  console.error('Failed to load Toolbar:', e);
-}
-
-try {
-  ErrorBoundary = require('./components/ErrorBoundary').ErrorBoundary;
-  console.log('✓ ErrorBoundary loaded');
-} catch (e) {
-  console.error('Failed to load ErrorBoundary:', e);
-}
+import { useFlowStore } from './store/flowStore'
+import { nodeTypes } from './nodes'
+import Sidebar from './components/Sidebar'
+import PropertiesPanel from './components/PropertiesPanel'
+import YamlPreview from './components/YamlPreview'
+import Toolbar from './components/Toolbar'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 function Flow() {
-  // If useFlowStore didn't load, show error
-  if (!useFlowStore) {
-    return <div>Error: Could not load flow store</div>;
-  }
-
   const {
     nodes,
     edges,
@@ -129,10 +64,10 @@ function Flow() {
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <Toaster position="top-right" />
-      {Toolbar && <Toolbar />}
+      <Toolbar />
       
       <div className="flex-1 flex">
-        {Sidebar && <Sidebar />}
+        <Sidebar />
         
         <div className="flex-1 relative">
           <ReactFlow
@@ -144,7 +79,7 @@ function Flow() {
             onNodeClick={onNodeClick}
             onDrop={onDrop}
             onDragOver={onDragOver}
-            nodeTypes={nodeTypes || {}}
+            nodeTypes={nodeTypes}
             fitView
             className="bg-gray-50"
           >
@@ -155,8 +90,8 @@ function Flow() {
         </div>
         
         <div className="flex">
-          {selectedNode && PropertiesPanel && <PropertiesPanel />}
-          {YamlPreview && <YamlPreview />}
+          {selectedNode && <PropertiesPanel />}
+          <YamlPreview />
         </div>
       </div>
     </div>
@@ -164,20 +99,12 @@ function Flow() {
 }
 
 function App() {
-  if (ErrorBoundary) {
-    return (
-      <ErrorBoundary>
-        <ReactFlowProvider>
-          <Flow />
-        </ReactFlowProvider>
-      </ErrorBoundary>
-    )
-  }
-
   return (
-    <ReactFlowProvider>
-      <Flow />
-    </ReactFlowProvider>
+    <ErrorBoundary>
+      <ReactFlowProvider>
+        <Flow />
+      </ReactFlowProvider>
+    </ErrorBoundary>
   )
 }
 
