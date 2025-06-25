@@ -1,6 +1,15 @@
 import { Edge } from '@xyflow/react'
 import * as yaml from 'yaml'
 import type { PetraNode, BlockNodeData } from '@/types/nodes'
+/* ---- TWILIO nodes ---- */
+const twilioNodes = nodes.filter(
+  (n): n is Extract<PetraNode, { type: 'twilio' }> => n.type === 'twilio',
+)
+
+/* ---- S7 nodes ---- */
+const s7 = nodes.filter(
+  (n): n is Extract<PetraNode, { type: 's7' }> => n.type === 's7',
+)
 
 export function generateYaml(nodes: PetraNode[], edges: Edge[]): string {
   const config: any = {
