@@ -8,9 +8,13 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    extensions: ['.tsx', '.ts', '.jsx', '.js'],  // Add this
   },
   server: {
     port: 3000,
     open: true,
+  },
+  optimizeDeps: {
+    include: ['@xyflow/react'],  // Add this
   },
 })
