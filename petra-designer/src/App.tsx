@@ -95,7 +95,7 @@ function Flow() {
         <Sidebar />
 
         <div className="flex-1 relative">
-          <ReactFlow<PetraNode, PetraEdge>       {/* ✅ typed generics */}
+          <RF<PetraNode, PetraEdge>       {/* ✅ typed generics */}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
