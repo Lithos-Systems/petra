@@ -49,7 +49,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   onConnect: (connection: Connection) => {
     const { nodes, edges } = get()
 
-    // Validate connection
     const validation = validateConnection(connection, nodes, edges)
     if (!validation.valid) {
       toast.error(validation.error || 'Invalid connection')
