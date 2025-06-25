@@ -4,12 +4,16 @@ import {
   Background, 
   Controls, 
   MiniMap, 
-  ReactFlowProvider,
-  Node,
-  Edge,
-  Connection
+  ReactFlowProvider
 } from '@xyflow/react'
 import { Toaster } from 'react-hot-toast'
+import { useFlowStore } from './store/flowStore.js'  // Note the .js extension
+import { nodeTypes } from './nodes/index.js'
+import Sidebar from './components/Sidebar.js'
+import PropertiesPanel from './components/PropertiesPanel.js'
+import YamlPreview from './components/YamlPreview.js'
+import Toolbar from './components/Toolbar.js'
+import { ErrorBoundary } from './components/ErrorBoundary.js'
 
 // Wrap imports in try-catch to see which one fails
 let useFlowStore: any;
