@@ -6,8 +6,8 @@ import {
   Controls,
   MiniMap,
   ReactFlowProvider,
-  Edge,
-  type ReactFlowProps,
+  type Node,
+  type Edge,
 } from '@xyflow/react'
 import { Toaster } from 'react-hot-toast'
 
@@ -19,19 +19,6 @@ import YamlPreview from './components/YamlPreview'
 import Toolbar from './components/Toolbar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
-import type { PetraNode } from '@/types/nodes'
-
-/* ------------------------------------------------------------------ */
-/* Typed wrapper so JSX can infer generics without <ReactFlow<…>>      */
-/* ------------------------------------------------------------------ */
-type PetraEdge = Edge
-const RF = ReactFlow as unknown as (
-  props: ReactFlowProps<PetraNode, PetraEdge>,
-) => JSX.Element
-
-/* ------------------------------------------------------------------ */
-/* Flow component                                                     */
-/* ------------------------------------------------------------------ */
 function Flow() {
   const {
     nodes,
@@ -44,12 +31,10 @@ function Flow() {
     setSelectedNode,
   } = useFlowStore()
 
-  /* Debug log on initial mount / updates */
   useEffect(() => {
     console.log('ReactFlow mounted. nodes:', nodes.length, 'edges:', edges.length)
   }, [nodes, edges])
 
-  /* Drag-and-drop handlers */
   const onDragOver = useCallback((e: DragEvent) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
@@ -70,9 +55,8 @@ function Flow() {
     [addNode],
   )
 
-  /* Node click selects the node in the store */
   const onNodeClick = useCallback(
-    (_evt: MouseEvent, node: PetraNode) => setSelectedNode(node),
+    (_evt: MouseEvent, node: Node) => setSelectedNode(node),
     [setSelectedNode],
   )
 
@@ -85,7 +69,7 @@ function Flow() {
         <Sidebar />
 
         <div className="flex-1 relative">
-          <RF
+          <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
@@ -105,7 +89,7 @@ function Flow() {
             />
             <Controls />
             <MiniMap className="bg-white" />
-          </RF>
+          </ReactFlow>
         </div>
 
         <div className="flex">
@@ -117,9 +101,6 @@ function Flow() {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* App root with providers & error boundary                           */
-/* ------------------------------------------------------------------ */
 function App() {
   return (
     <ErrorBoundary>
