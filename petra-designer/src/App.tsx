@@ -28,15 +28,16 @@ function Flow() {
   const onDrop = useCallback(
     (event: DragEvent) => {
       event.preventDefault()
-
+  
       const type = event.dataTransfer.getData('application/reactflow')
       if (!type) return
-
+  
+      const reactFlowBounds = event.currentTarget.getBoundingClientRect()
       const position = {
-        x: event.clientX - event.currentTarget.getBoundingClientRect().left,
-        y: event.clientY - event.currentTarget.getBoundingClientRect().top,
+        x: event.clientX - reactFlowBounds.left - 100, // Center the node
+        y: event.clientY - reactFlowBounds.top - 20,
       }
-
+  
       addNode(type, position)
     },
     [addNode]
