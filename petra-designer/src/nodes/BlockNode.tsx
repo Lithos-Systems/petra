@@ -1,9 +1,10 @@
-import { memo, FC } from 'react'
+import { memo } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import { getBlockIcon } from '@/utils/blockIcons'
 import { getTypeColor } from '@/utils/colors'
+import type { BlockNodeData } from '@/types/nodes'
 
-const BlockNode: FC<NodeProps> = ({ data, selected }) => {
+function BlockNode({ data, selected }: NodeProps<BlockNodeData>) {
   const Icon = getBlockIcon(data.blockType)
 
   return (
@@ -23,32 +24,24 @@ const BlockNode: FC<NodeProps> = ({ data, selected }) => {
         </div>
       </div>
 
-      {/* Input handles */}
-      {data.inputs?.map((input: any, index: number) => (
+      {data.inputs.map((i, idx) => (
         <Handle
-          key={`input-${index}`}
+          key={i.name}
           type="target"
           position={Position.Left}
-          id={input.name}
-          style={{
-            top: `${30 + index * 20}px`,
-            background: getTypeColor(input.type),
-          }}
+          id={i.name}
+          style={{ top: 30 + idx * 20, background: getTypeColor(i.type) }}
           className="w-3 h-3"
         />
       ))}
 
-      {/* Output handles */}
-      {data.outputs?.map((output: any, index: number) => (
+      {data.outputs.map((o, idx) => (
         <Handle
-          key={`output-${index}`}
+          key={o.name}
           type="source"
           position={Position.Right}
-          id={output.name}
-          style={{
-            top: `${30 + index * 20}px`,
-            background: getTypeColor(output.type),
-          }}
+          id={o.name}
+          style={{ top: 30 + idx * 20, background: getTypeColor(o.type) }}
           className="w-3 h-3"
         />
       ))}
