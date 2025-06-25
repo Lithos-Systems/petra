@@ -1,4 +1,5 @@
-import { ReactFlow, Background, Controls, MiniMap, Panel } from '@xyflow/react'
+import { useCallback, DragEvent } from 'react'
+import { ReactFlow, Background, Controls, MiniMap, Panel, ReactFlowProvider } from '@xyflow/react'
 import { Toaster } from 'react-hot-toast'
 import { useFlowStore } from './store/flowStore'
 import { nodeTypes } from './nodes'
@@ -7,7 +8,7 @@ import PropertiesPanel from './components/PropertiesPanel'
 import YamlPreview from './components/YamlPreview'
 import Toolbar from './components/Toolbar'
 
-function App() {
+function Flow() {
   const {
     nodes,
     edges,
@@ -15,7 +16,38 @@ function App() {
     onEdgesChange,
     onConnect,
     selectedNode,
+    addNode,
+    setSelectedNode,
   } = useFlowStore()
+
+  const onDragOver = useCallback((event: DragEvent) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const onDrop = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault()
+
+      const type = event.dataTransfer.getData('application/reactflow')
+      if (!type) return
+
+      const position = {
+        x: event.clientX - event.currentTarget.getBoundingClientRect().left,
+        y: event.clientY - event.currentTarget.getBoundingClientRect().top,
+      }
+
+      addNode(type, position)
+    },
+    [addNode]
+  )
+
+  const onNodeClick = useCallback(
+    (_: any, node: any) => {
+      setSelectedNode(node)
+    },
+    [setSelectedNode]
+  )
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -32,6 +64,9 @@ function App() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
             nodeTypes={nodeTypes}
             fitView
             className="bg-gray-50"
@@ -48,6 +83,14 @@ function App() {
         </div>
       </div>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <ReactFlowProvider>
+      <Flow />
+    </ReactFlowProvider>
   )
 }
 
