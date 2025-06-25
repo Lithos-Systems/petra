@@ -1,50 +1,95 @@
+import { ChangeEvent } from 'react'
 import { useFlowStore } from '@/store/flowStore'
 import { BLOCK_TYPES } from '@/utils/blockIcons'
+
+import type {
+  PetraNode,
+  SignalNodeData,
+  BlockNodeData,
+  TwilioNodeData,
+  MqttNodeData,
+  S7NodeData,
+} from '@/types/nodes'
+
+/* ---------------------------------------------------------- */
+/* helpers                                                    */
+/* ---------------------------------------------------------- */
+
+type CategoryMap = Record<
+  string,
+  {
+    value: BlockNodeData['blockType']
+    label: string
+    category: string
+  }[]
+>
+
+/** group the BLOCK_TYPES list once so we don’t recompute on every render */
+const blockTypesByCategory: CategoryMap = BLOCK_TYPES.reduce((acc, t) => {
+  if (!acc[t.category]) acc[t.category] = []
+  acc[t.category].push(t)
+  return acc
+}, {} as CategoryMap)
+
+/** narrow the generic PetraNode to one of its concrete variants */
+function isNodeType<T extends PetraNode['type']>(
+  node: PetraNode,
+  type: T,
+): node is Extract<PetraNode, { type: T }> {
+  return node.type === type
+}
+
+/* ---------------------------------------------------------- */
+/* main component                                             */
+/* ---------------------------------------------------------- */
 
 export default function PropertiesPanel() {
   const { selectedNode, updateNode } = useFlowStore()
 
   if (!selectedNode) return null
+  const node = selectedNode as PetraNode // tell TS we’re working with the union
 
-  const handleChange = (field: string, value: any) => {
-    updateNode(selectedNode.id, { [field]: value })
+  /** single change handler that preserves the right field types */
+  function handleChange<K extends keyof typeof node['data']>(
+    field: K,
+    value: (typeof node)['data'][K],
+  ) {
+    updateNode(node.id, { [field]: value })
   }
 
-  // Group block types by category
-  const blockTypesByCategory = BLOCK_TYPES.reduce((acc, type) => {
-    if (!acc[type.category]) {
-      acc[type.category] = []
-    }
-    acc[type.category].push(type)
-    return acc
-  }, {} as Record<string, typeof BLOCK_TYPES>)
+  /* ---------- shared UI ---------- */
+  const labelInput = (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
+      <input
+        type="text"
+        value={(node.data as any).label ?? ''}
+        onChange={(e) => handleChange('label' as any, e.target.value)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+      />
+    </div>
+  )
 
   return (
     <div className="w-80 bg-white border-l border-gray-200 p-4 overflow-y-auto">
       <h3 className="text-lg font-semibold mb-4">Properties</h3>
-      
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Label
-          </label>
-          <input
-            type="text"
-            value={selectedNode.data.label || ''}
-            onChange={(e) => handleChange('label', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-          />
-        </div>
 
-        {selectedNode.type === 'signal' && (
+      <div className="space-y-4">
+        {labelInput}
+
+        {/* ---------- Signal node ---------- */}
+        {isNodeType(node, 'signal') && (
           <>
+            {/* signalType */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Signal Type
               </label>
               <select
-                value={selectedNode.data.signalType}
-                onChange={(e) => handleChange('signalType', e.target.value)}
+                value={node.data.signalType}
+                onChange={(e) =>
+                  handleChange('signalType', e.target.value as SignalNodeData['signalType'])
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="bool">Boolean</option>
@@ -53,24 +98,25 @@ export default function PropertiesPanel() {
               </select>
             </div>
 
+            {/* initial */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Initial Value
               </label>
-              {selectedNode.data.signalType === 'bool' ? (
+              {node.data.signalType === 'bool' ? (
                 <label className="flex items-center">
                   <input
                     type="checkbox"
-                    checked={selectedNode.data.initial || false}
+                    checked={Boolean(node.data.initial)}
                     onChange={(e) => handleChange('initial', e.target.checked)}
                     className="mr-2"
                   />
-                  <span>{selectedNode.data.initial ? 'True' : 'False'}</span>
+                  <span>{node.data.initial ? 'True' : 'False'}</span>
                 </label>
               ) : (
                 <input
                   type="number"
-                  value={selectedNode.data.initial || 0}
+                  value={String(node.data.initial ?? 0)}
                   onChange={(e) => handleChange('initial', Number(e.target.value))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
                 />
@@ -79,21 +125,24 @@ export default function PropertiesPanel() {
           </>
         )}
 
-        {selectedNode.type === 'block' && (
+        {/* ---------- Block node ---------- */}
+        {isNodeType(node, 'block') && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Block Type
             </label>
             <select
-              value={selectedNode.data.blockType}
-              onChange={(e) => handleChange('blockType', e.target.value)}
+              value={node.data.blockType}
+              onChange={(e) =>
+                handleChange('blockType', e.target.value as BlockNodeData['blockType'])
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
             >
-              {Object.entries(blockTypesByCategory).map(([category, types]) => (
-                <optgroup key={category} label={category}>
-                  {types.map(type => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
+              {Object.entries(blockTypesByCategory).map(([cat, types]) => (
+                <optgroup key={cat} label={cat}>
+                  {types.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
                     </option>
                   ))}
                 </optgroup>
@@ -102,15 +151,19 @@ export default function PropertiesPanel() {
           </div>
         )}
 
-        {selectedNode.type === 'twilio' && (
+        {/* ---------- Twilio node ---------- */}
+        {isNodeType(node, 'twilio') && (
           <>
+            {/* actionType */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Action Type
               </label>
               <select
-                value={selectedNode.data.actionType}
-                onChange={(e) => handleChange('actionType', e.target.value)}
+                value={node.data.actionType}
+                onChange={(e) =>
+                  handleChange('actionType', e.target.value as TwilioNodeData['actionType'])
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="sms">SMS</option>
@@ -118,38 +171,46 @@ export default function PropertiesPanel() {
               </select>
             </div>
 
+            {/* toNumber */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 To Number
               </label>
               <input
                 type="tel"
-                value={selectedNode.data.toNumber || ''}
+                value={node.data.toNumber ?? ''}
                 onChange={(e) => handleChange('toNumber', e.target.value)}
                 placeholder="+1234567890"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               />
             </div>
 
+            {/* content */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Content
               </label>
               <textarea
-                value={selectedNode.data.content || ''}
+                value={node.data.content ?? ''}
                 onChange={(e) => handleChange('content', e.target.value)}
                 rows={4}
-                placeholder={selectedNode.data.actionType === 'sms' ? 'SMS message content' : 'TwiML or text for voice call'}
+                placeholder={
+                  node.data.actionType === 'sms'
+                    ? 'SMS message content'
+                    : 'TwiML or text for voice call'
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               />
             </div>
 
             <div className="mt-2">
               <button
-                onClick={() => {
-                  const configured = selectedNode.data.toNumber && selectedNode.data.content
-                  handleChange('configured', !!configured)
-                }}
+                onClick={() =>
+                  handleChange(
+                    'configured',
+                    Boolean(node.data.toNumber && node.data.content),
+                  )
+                }
                 className="px-3 py-1 bg-petra-500 text-white rounded hover:bg-petra-600"
               >
                 Validate Configuration
@@ -158,123 +219,110 @@ export default function PropertiesPanel() {
           </>
         )}
 
-        {selectedNode.type === 'mqtt' && (
+        {/* ---------- MQTT node ---------- */}
+        {isNodeType(node, 'mqtt') && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Broker Host
-              </label>
-              <input
-                type="text"
-                value={selectedNode.data.brokerHost || ''}
-                onChange={(e) => handleChange('brokerHost', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Broker Port
-              </label>
-              <input
-                type="number"
-                value={selectedNode.data.brokerPort || 1883}
-                onChange={(e) => handleChange('brokerPort', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Client ID
-              </label>
-              <input
-                type="text"
-                value={selectedNode.data.clientId || ''}
-                onChange={(e) => handleChange('clientId', e.target.value)}
-                placeholder="petra-01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Topic Prefix
-              </label>
-              <input
-                type="text"
-                value={selectedNode.data.topicPrefix || ''}
-                onChange={(e) => handleChange('topicPrefix', e.target.value)}
-                placeholder="petra/plc"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
+            {([
+              ['brokerHost', 'Broker Host', 'text'] as const,
+              ['brokerPort', 'Broker Port', 'number'] as const,
+              ['clientId', 'Client ID', 'text'] as const,
+              ['topicPrefix', 'Topic Prefix', 'text'] as const,
+            ] as const).map(([field, label, type]) => (
+              <div key={field}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {label}
+                </label>
+                <input
+                  type={type}
+                  value={
+                    type === 'number'
+                      ? String((node.data as MqttNodeData)[field] ?? 0)
+                      : ((node.data as MqttNodeData)[field] ?? '')
+                  }
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    handleChange(
+                      field,
+                      type === 'number' ? Number(e.target.value) : e.target.value,
+                    )
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+                />
+              </div>
+            ))}
           </>
         )}
 
-        {selectedNode.type === 's7' && (
+        {/* ---------- S7 node ---------- */}
+        {isNodeType(node, 's7') && (
           <>
+            {/* signal */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Signal Name
               </label>
               <input
                 type="text"
-                value={selectedNode.data.signal || ''}
+                value={node.data.signal ?? ''}
                 onChange={(e) => handleChange('signal', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               />
             </div>
 
+            {/* area */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Area
               </label>
               <select
-                value={selectedNode.data.area}
-                onChange={(e) => handleChange('area', e.target.value)}
+                value={node.data.area}
+                onChange={(e) => handleChange('area', e.target.value as S7NodeData['area'])}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
-                <option value="DB">DB - Data Block</option>
-                <option value="I">I - Inputs</option>
-                <option value="Q">Q - Outputs</option>
-                <option value="M">M - Markers</option>
+                <option value="DB">DB – Data Block</option>
+                <option value="I">I – Inputs</option>
+                <option value="Q">Q – Outputs</option>
+                <option value="M">M – Markers</option>
               </select>
             </div>
 
-            {selectedNode.data.area === 'DB' && (
+            {/* dbNumber */}
+            {node.data.area === 'DB' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   DB Number
                 </label>
                 <input
                   type="number"
-                  value={selectedNode.data.dbNumber || 0}
+                  value={String(node.data.dbNumber ?? 0)}
                   onChange={(e) => handleChange('dbNumber', Number(e.target.value))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
                 />
               </div>
             )}
 
+            {/* address */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Address
               </label>
               <input
                 type="number"
-                value={selectedNode.data.address || 0}
+                value={String(node.data.address ?? 0)}
                 onChange={(e) => handleChange('address', Number(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               />
             </div>
 
+            {/* dataType */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Data Type
               </label>
               <select
-                value={selectedNode.data.dataType}
-                onChange={(e) => handleChange('dataType', e.target.value)}
+                value={node.data.dataType}
+                onChange={(e) =>
+                  handleChange('dataType', e.target.value as S7NodeData['dataType'])
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="bool">Bool</option>
@@ -286,13 +334,16 @@ export default function PropertiesPanel() {
               </select>
             </div>
 
+            {/* direction */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Direction
               </label>
               <select
-                value={selectedNode.data.direction}
-                onChange={(e) => handleChange('direction', e.target.value)}
+                value={node.data.direction}
+                onChange={(e) =>
+                  handleChange('direction', e.target.value as S7NodeData['direction'])
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="read">Read</option>
