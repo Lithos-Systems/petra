@@ -2,9 +2,9 @@ import { memo } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import { FaCircle } from 'react-icons/fa'
 import { getTypeColor } from '@/utils/colors'
-import type { SignalNodeData } from '@/types/nodes'
+import type { SignalNode } from '@/types/nodes'
 
-function SignalNode({ data, selected }: NodeProps<SignalNodeData>) {
+function SignalNode({ data, selected }: NodeProps<SignalNode>) {
   const color = getTypeColor(data.signalType)
 
   return (
