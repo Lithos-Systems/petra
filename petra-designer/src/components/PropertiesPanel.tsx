@@ -7,6 +7,8 @@ import type {
   TwilioNodeData,
   MqttNodeData,
   S7NodeData,
+} from '@/types/nodes'
+import {
   isSignalNode,
   isBlockNode,
   isTwilioNode,
@@ -165,6 +167,20 @@ export default function PropertiesPanel() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               />
             </div>
+
+            <div className="mt-2">
+              <button
+                onClick={() =>
+                  handleChange(
+                    'configured',
+                    Boolean((node.data as TwilioNodeData).toNumber && (node.data as TwilioNodeData).content),
+                  )
+                }
+                className="px-3 py-1 bg-petra-500 text-white rounded hover:bg-petra-600"
+              >
+                Validate Configuration
+              </button>
+            </div>
           </>
         )}
 
@@ -182,7 +198,42 @@ export default function PropertiesPanel() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               />
             </div>
-            {/* Add other MQTT fields similarly */}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Broker Port
+              </label>
+              <input
+                type="number"
+                value={String((node.data as MqttNodeData).brokerPort ?? 1883)}
+                onChange={(e) => handleChange('brokerPort', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Client ID
+              </label>
+              <input
+                type="text"
+                value={String((node.data as MqttNodeData).clientId || '')}
+                onChange={(e) => handleChange('clientId', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Topic Prefix
+              </label>
+              <input
+                type="text"
+                value={String((node.data as MqttNodeData).topicPrefix || '')}
+                onChange={(e) => handleChange('topicPrefix', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              />
+            </div>
           </>
         )}
 
@@ -200,7 +251,81 @@ export default function PropertiesPanel() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               />
             </div>
-            {/* Add other S7 fields similarly */}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Area
+              </label>
+              <select
+                value={String((node.data as S7NodeData).area || 'DB')}
+                onChange={(e) => handleChange('area', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              >
+                <option value="DB">DB – Data Block</option>
+                <option value="I">I – Inputs</option>
+                <option value="Q">Q – Outputs</option>
+                <option value="M">M – Markers</option>
+              </select>
+            </div>
+
+            {(node.data as S7NodeData).area === 'DB' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  DB Number
+                </label>
+                <input
+                  type="number"
+                  value={String((node.data as S7NodeData).dbNumber ?? 0)}
+                  onChange={(e) => handleChange('dbNumber', Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Address
+              </label>
+              <input
+                type="number"
+                value={String((node.data as S7NodeData).address ?? 0)}
+                onChange={(e) => handleChange('address', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Data Type
+              </label>
+              <select
+                value={String((node.data as S7NodeData).dataType || 'bool')}
+                onChange={(e) => handleChange('dataType', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              >
+                <option value="bool">Bool</option>
+                <option value="byte">Byte</option>
+                <option value="word">Word</option>
+                <option value="int">Int</option>
+                <option value="dint">DInt</option>
+                <option value="real">Real</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Direction
+              </label>
+              <select
+                value={String((node.data as S7NodeData).direction || 'read')}
+                onChange={(e) => handleChange('direction', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              >
+                <option value="read">Read</option>
+                <option value="write">Write</option>
+                <option value="read_write">Read/Write</option>
+              </select>
+            </div>
           </>
         )}
       </div>
