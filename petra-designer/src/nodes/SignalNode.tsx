@@ -2,10 +2,11 @@ import { memo } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import { FaCircle } from 'react-icons/fa'
 import { getTypeColor } from '@/utils/colors'
-import type { SignalNode } from '@/types/nodes'
+import type { SignalNodeData } from '@/types/nodes'
 
-function SignalNode({ data, selected }: NodeProps<SignalNode>) {
-  const color = getTypeColor(data.signalType)
+function SignalNode({ data, selected }: NodeProps<Node<SignalNodeData>>) {
+  const signalData = data as SignalNodeData
+  const color = getTypeColor(signalData.signalType)
 
   return (
     <div
@@ -16,11 +17,11 @@ function SignalNode({ data, selected }: NodeProps<SignalNode>) {
     >
       <div className="flex items-center gap-2">
         <FaCircle className="w-3 h-3" style={{ color }} />
-        <div className="text-sm font-medium">{data.label}</div>
+        <div className="text-sm font-medium">{signalData.label}</div>
       </div>
 
       <div className="text-xs text-gray-500 mt-1">
-        {data.signalType}: {String(data.initial)}
+        {signalData.signalType}: {String(signalData.initial)}
       </div>
 
       <Handle
