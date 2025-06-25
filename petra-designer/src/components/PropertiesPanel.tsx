@@ -1,6 +1,7 @@
 import { ChangeEvent } from 'react'
 import { useFlowStore } from '@/store/flowStore'
 import { BLOCK_TYPES } from '@/utils/blockIcons'
+import type { Node } from '@xyflow/react'
 
 import type {
   PetraNode,
@@ -42,7 +43,16 @@ function isNodeType<T extends PetraNode['type']>(
 /* ---------------------------------------------------------- */
 /* main component                                             */
 /* ---------------------------------------------------------- */
+export default function PropertiesPanel() {
+  const { selectedNode, updateNode } = useFlowStore()
 
+  if (!selectedNode) return null
+  
+  const node = selectedNode as Node
+
+  function handleChange(field: string, value: any) {
+    updateNode(node.id, { [field]: value })
+  }
 export default function PropertiesPanel() {
   const { selectedNode, updateNode } = useFlowStore()
 
