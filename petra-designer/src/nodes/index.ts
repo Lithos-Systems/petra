@@ -1,8 +1,6 @@
-import SignalNode from './SignalNode'
-import BlockNode from './BlockNode'
-import TwilioNode from './TwilioNode'
-import MqttNode from './MqttNode'
-import S7Node from './S7Node'
+// src/nodes/index.ts (or wherever you assemble them)
+import type { NodeTypes } from '@xyflow/react'
+import type { PetraNode } from '@/types/nodes'
 
 export const nodeTypes = {
   signal: SignalNode,
@@ -10,4 +8,4 @@ export const nodeTypes = {
   twilio: TwilioNode,
   mqtt: MqttNode,
   s7: S7Node,
-}
+} as unknown as NodeTypes<PetraNode>
