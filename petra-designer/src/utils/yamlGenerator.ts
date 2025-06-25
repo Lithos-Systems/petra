@@ -1,70 +1,70 @@
 import { Edge } from '@xyflow/react'
 import * as yaml from 'yaml'
-import type { PetraNode, BlockNodeData } from '@/types/nodes'
-/* ---- TWILIO nodes ---- */
-const twilioNodes = nodes.filter(
-  (n): n is Extract<PetraNode, { type: 'twilio' }> => n.type === 'twilio',
-)
+import type { PetraNode } from '@/types/nodes'
 
-/* ---- S7 nodes ---- */
-const s7 = nodes.filter(
-  (n): n is Extract<PetraNode, { type: 's7' }> => n.type === 's7',
-)
+interface PetraConfig {
+  signals: any[]
+  blocks: any[]
+  scan_time_ms: number
+  twilio?: any
+  mqtt?: any
+  s7?: any
+}
 
 export function generateYaml(nodes: PetraNode[], edges: Edge[]): string {
-  const config: any = {
+  const config: PetraConfig = {
     signals: [],
     blocks: [],
     scan_time_ms: 100,
   }
 
-  /* ---------- signals ---------- */
+  /* ------------------------------------------------ signals ------ */
   nodes
     .filter((n): n is Extract<PetraNode, { type: 'signal' }> => n.type === 'signal')
-    .forEach((node) =>
+    .forEach((n) =>
       config.signals.push({
-        name: node.data.label.toLowerCase().replace(/\s+/g, '_'),
-        type: node.data.signalType,
-        initial: node.data.initial,
+        name: n.data.label.toLowerCase().replace(/\s+/g, '_'),
+        type: n.data.signalType,
+        initial: n.data.initial,
       }),
     )
 
-  /* ---------- blocks ---------- */
+  /* ------------------------------------------------ blocks ------- */
   nodes
     .filter((n): n is Extract<PetraNode, { type: 'block' }> => n.type === 'block')
-    .forEach((node) => {
+    .forEach((n) => {
       const inputs: Record<string, string> = {}
       const outputs: Record<string, string> = {}
 
       edges.forEach((e) => {
-        if (e.target === node.id) {
-          const src = nodes.find((n) => n.id === e.source)
+        if (e.target === n.id) {
+          const src = nodes.find((m) => m.id === e.source)
           if (src)
             inputs[e.targetHandle ?? 'in'] = src.data.label
               .toLowerCase()
               .replace(/\s+/g, '_')
         }
-        if (e.source === node.id) {
-          const tgt = nodes.find((n) => n.id === e.target)
+        if (e.source === n.id) {
+          const tgt = nodes.find((m) => m.id === e.target)
           if (tgt && e.sourceHandle)
             outputs[e.sourceHandle] = tgt.data.label.toLowerCase().replace(/\s+/g, '_')
         }
       })
 
       config.blocks.push({
-        name: node.data.label.toLowerCase().replace(/\s+/g, '_'),
-        type: node.data.blockType,
+        name: n.data.label.toLowerCase().replace(/\s+/g, '_'),
+        type: n.data.blockType,
         inputs,
         outputs,
-        ...(Object.keys((node.data as BlockNodeData).params ?? {}).length
-          ? { params: (node.data as BlockNodeData).params }
+        ...(n.data.params && Object.keys(n.data.params).length
+          ? { params: n.data.params }
           : {}),
       })
     })
 
-  /* ---------- twilio ---------- */
+  /* ------------------------------------------------ twilio ------- */
   const twilioNodes = nodes.filter(
-    (n): n is Extract<PetraNode, { type: 'twilio' }>,
+    (n): n is Extract<PetraNode, { type: 'twilio' }> => n.type === 'twilio',
   )
   if (twilioNodes.length) {
     config.twilio = {
@@ -79,31 +79,31 @@ export function generateYaml(nodes: PetraNode[], edges: Edge[]): string {
     }
   }
 
-  /* ---------- mqtt ---------- */
-  const mqtt = nodes.find(
+  /* ------------------------------------------------ mqtt --------- */
+  const mqttNode = nodes.find(
     (n): n is Extract<PetraNode, { type: 'mqtt' }> => n.type === 'mqtt',
   )
-  if (mqtt) {
+  if (mqttNode) {
     config.mqtt = {
-      broker_host: mqtt.data.brokerHost,
-      broker_port: mqtt.data.brokerPort,
-      client_id: mqtt.data.clientId || 'petra-01',
-      topic_prefix: mqtt.data.topicPrefix || 'petra/plc',
+      broker_host: mqttNode.data.brokerHost,
+      broker_port: mqttNode.data.brokerPort,
+      client_id: mqttNode.data.clientId || 'petra-01',
+      topic_prefix: mqttNode.data.topicPrefix || 'petra/plc',
       publish_on_change: true,
     }
   }
 
-  /* ---------- s7 ---------- */
-  const s7 = nodes.filter(
-    (n): n is Extract<PetraNode, { type: 's7' }>,
+  /* ------------------------------------------------ s7 ----------- */
+  const s7Nodes = nodes.filter(
+    (n): n is Extract<PetraNode, { type: 's7' }> => n.type === 's7',
   )
-  if (s7.length) {
+  if (s7Nodes.length) {
     config.s7 = {
       ip: '192.168.1.100',
       rack: 0,
       slot: 2,
       poll_interval_ms: 100,
-      mappings: s7.map((n) => ({
+      mappings: s7Nodes.map((n) => ({
         signal: n.data.signal,
         area: n.data.area,
         db_number: n.data.dbNumber,
