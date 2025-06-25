@@ -14,14 +14,11 @@ import type {
 /* helpers                                                    */
 /* ---------------------------------------------------------- */
 
-type CategoryMap = Record
-  string,
-  {
-    value: BlockNodeData['blockType']
-    label: string
-    category: string
-  }[]
->
+type CategoryMap = Record<string, Array<{
+  value: BlockNodeData['blockType']
+  label: string
+  category: string
+}>>
 
 /** group the BLOCK_TYPES list once so we don't recompute on every render */
 const blockTypesByCategory: CategoryMap = BLOCK_TYPES.reduce((acc, t) => {
@@ -210,33 +207,53 @@ export default function PropertiesPanel() {
         {/* ---------- MQTT node ---------- */}
         {isNodeType(node, 'mqtt') && (
           <>
-            {([
-              ['brokerHost', 'Broker Host', 'text'] as const,
-              ['brokerPort', 'Broker Port', 'number'] as const,
-              ['clientId', 'Client ID', 'text'] as const,
-              ['topicPrefix', 'Topic Prefix', 'text'] as const,
-            ] as const).map(([field, label, type]) => (
-              <div key={field}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {label}
-                </label>
-                <input
-                  type={type}
-                  value={
-                    type === 'number'
-                      ? String(node.data[field] ?? 0)
-                      : (node.data[field] ?? '')
-                  }
-                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                    handleChange(
-                      field,
-                      type === 'number' ? Number(e.target.value) : e.target.value,
-                    )
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-                />
-              </div>
-            ))}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Broker Host
+              </label>
+              <input
+                type="text"
+                value={node.data.brokerHost || ''}
+                onChange={(e) => handleChange('brokerHost', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Broker Port
+              </label>
+              <input
+                type="number"
+                value={String(node.data.brokerPort ?? 1883)}
+                onChange={(e) => handleChange('brokerPort', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Client ID
+              </label>
+              <input
+                type="text"
+                value={node.data.clientId || ''}
+                onChange={(e) => handleChange('clientId', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Topic Prefix
+              </label>
+              <input
+                type="text"
+                value={node.data.topicPrefix || ''}
+                onChange={(e) => handleChange('topicPrefix', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              />
+            </div>
           </>
         )}
 
