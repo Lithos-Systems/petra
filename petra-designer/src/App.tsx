@@ -22,6 +22,10 @@ function Flow() {
     addNode,
     setSelectedNode,
   } = useFlowStore()
+  // Add this inside the Flow component to test if ReactFlow renders
+  useEffect(() => {
+    console.log('ReactFlow mounted, nodes:', nodes.length, 'edges:', edges.length)
+  }, [nodes, edges])
 
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault()
