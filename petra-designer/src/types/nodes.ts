@@ -1,7 +1,7 @@
 import type { Node } from '@xyflow/react'
 
 /* ---------- base ---------- */
-export interface BaseNodeData {
+export interface BaseNodeData extends Record<string, unknown> {
   label: string
 }
 
@@ -11,7 +11,7 @@ export interface SignalNodeData extends BaseNodeData {
   signalType: SignalKind
   initial: boolean | number
 }
-export type SignalNode = Node<SignalNodeData>
+export type SignalNode = Node<SignalNodeData, 'signal'>
 
 /* ---------- block ---------- */
 export type BlockType =
@@ -37,7 +37,7 @@ export interface BlockNodeData extends BaseNodeData {
   outputs: { name: string; type: string }[]
   params?: Record<string, unknown>
 }
-export type BlockNode = Node<BlockNodeData>
+export type BlockNode = Node<BlockNodeData, 'block'>
 
 /* ---------- mqtt ---------- */
 export interface MqttNodeData extends BaseNodeData {
@@ -47,7 +47,7 @@ export interface MqttNodeData extends BaseNodeData {
   clientId: string
   topicPrefix: string
 }
-export type MqttNode = Node<MqttNodeData>
+export type MqttNode = Node<MqttNodeData, 'mqtt'>
 
 /* ---------- s7 ---------- */
 export type S7Area = 'DB' | 'I' | 'Q' | 'M'
@@ -61,7 +61,7 @@ export interface S7NodeData extends BaseNodeData {
   direction: S7Direction
   signal: string
 }
-export type S7Node = Node<S7NodeData>
+export type S7Node = Node<S7NodeData, 's7'>
 
 /* ---------- twilio ---------- */
 export type TwilioAction = 'sms' | 'call'
@@ -71,7 +71,7 @@ export interface TwilioNodeData extends BaseNodeData {
   toNumber: string
   content: string
 }
-export type TwilioNode = Node<TwilioNodeData>
+export type TwilioNode = Node<TwilioNodeData, 'twilio'>
 
 /* ---------- union ---------- */
 export type PetraNode =
