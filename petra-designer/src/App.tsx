@@ -20,6 +20,14 @@ import Toolbar from './components/Toolbar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 import { PetraNode } from '@/types/nodes'          // ⬅️ the union we created
+/* top of the file, after other imports */
+import ReactFlow, { ReactFlowProps } from '@xyflow/react'
+import type { PetraNode } from '@/types/nodes'
+
+type PetraEdge = Edge              // keep your custom edge alias if needed
+const RF = ReactFlow as unknown as <N = PetraNode, E = PetraEdge>(
+  props: ReactFlowProps<N, E>,
+) => JSX.Element   // “RF” is now a JSX-friendly component with generics
 
 // Edge data is still the default – adjust if you create a custom type later
 type PetraEdge = Edge
