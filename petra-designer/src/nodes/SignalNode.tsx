@@ -4,7 +4,7 @@ import { FaCircle } from 'react-icons/fa'
 import { getTypeColor } from '@/utils/colors'
 import type { SignalNodeData } from '@/types/nodes'
 
-function SignalNode({ data, selected }: NodeProps<Node<SignalNodeData>>) {
+function SignalNode({ data, selected }: NodeProps) {
   const signalData = data as SignalNodeData
   const color = getTypeColor(signalData.signalType)
 
