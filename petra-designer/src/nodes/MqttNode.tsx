@@ -1,8 +1,9 @@
-import { memo, FC } from 'react'
+import { memo } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import { FaServer, FaCheckCircle } from 'react-icons/fa'
+import type { MqttNodeData } from '@/types/nodes'
 
-const MqttNode: FC<NodeProps> = ({ data, selected }) => {
+function MqttNode({ data, selected }: NodeProps<MqttNodeData>) {
   return (
     <div
       className={`
@@ -16,9 +17,7 @@ const MqttNode: FC<NodeProps> = ({ data, selected }) => {
           <FaServer className="w-4 h-4 text-orange-600" />
           <div className="text-sm font-medium">{data.label}</div>
         </div>
-        {data.configured && (
-          <FaCheckCircle className="w-4 h-4 text-green-500" />
-        )}
+        {data.configured && <FaCheckCircle className="w-4 h-4 text-green-500" />}
       </div>
 
       <div className="text-xs text-gray-600">
