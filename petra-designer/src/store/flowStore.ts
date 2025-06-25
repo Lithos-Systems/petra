@@ -58,7 +58,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
     const newEdge: Edge = {
       id: nanoid(),
-      ...connection,
+      source: connection.source!,
+      target: connection.target!,
+      sourceHandle: connection.sourceHandle,
+      targetHandle: connection.targetHandle,
       type: 'default',
       animated: true,
     }
