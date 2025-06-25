@@ -52,3 +52,98 @@ function getDefaultNodeData(type: string): any {
       return { label: 'New Node' }
   }
 }
+// Add this helper function
+function getBlockInputsOutputs(blockType: string) {
+  switch (blockType) {
+    case 'AND':
+    case 'OR':
+      return {
+        inputs: [
+          { name: 'in1', type: 'bool' },
+          { name: 'in2', type: 'bool' }
+        ],
+        outputs: [{ name: 'out', type: 'bool' }]
+      }
+    case 'NOT':
+      return {
+        inputs: [{ name: 'in', type: 'bool' }],
+        outputs: [{ name: 'out', type: 'bool' }]
+      }
+    case 'GT':
+    case 'LT':
+    case 'EQ':
+      return {
+        inputs: [
+          { name: 'in1', type: 'float' },
+          { name: 'in2', type: 'float' }
+        ],
+        outputs: [{ name: 'out', type: 'bool' }]
+      }
+    case 'TON':
+    case 'TOF':
+      return {
+        inputs: [{ name: 'in', type: 'bool' }],
+        outputs: [{ name: 'q', type: 'bool' }]
+      }
+    case 'R_TRIG':
+    case 'F_TRIG':
+      return {
+        inputs: [{ name: 'clk', type: 'bool' }],
+        outputs: [{ name: 'q', type: 'bool' }]
+      }
+    case 'SR_LATCH':
+      return {
+        inputs: [
+          { name: 'set', type: 'bool' },
+          { name: 'reset', type: 'bool' }
+        ],
+        outputs: [{ name: 'q', type: 'bool' }]
+      }
+    case 'COUNTER':
+      return {
+        inputs: [{ name: 'enable', type: 'bool' }],
+        outputs: [{ name: 'count', type: 'int' }]
+      }
+    case 'MULTIPLY':
+      return {
+        inputs: [
+          { name: 'in1', type: 'float' },
+          { name: 'in2', type: 'float' }
+        ],
+        outputs: [{ name: 'out', type: 'float' }]
+      }
+    case 'DATA_GENERATOR':
+      return {
+        inputs: [{ name: 'enable', type: 'bool' }],
+        outputs: [
+          { name: 'sine_out', type: 'float' },
+          { name: 'count_out', type: 'int' }
+        ]
+      }
+    default:
+      return {
+        inputs: [{ name: 'in', type: 'float' }],
+        outputs: [{ name: 'out', type: 'float' }]
+      }
+  }
+}
+
+// Update the updateNode function to handle blockType changes
+updateNode: (nodeId: string, data: any) => {
+  set({
+    nodes: get().nodes.map((node) => {
+      if (node.id === nodeId) {
+        // If blockType changed, update inputs/outputs
+        if (data.blockType && data.blockType !== node.data.blockType) {
+          const { inputs, outputs } = getBlockInputsOutputs(data.blockType)
+          return {
+            ...node,
+            data: { ...node.data, ...data, inputs, outputs }
+          }
+        }
+        return { ...node, data: { ...node.data, ...data } }
+      }
+      return node
+    }),
+  })
+},
