@@ -2,9 +2,7 @@ import { ChangeEvent } from 'react'
 import { useFlowStore } from '@/store/flowStore'
 import { BLOCK_TYPES } from '@/utils/blockIcons'
 import type { Node } from '@xyflow/react'
-
 import type {
-  PetraNode,
   SignalNodeData,
   BlockNodeData,
   TwilioNodeData,
@@ -16,7 +14,7 @@ import type {
 /* helpers                                                    */
 /* ---------------------------------------------------------- */
 
-type CategoryMap = Record<
+type CategoryMap = Record
   string,
   {
     value: BlockNodeData['blockType']
@@ -25,24 +23,22 @@ type CategoryMap = Record<
   }[]
 >
 
-/** group the BLOCK_TYPES list once so we don’t recompute on every render */
+/** group the BLOCK_TYPES list once so we don't recompute on every render */
 const blockTypesByCategory: CategoryMap = BLOCK_TYPES.reduce((acc, t) => {
   if (!acc[t.category]) acc[t.category] = []
   acc[t.category].push(t)
   return acc
 }, {} as CategoryMap)
 
-/** narrow the generic PetraNode to one of its concrete variants */
-function isNodeType<T extends PetraNode['type']>(
-  node: PetraNode,
-  type: T,
-): node is Extract<PetraNode, { type: T }> {
+/** narrow the generic Node to one of its concrete variants */
+function isNodeType(node: Node, type: string): boolean {
   return node.type === type
 }
 
 /* ---------------------------------------------------------- */
 /* main component                                             */
 /* ---------------------------------------------------------- */
+
 export default function PropertiesPanel() {
   const { selectedNode, updateNode } = useFlowStore()
 
@@ -50,20 +46,8 @@ export default function PropertiesPanel() {
   
   const node = selectedNode as Node
 
-  function handleChange(field: string, value: any) {
-    updateNode(node.id, { [field]: value })
-  }
-export default function PropertiesPanel() {
-  const { selectedNode, updateNode } = useFlowStore()
-
-  if (!selectedNode) return null
-  const node = selectedNode as PetraNode // tell TS we’re working with the union
-
   /** single change handler that preserves the right field types */
-  function handleChange<K extends keyof typeof node['data']>(
-    field: K,
-    value: (typeof node)['data'][K],
-  ) {
+  function handleChange(field: string, value: any) {
     updateNode(node.id, { [field]: value })
   }
 
@@ -73,8 +57,8 @@ export default function PropertiesPanel() {
       <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
       <input
         type="text"
-        value={(node.data as any).label ?? ''}
-        onChange={(e) => handleChange('label' as any, e.target.value)}
+        value={node.data.label || ''}
+        onChange={(e) => handleChange('label', e.target.value)}
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
       />
     </div>
@@ -96,10 +80,8 @@ export default function PropertiesPanel() {
                 Signal Type
               </label>
               <select
-                value={node.data.signalType}
-                onChange={(e) =>
-                  handleChange('signalType', e.target.value as SignalNodeData['signalType'])
-                }
+                value={node.data.signalType || 'float'}
+                onChange={(e) => handleChange('signalType', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="bool">Boolean</option>
@@ -142,10 +124,8 @@ export default function PropertiesPanel() {
               Block Type
             </label>
             <select
-              value={node.data.blockType}
-              onChange={(e) =>
-                handleChange('blockType', e.target.value as BlockNodeData['blockType'])
-              }
+              value={node.data.blockType || 'AND'}
+              onChange={(e) => handleChange('blockType', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
             >
               {Object.entries(blockTypesByCategory).map(([cat, types]) => (
@@ -170,10 +150,8 @@ export default function PropertiesPanel() {
                 Action Type
               </label>
               <select
-                value={node.data.actionType}
-                onChange={(e) =>
-                  handleChange('actionType', e.target.value as TwilioNodeData['actionType'])
-                }
+                value={node.data.actionType || 'sms'}
+                onChange={(e) => handleChange('actionType', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="sms">SMS</option>
@@ -188,7 +166,7 @@ export default function PropertiesPanel() {
               </label>
               <input
                 type="tel"
-                value={node.data.toNumber ?? ''}
+                value={node.data.toNumber || ''}
                 onChange={(e) => handleChange('toNumber', e.target.value)}
                 placeholder="+1234567890"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
@@ -201,7 +179,7 @@ export default function PropertiesPanel() {
                 Content
               </label>
               <textarea
-                value={node.data.content ?? ''}
+                value={node.data.content || ''}
                 onChange={(e) => handleChange('content', e.target.value)}
                 rows={4}
                 placeholder={
@@ -246,8 +224,8 @@ export default function PropertiesPanel() {
                   type={type}
                   value={
                     type === 'number'
-                      ? String((node.data as MqttNodeData)[field] ?? 0)
-                      : ((node.data as MqttNodeData)[field] ?? '')
+                      ? String(node.data[field] ?? 0)
+                      : (node.data[field] ?? '')
                   }
                   onChange={(e: ChangeEvent<HTMLInputElement>) =>
                     handleChange(
@@ -272,7 +250,7 @@ export default function PropertiesPanel() {
               </label>
               <input
                 type="text"
-                value={node.data.signal ?? ''}
+                value={node.data.signal || ''}
                 onChange={(e) => handleChange('signal', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               />
@@ -284,8 +262,8 @@ export default function PropertiesPanel() {
                 Area
               </label>
               <select
-                value={node.data.area}
-                onChange={(e) => handleChange('area', e.target.value as S7NodeData['area'])}
+                value={node.data.area || 'DB'}
+                onChange={(e) => handleChange('area', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="DB">DB – Data Block</option>
@@ -329,10 +307,8 @@ export default function PropertiesPanel() {
                 Data Type
               </label>
               <select
-                value={node.data.dataType}
-                onChange={(e) =>
-                  handleChange('dataType', e.target.value as S7NodeData['dataType'])
-                }
+                value={node.data.dataType || 'bool'}
+                onChange={(e) => handleChange('dataType', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="bool">Bool</option>
@@ -350,10 +326,8 @@ export default function PropertiesPanel() {
                 Direction
               </label>
               <select
-                value={node.data.direction}
-                onChange={(e) =>
-                  handleChange('direction', e.target.value as S7NodeData['direction'])
-                }
+                value={node.data.direction || 'read'}
+                onChange={(e) => handleChange('direction', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 <option value="read">Read</option>
