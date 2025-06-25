@@ -1,8 +1,9 @@
-import { memo, FC } from 'react'
+import { memo } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import { FaPhone, FaSms, FaCheckCircle } from 'react-icons/fa'
+import type { TwilioNodeData } from '@/types/nodes'
 
-const TwilioNode: FC<NodeProps> = ({ data, selected }) => {
+function TwilioNode({ data, selected }: NodeProps<TwilioNodeData>) {
   const Icon = data.actionType === 'call' ? FaPhone : FaSms
 
   return (
@@ -18,9 +19,7 @@ const TwilioNode: FC<NodeProps> = ({ data, selected }) => {
           <Icon className="w-4 h-4 text-purple-600" />
           <div className="text-sm font-medium">{data.label}</div>
         </div>
-        {data.configured && (
-          <FaCheckCircle className="w-4 h-4 text-green-500" />
-        )}
+        {data.configured && <FaCheckCircle className="w-4 h-4 text-green-500" />}
       </div>
 
       <div className="text-xs text-gray-600">
@@ -34,7 +33,6 @@ const TwilioNode: FC<NodeProps> = ({ data, selected }) => {
         className="w-3 h-3"
         style={{ background: '#9333ea' }}
       />
-
       <Handle
         type="source"
         position={Position.Right}
