@@ -1,4 +1,4 @@
-import { useCallback, DragEvent, useEffect, MouseEvent } from 'react'
+import { useCallback, useEffect, DragEvent, MouseEvent } from 'react'
 import {
   ReactFlow,
   Background,
@@ -6,8 +6,8 @@ import {
   Controls,
   MiniMap,
   ReactFlowProvider,
-  Node,
   Edge,
+  type ReactFlowProps,
 } from '@xyflow/react'
 import { Toaster } from 'react-hot-toast'
 
@@ -19,19 +19,19 @@ import YamlPreview from './components/YamlPreview'
 import Toolbar from './components/Toolbar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
-import { PetraNode } from '@/types/nodes'          // ⬅️ the union we created
-/* top of the file, after other imports */
-import ReactFlow, { ReactFlowProps } from '@xyflow/react'
 import type { PetraNode } from '@/types/nodes'
 
-type PetraEdge = Edge              // keep your custom edge alias if needed
-const RF = ReactFlow as unknown as <N = PetraNode, E = PetraEdge>(
-  props: ReactFlowProps<N, E>,
-) => JSX.Element   // “RF” is now a JSX-friendly component with generics
-
-// Edge data is still the default – adjust if you create a custom type later
+/* ------------------------------------------------------------------ */
+/* Typed wrapper so JSX can infer generics without <ReactFlow<…>>      */
+/* ------------------------------------------------------------------ */
 type PetraEdge = Edge
+const RF = ReactFlow as unknown as (
+  props: ReactFlowProps<PetraNode, PetraEdge>,
+) => JSX.Element
 
+/* ------------------------------------------------------------------ */
+/* Flow component                                                     */
+/* ------------------------------------------------------------------ */
 function Flow() {
   const {
     nodes,
@@ -44,45 +44,35 @@ function Flow() {
     setSelectedNode,
   } = useFlowStore()
 
-  /* ---------- debug log ---------- */
+  /* Debug log on initial mount / updates */
   useEffect(() => {
-    console.log(
-      'ReactFlow mounted, nodes:',
-      nodes.length,
-      'edges:',
-      edges.length,
-    )
+    console.log('ReactFlow mounted. nodes:', nodes.length, 'edges:', edges.length)
   }, [nodes, edges])
 
-  /* ---------- drag-&-drop ---------- */
-  const onDragOver = useCallback((event: DragEvent) => {
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
+  /* Drag-and-drop handlers */
+  const onDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
   }, [])
 
   const onDrop = useCallback(
-    (event: DragEvent) => {
-      event.preventDefault()
-
-      const type = event.dataTransfer.getData('application/reactflow')
+    (e: DragEvent) => {
+      e.preventDefault()
+      const type = e.dataTransfer.getData('application/reactflow')
       if (!type) return
 
-      const bounds = event.currentTarget.getBoundingClientRect()
-      const position = {
-        x: event.clientX - bounds.left - 100,
-        y: event.clientY - bounds.top - 20,
-      }
-
-      addNode(type, position)
+      const bounds = e.currentTarget.getBoundingClientRect()
+      addNode(type, {
+        x: e.clientX - bounds.left - 100,
+        y: e.clientY - bounds.top - 20,
+      })
     },
     [addNode],
   )
 
-  /* ---------- node click ---------- */
+  /* Node click selects the node in the store */
   const onNodeClick = useCallback(
-    (_e: MouseEvent, node: PetraNode) => {
-      setSelectedNode(node)
-    },
+    (_evt: MouseEvent, node: PetraNode) => setSelectedNode(node),
     [setSelectedNode],
   )
 
@@ -95,20 +85,19 @@ function Flow() {
         <Sidebar />
 
         <div className="flex-1 relative">
-          <RF<PetraNode, PetraEdge>       {/* ✅ typed generics */}
+          <RF
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
-            onDrop={onDrop}
             onDragOver={onDragOver}
+            onDrop={onDrop}
             nodeTypes={nodeTypes}
             fitView
             className="bg-gray-50"
           >
-            {/* ✅ enum instead of "dots" string */}
             <Background
               variant={BackgroundVariant.Dots}
               gap={20}
@@ -116,7 +105,7 @@ function Flow() {
             />
             <Controls />
             <MiniMap className="bg-white" />
-          </ReactFlow>
+          </RF>
         </div>
 
         <div className="flex">
@@ -128,6 +117,9 @@ function Flow() {
   )
 }
 
+/* ------------------------------------------------------------------ */
+/* App root with providers & error boundary                           */
+/* ------------------------------------------------------------------ */
 function App() {
   return (
     <ErrorBoundary>
