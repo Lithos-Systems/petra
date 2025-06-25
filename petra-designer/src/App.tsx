@@ -7,7 +7,6 @@ import {
   MiniMap,
   ReactFlowProvider,
   type Node,
-  type Edge,
 } from '@xyflow/react'
 import { Toaster } from 'react-hot-toast'
 
