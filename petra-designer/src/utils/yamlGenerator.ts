@@ -1,101 +1,109 @@
-import { Node, Edge } from '@xyflow/react'
+import { Edge } from '@xyflow/react'
 import * as yaml from 'yaml'
+import type { PetraNode, BlockNodeData } from '@/types/nodes'
 
-export function generateYaml(nodes: Node[], edges: Edge[]): string {
+export function generateYaml(nodes: PetraNode[], edges: Edge[]): string {
   const config: any = {
     signals: [],
     blocks: [],
     scan_time_ms: 100,
   }
 
-  // Process signal nodes
-  const signalNodes = nodes.filter(n => n.type === 'signal')
-  config.signals = signalNodes.map(node => ({
-    name: node.data.label.toLowerCase().replace(/\s+/g, '_'),
-    type: node.data.signalType,
-    initial: node.data.initial,
-  }))
+  /* ---------- signals ---------- */
+  nodes
+    .filter((n): n is Extract<PetraNode, { type: 'signal' }> => n.type === 'signal')
+    .forEach((node) =>
+      config.signals.push({
+        name: node.data.label.toLowerCase().replace(/\s+/g, '_'),
+        type: node.data.signalType,
+        initial: node.data.initial,
+      }),
+    )
 
-  // Process block nodes
-  const blockNodes = nodes.filter(n => n.type === 'block')
-  config.blocks = blockNodes.map(node => {
-    const inputs: any = {}
-    const outputs: any = {}
+  /* ---------- blocks ---------- */
+  nodes
+    .filter((n): n is Extract<PetraNode, { type: 'block' }> => n.type === 'block')
+    .forEach((node) => {
+      const inputs: Record<string, string> = {}
+      const outputs: Record<string, string> = {}
 
-    // Map connections
-    edges.forEach(edge => {
-      if (edge.target === node.id) {
-        const sourceNode = nodes.find(n => n.id === edge.source)
-        if (sourceNode) {
-          const inputName = edge.targetHandle || 'in'
-          inputs[inputName] = sourceNode.data.label.toLowerCase().replace(/\s+/g, '_')
+      edges.forEach((e) => {
+        if (e.target === node.id) {
+          const src = nodes.find((n) => n.id === e.source)
+          if (src)
+            inputs[e.targetHandle ?? 'in'] = src.data.label
+              .toLowerCase()
+              .replace(/\s+/g, '_')
         }
-      }
-      if (edge.source === node.id) {
-        const targetNode = nodes.find(n => n.id === edge.target)
-        if (targetNode && edge.sourceHandle) {
-          outputs[edge.sourceHandle] = targetNode.data.label.toLowerCase().replace(/\s+/g, '_')
+        if (e.source === node.id) {
+          const tgt = nodes.find((n) => n.id === e.target)
+          if (tgt && e.sourceHandle)
+            outputs[e.sourceHandle] = tgt.data.label.toLowerCase().replace(/\s+/g, '_')
         }
-      }
+      })
+
+      config.blocks.push({
+        name: node.data.label.toLowerCase().replace(/\s+/g, '_'),
+        type: node.data.blockType,
+        inputs,
+        outputs,
+        ...(Object.keys((node.data as BlockNodeData).params ?? {}).length
+          ? { params: (node.data as BlockNodeData).params }
+          : {}),
+      })
     })
 
-    return {
-      name: node.data.label.toLowerCase().replace(/\s+/g, '_'),
-      type: node.data.blockType,
-      inputs,
-      outputs,
-      ...(Object.keys(node.data.params || {}).length > 0 ? { params: node.data.params } : {}),
-    }
-  })
-
-  // Process Twilio nodes
-  const twilioNodes = nodes.filter(n => n.type === 'twilio')
-  if (twilioNodes.length > 0) {
+  /* ---------- twilio ---------- */
+  const twilioNodes = nodes.filter(
+    (n): n is Extract<PetraNode, { type: 'twilio' }>,
+  )
+  if (twilioNodes.length) {
     config.twilio = {
-      from_number: '+1234567890', // Default, should be configured
-      actions: twilioNodes.map(node => ({
-        name: node.data.label.toLowerCase().replace(/\s+/g, '_'),
-        trigger_signal: edges.find(e => e.target === node.id)?.source || '',
-        action_type: node.data.actionType,
-        to_number: node.data.toNumber,
-        content: node.data.content,
+      from_number: '+1234567890',
+      actions: twilioNodes.map((n) => ({
+        name: n.data.label.toLowerCase().replace(/\s+/g, '_'),
+        trigger_signal: edges.find((e) => e.target === n.id)?.source ?? '',
+        action_type: n.data.actionType,
+        to_number: n.data.toNumber,
+        content: n.data.content,
       })),
     }
   }
 
-  // Process MQTT nodes
-  const mqttNode = nodes.find(n => n.type === 'mqtt')
-  if (mqttNode) {
+  /* ---------- mqtt ---------- */
+  const mqtt = nodes.find(
+    (n): n is Extract<PetraNode, { type: 'mqtt' }> => n.type === 'mqtt',
+  )
+  if (mqtt) {
     config.mqtt = {
-      broker_host: mqttNode.data.brokerHost,
-      broker_port: mqttNode.data.brokerPort,
-      client_id: mqttNode.data.clientId || 'petra-01',
-      topic_prefix: mqttNode.data.topicPrefix || 'petra/plc',
+      broker_host: mqtt.data.brokerHost,
+      broker_port: mqtt.data.brokerPort,
+      client_id: mqtt.data.clientId || 'petra-01',
+      topic_prefix: mqtt.data.topicPrefix || 'petra/plc',
       publish_on_change: true,
     }
   }
 
-  // Process S7 nodes
-  const s7Nodes = nodes.filter(n => n.type === 's7')
-  if (s7Nodes.length > 0) {
+  /* ---------- s7 ---------- */
+  const s7 = nodes.filter(
+    (n): n is Extract<PetraNode, { type: 's7' }>,
+  )
+  if (s7.length) {
     config.s7 = {
-      ip: '192.168.1.100', // Default, should be configured
+      ip: '192.168.1.100',
       rack: 0,
       slot: 2,
       poll_interval_ms: 100,
-      mappings: s7Nodes.map(node => ({
-        signal: node.data.signal,
-        area: node.data.area,
-        db_number: node.data.dbNumber,
-        address: node.data.address,
-        data_type: node.data.dataType,
-        direction: node.data.direction,
+      mappings: s7.map((n) => ({
+        signal: n.data.signal,
+        area: n.data.area,
+        db_number: n.data.dbNumber,
+        address: n.data.address,
+        data_type: n.data.dataType,
+        direction: n.data.direction,
       })),
     }
   }
 
-  return yaml.stringify(config, {
-    indent: 2,
-    lineWidth: 0,
-  })
+  return yaml.stringify(config, { indent: 2, lineWidth: 0 })
 }
