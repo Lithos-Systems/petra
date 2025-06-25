@@ -43,23 +43,26 @@ export interface S7NodeData extends BaseNodeData {
   signal: string
 }
 
-// Type guards for runtime type checking
-export function isSignalNode(node: Node): node is Node<SignalNodeData> {
+// Type alias for backwards compatibility
+export type PetraNode = Node
+
+// Type guards for runtime type checking (exported as values, not types)
+export function isSignalNode(node: Node): node is Node & { data: SignalNodeData } {
   return node.type === 'signal'
 }
 
-export function isBlockNode(node: Node): node is Node<BlockNodeData> {
+export function isBlockNode(node: Node): node is Node & { data: BlockNodeData } {
   return node.type === 'block'
 }
 
-export function isTwilioNode(node: Node): node is Node<TwilioNodeData> {
+export function isTwilioNode(node: Node): node is Node & { data: TwilioNodeData } {
   return node.type === 'twilio'
 }
 
-export function isMqttNode(node: Node): node is Node<MqttNodeData> {
+export function isMqttNode(node: Node): node is Node & { data: MqttNodeData } {
   return node.type === 'mqtt'
 }
 
-export function isS7Node(node: Node): node is Node<S7NodeData> {
+export function isS7Node(node: Node): node is Node & { data: S7NodeData } {
   return node.type === 's7'
 }
