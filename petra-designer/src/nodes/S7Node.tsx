@@ -1,8 +1,9 @@
-import { memo, FC } from 'react'
+import { memo } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import { FaIndustry, FaCheckCircle } from 'react-icons/fa'
+import type { S7NodeData } from '@/types/nodes'
 
-const S7Node: FC<NodeProps> = ({ data, selected }) => {
+function S7Node({ data, selected }: NodeProps<S7NodeData>) {
   return (
     <div
       className={`
@@ -16,13 +17,12 @@ const S7Node: FC<NodeProps> = ({ data, selected }) => {
           <FaIndustry className="w-4 h-4 text-red-600" />
           <div className="text-sm font-medium">{data.label}</div>
         </div>
-        {data.configured && (
-          <FaCheckCircle className="w-4 h-4 text-green-500" />
-        )}
+        {data.configured && <FaCheckCircle className="w-4 h-4 text-green-500" />}
       </div>
 
       <div className="text-xs text-gray-600">
-        {data.area}{data.dbNumber > 0 ? data.dbNumber : ''}:{data.address}
+        {data.area}
+        {data.dbNumber > 0 ? data.dbNumber : ''}:{data.address}
       </div>
 
       <Handle
@@ -32,7 +32,6 @@ const S7Node: FC<NodeProps> = ({ data, selected }) => {
         className="w-3 h-3"
         style={{ background: '#ef4444' }}
       />
-
       <Handle
         type="target"
         position={Position.Left}
