@@ -8,6 +8,9 @@ import PropertiesPanel from './components/PropertiesPanel'
 import YamlPreview from './components/YamlPreview'
 import Toolbar from './components/Toolbar'
 
+import { ErrorBoundary } from './components/ErrorBoundary'
+
+
 function Flow() {
   const {
     nodes,
@@ -89,9 +92,11 @@ function Flow() {
 
 function App() {
   return (
-    <ReactFlowProvider>
-      <Flow />
-    </ReactFlowProvider>
+    <ErrorBoundary>
+      <ReactFlowProvider>
+        <Flow />
+      </ReactFlowProvider>
+    </ErrorBoundary>
   )
 }
 
