@@ -4,11 +4,13 @@ import Editor from 'react-simple-code-editor'
 import { highlight, languages } from 'prismjs'
 import 'prismjs/components/prism-yaml'
 import 'prismjs/themes/prism-tomorrow.css'
-import { useFlowStore } from '../store/flowStore'  // Use relative import
-import { generateYaml } from '../utils/yamlGenerator'  // Use relative import
+
+import { useFlowStore } from '../store/flowStore'
+import { generateYaml } from '../utils/yamlGenerator'
 import { FaCopy, FaDownload } from 'react-icons/fa'
 import toast from 'react-hot-toast'
 
+// ... rest of component
 export default function YamlPreview() {
   const { nodes, edges } = useFlowStore()
   
