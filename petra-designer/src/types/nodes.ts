@@ -1,45 +1,30 @@
 import type { Node } from '@xyflow/react'
 
-/* ---------- base ---------- */
-export interface BaseNodeData extends Record<string, unknown> {
+/* ---------- Base data interfaces ---------- */
+export interface BaseNodeData {
   label: string
+  [key: string]: any // Index signature for ReactFlow compatibility
 }
 
-/* ---------- signal ---------- */
-export type SignalKind = 'bool' | 'int' | 'float'
 export interface SignalNodeData extends BaseNodeData {
-  signalType: SignalKind
+  signalType: 'bool' | 'int' | 'float'
   initial: boolean | number
 }
-export type SignalNode = Node<SignalNodeData, 'signal'>
-
-/* ---------- block ---------- */
-export type BlockType =
-  | 'AND'
-  | 'OR'
-  | 'NOT'
-  | 'GT'
-  | 'LT'
-  | 'EQ'
-  | 'TON'
-  | 'TOF'
-  | 'R_TRIG'
-  | 'F_TRIG'
-  | 'SR_LATCH'
-  | 'COUNTER'
-  | 'MULTIPLY'
-  | 'DIVIDE'
-  | 'DATA_GENERATOR'
 
 export interface BlockNodeData extends BaseNodeData {
-  blockType: BlockType
+  blockType: string
   inputs: { name: string; type: string }[]
   outputs: { name: string; type: string }[]
   params?: Record<string, unknown>
 }
-export type BlockNode = Node<BlockNodeData, 'block'>
 
-/* ---------- mqtt ---------- */
+export interface TwilioNodeData extends BaseNodeData {
+  configured: boolean
+  actionType: 'sms' | 'call'
+  toNumber: string
+  content: string
+}
+
 export interface MqttNodeData extends BaseNodeData {
   configured: boolean
   brokerHost: string
@@ -47,36 +32,34 @@ export interface MqttNodeData extends BaseNodeData {
   clientId: string
   topicPrefix: string
 }
-export type MqttNode = Node<MqttNodeData, 'mqtt'>
 
-/* ---------- s7 ---------- */
-export type S7Area = 'DB' | 'I' | 'Q' | 'M'
-export type S7Direction = 'read' | 'write' | 'read_write'
 export interface S7NodeData extends BaseNodeData {
   configured: boolean
-  area: S7Area
+  area: 'DB' | 'I' | 'Q' | 'M'
   dbNumber: number
   address: number
   dataType: 'bool' | 'byte' | 'word' | 'int' | 'dint' | 'real'
-  direction: S7Direction
+  direction: 'read' | 'write' | 'read_write'
   signal: string
 }
-export type S7Node = Node<S7NodeData, 's7'>
 
-/* ---------- twilio ---------- */
-export type TwilioAction = 'sms' | 'call'
-export interface TwilioNodeData extends BaseNodeData {
-  configured: boolean
-  actionType: TwilioAction
-  toNumber: string
-  content: string
+// Type guards for runtime type checking
+export function isSignalNode(node: Node): node is Node<SignalNodeData> {
+  return node.type === 'signal'
 }
-export type TwilioNode = Node<TwilioNodeData, 'twilio'>
 
-/* ---------- union ---------- */
-export type PetraNode =
-  | SignalNode
-  | BlockNode
-  | MqttNode
-  | S7Node
-  | TwilioNode
+export function isBlockNode(node: Node): node is Node<BlockNodeData> {
+  return node.type === 'block'
+}
+
+export function isTwilioNode(node: Node): node is Node<TwilioNodeData> {
+  return node.type === 'twilio'
+}
+
+export function isMqttNode(node: Node): node is Node<MqttNodeData> {
+  return node.type === 'mqtt'
+}
+
+export function isS7Node(node: Node): node is Node<S7NodeData> {
+  return node.type === 's7'
+}
