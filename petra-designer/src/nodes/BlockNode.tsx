@@ -1,10 +1,10 @@
 import { memo } from 'react'
-import { Handle, Position, NodeProps, Node } from '@xyflow/react'
+import { Handle, Position, NodeProps } from '@xyflow/react'
 import { getBlockIcon } from '@/utils/blockIcons'
 import { getTypeColor } from '@/utils/colors'
 import type { BlockNodeData } from '@/types/nodes'
 
-function BlockNode({ data, selected }: NodeProps<Node<BlockNodeData>>) {
+function BlockNode({ data, selected }: NodeProps) {
   const blockData = data as BlockNodeData
   const Icon = getBlockIcon(blockData.blockType)
 
@@ -25,7 +25,7 @@ function BlockNode({ data, selected }: NodeProps<Node<BlockNodeData>>) {
         </div>
       </div>
 
-      {blockData.inputs.map((input, idx) => (
+      {blockData.inputs?.map((input, idx) => (
         <Handle
           key={input.name}
           type="target"
@@ -39,7 +39,7 @@ function BlockNode({ data, selected }: NodeProps<Node<BlockNodeData>>) {
         />
       ))}
 
-      {blockData.outputs.map((output, idx) => (
+      {blockData.outputs?.map((output, idx) => (
         <Handle
           key={output.name}
           type="source"
