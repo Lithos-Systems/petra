@@ -2,6 +2,7 @@
   "name": "petra-designer",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Visual configuration designer for Petra PLC",
   "scripts": {
     "dev": "vite",
