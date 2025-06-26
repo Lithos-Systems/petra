@@ -26,6 +26,7 @@ interface FlowState {
   updateNode: (nodeId: string, data: any) => void
   updateNodeData: (nodeId: string, data: any) => void
   deleteNode: (nodeId: string) => void
+  deleteEdge: (edgeId: string) => void  // Add this line
   setSelectedNode: (node: Node | null) => void
   clearFlow: () => void
   loadFlow: (nodes: Node[], edges: Edge[]) => void
@@ -35,6 +36,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   nodes: [],
   edges: [],
   selectedNode: null,
+  
   deleteEdge: (edgeId: string) => {
     set({
       edges: get().edges.filter((e) => e.id !== edgeId),
