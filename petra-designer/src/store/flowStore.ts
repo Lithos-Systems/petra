@@ -1,3 +1,4 @@
+// src/store/flowStore.ts
 import { create } from 'zustand'
 import {
   Node,
@@ -23,6 +24,7 @@ interface FlowState {
   onConnect: (connection: Connection) => void
   addNode: (type: string, position: { x: number; y: number }) => void
   updateNode: (nodeId: string, data: any) => void
+  updateNodeData: (nodeId: string, data: any) => void
   deleteNode: (nodeId: string) => void
   setSelectedNode: (node: Node | null) => void
   clearFlow: () => void
@@ -38,6 +40,15 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set({
       nodes: applyNodeChanges(changes, get().nodes),
     })
+
+    // Update selected node if it was changed
+    const selectedId = get().selectedNode?.id
+    if (selectedId) {
+      const updatedNode = get().nodes.find(n => n.id === selectedId)
+      if (updatedNode) {
+        set({ selectedNode: updatedNode })
+      }
+    }
   },
 
   onEdgesChange: (changes: EdgeChange[]) => {
@@ -91,22 +102,48 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     })
   },
 
+  // Deprecated - use updateNodeData instead
   updateNode: (nodeId: string, data: any) => {
-    set({
-      nodes: get().nodes.map((node) => {
-        if (node.id === nodeId) {
-          if (data.blockType && data.blockType !== node.data.blockType) {
-            const { inputs, outputs } = getBlockInputsOutputs(data.blockType)
-            return {
-              ...node,
-              data: { ...node.data, ...data, inputs, outputs },
-            }
+    get().updateNodeData(nodeId, data)
+  },
+
+  // New method with better handling
+  updateNodeData: (nodeId: string, updates: any) => {
+    const nodes = get().nodes.map((node) => {
+      if (node.id === nodeId) {
+        // Handle block type changes
+        if (updates.blockType && updates.blockType !== node.data.blockType) {
+          const { inputs, outputs } = getBlockInputsOutputs(updates.blockType)
+          return {
+            ...node,
+            data: { 
+              ...node.data, 
+              ...updates, 
+              inputs, 
+              outputs,
+              // Reset params when block type changes
+              params: getDefaultBlockParams(updates.blockType)
+            },
           }
-          return { ...node, data: { ...node.data, ...data } }
         }
-        return node
-      }),
+        // Normal update
+        return { 
+          ...node, 
+          data: { ...node.data, ...updates } 
+        }
+      }
+      return node
     })
+
+    set({ nodes })
+
+    // Update selected node if it was the one updated
+    if (get().selectedNode?.id === nodeId) {
+      const updatedNode = nodes.find(n => n.id === nodeId)
+      if (updatedNode) {
+        set({ selectedNode: updatedNode })
+      }
+    }
   },
 
   deleteNode: (nodeId: string) => {
@@ -147,16 +184,12 @@ function getDefaultNodeData(type: string): any {
         initial: 0,
       }
     case 'block':
+      const blockType = 'AND'
       return {
         label: 'New Block',
-        blockType: 'AND',
-        // Define default inputs/outputs based on block type
-        inputs: [
-          { name: 'in1', type: 'bool' },
-          { name: 'in2', type: 'bool' },
-        ],
-        outputs: [{ name: 'out', type: 'bool' }],
-        params: {},
+        blockType,
+        ...getBlockInputsOutputs(blockType),
+        params: getDefaultBlockParams(blockType),
       }
     case 'twilio':
       return {
@@ -243,6 +276,7 @@ function getBlockInputsOutputs(blockType: string) {
         outputs: [{ name: 'count', type: 'int' }],
       }
     case 'MULTIPLY':
+    case 'DIVIDE':
       return {
         inputs: [
           { name: 'in1', type: 'float' },
@@ -263,5 +297,19 @@ function getBlockInputsOutputs(blockType: string) {
         inputs: [{ name: 'in', type: 'float' }],
         outputs: [{ name: 'out', type: 'float' }],
       }
+  }
+}
+
+function getDefaultBlockParams(blockType: string): Record<string, any> {
+  switch (blockType) {
+    case 'TON':
+    case 'TOF':
+      return { preset_ms: 1000 }
+    case 'COUNTER':
+      return { increment: 1 }
+    case 'DATA_GENERATOR':
+      return { frequency: 1.0, amplitude: 10.0 }
+    default:
+      return {}
   }
 }
