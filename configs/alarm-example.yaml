@@ -1,0 +1,39 @@
+signals:
+  - name: system_pressure
+    type: float
+    initial: 0
+  - name: low_system_pressure_setpoint
+    type: float
+    initial: 55
+blocks:
+  - name: new_block
+    type: AND
+    inputs:
+      in2: low_system_pressure_setpoint
+      in1: system_pressure
+    outputs:
+      out: 10_second_delay
+  - name: 10_second_delay
+    type: TON
+    inputs:
+      in: new_block
+    outputs:
+      q: twilio_action
+    params:
+      preset_ms: 10000
+scan_time_ms: 100
+twilio:
+  from_number: "+1234567890"
+  actions:
+    - name: twilio_action
+      trigger_signal: 10_second_delay
+      action_type: call
+      to_number: "+18323127224"
+      content: Low Pressure Alarm
+      cooldown_seconds: 300
+mqtt:
+  broker_host: mqtt.lithos.systems
+  broker_port: 1883
+  client_id: petra-01
+  topic_prefix: petra/system_pressure
+  publish_on_change: true
