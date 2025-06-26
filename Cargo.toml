@@ -105,6 +105,10 @@ name = "generate_schema"
 path = "src/bin/generate_schema.rs"
 required-features = ["json-schema"]
 
+[[bin]]
+name = "mqtt_publisher"
+path = "src/bin/mqtt_publisher.rs"
+
 [profile.release]
 lto = true
 codegen-units = 1
