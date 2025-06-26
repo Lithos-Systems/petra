@@ -169,7 +169,91 @@ export default function PropertiesPanel() {
             {renderBlockParams(node.data as BlockNodeData, updateNodeData, node.id)}
           </>
         )}
-
+        {/* Alarm node properties */}
+        {node.type === 'alarm' && (
+          <>
+            {renderSelect('Condition', 'condition', [
+              { value: 'above', label: 'Above' },
+              { value: 'below', label: 'Below' },
+              { value: 'equals', label: 'Equals' },
+              { value: 'not_equals', label: 'Not Equals' },
+              { value: 'deadband', label: 'Outside Deadband' },
+            ])}
+            
+            {renderSelect('Severity', 'severity', [
+              { value: 'info', label: 'Info' },
+              { value: 'warning', label: 'Warning' },
+              { value: 'critical', label: 'Critical' },
+              { value: 'emergency', label: 'Emergency' },
+            ])}
+            
+            {renderInput('Delay (seconds)', 'delaySeconds', 'number')}
+            {renderInput('Repeat Interval (seconds)', 'repeatInterval', 'number')}
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Alarm Message
+              </label>
+              <textarea
+                value={node.data.message || ''}
+                onChange={createChangeHandler('message')}
+                rows={3}
+                placeholder="Use {name}, {value}, {setpoint}, {signal} as placeholders"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+            
+            <label className="flex items-center mt-2">
+              <input
+                type="checkbox"
+                checked={Boolean(node.data.requireAcknowledgment)}
+                onChange={createChangeHandler('requireAcknowledgment')}
+                className="mr-2"
+              />
+              <span className="text-sm">Require Acknowledgment</span>
+            </label>
+            
+            <label className="flex items-center mt-2">
+              <input
+                type="checkbox"
+                checked={Boolean(node.data.autoReset)}
+                onChange={createChangeHandler('autoReset')}
+                className="mr-2"
+              />
+              <span className="text-sm">Auto Reset</span>
+            </label>
+          </>
+        )}
+        
+        {/* Contact node properties */}
+        {node.type === 'contact' && (
+          <>
+            {renderInput('Name', 'name', 'text', 'John Doe')}
+            {renderInput('Email', 'email', 'email', 'john@example.com')}
+            {renderInput('Phone', 'phone', 'tel', '+1234567890')}
+            
+            {renderSelect('Preferred Method', 'preferredMethod', [
+              { value: 'email', label: 'Email' },
+              { value: 'sms', label: 'SMS' },
+              { value: 'call', label: 'Voice Call' },
+            ])}
+            
+            {renderInput('Priority', 'priority', 'number')}
+            {renderInput('Escalation Delay (seconds)', 'escalationDelay', 'number')}
+            
+            <label className="flex items-center mt-2">
+              <input
+                type="checkbox"
+                checked={Boolean(node.data.workHoursOnly)}
+                onChange={createChangeHandler('workHoursOnly')}
+                className="mr-2"
+              />
+              <span className="text-sm">Work Hours Only</span>
+            </label>
+            
+            {renderInput('Timezone', 'timezone', 'text', 'America/Chicago')}
+          </>
+        )}
         {/* Twilio node */}
         {isTwilioNode(node) && (
           <>

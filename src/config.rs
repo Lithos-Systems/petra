@@ -28,6 +28,8 @@ pub struct Config {
     #[cfg(feature = "advanced-storage")]
     #[serde(default)]
     pub storage: Option<crate::storage::StorageConfig>,
+    #[serde(default)]
+    pub alarms: Option<AlarmConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
