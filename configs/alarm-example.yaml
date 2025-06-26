@@ -23,7 +23,7 @@ blocks:
       preset_ms: 10000
 scan_time_ms: 100
 twilio:
-  from_number: "+1234567890"
+  from_number: "+1987654321"
   actions:
     - name: twilio_action
       trigger_signal: 10_second_delay
