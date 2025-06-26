@@ -3,6 +3,7 @@ use crate::mqtt::MqttConfig;
 use crate::s7::S7Config;
 use crate::twilio::TwilioConfig;
 use crate::history::HistoryConfig;
+use crate::alarms::AlarmConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
