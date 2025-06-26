@@ -45,7 +45,7 @@ export default function PropertiesPanel() {
       updateNodeData(node.id, { [field]: value })
     }
   }
-
+  
   const createNumberHandler = (field: string) => {
     return (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = parseFloat(e.target.value) || 0
@@ -64,18 +64,12 @@ export default function PropertiesPanel() {
     }
   }
 
-  // Helper to ensure label is a string
-  const getLabel = (data: any): string => {
-    return (data.label as string) || ''
-  }
-
-  // Common input component factory
   const renderInput = (label: string, field: string, type: string = 'text', placeholder?: string, props?: any) => (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       <input
         type={type}
-        value={node.data[field] || ''}
+        value={String(node.data[field] || '')} // Fix: convert to string
         onChange={createChangeHandler(field)}
         placeholder={placeholder}
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
@@ -88,7 +82,7 @@ export default function PropertiesPanel() {
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       <select
-        value={node.data[field] || options[0].value}
+        value={String(node.data[field] || options[0]?.value || '')} // Fix: convert to string
         onChange={createChangeHandler(field)}
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
       >
