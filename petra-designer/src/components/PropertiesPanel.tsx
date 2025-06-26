@@ -16,6 +16,8 @@ import {
   isMqttNode,
   isS7Node,
 } from '@/types/nodes'
+import { validateNodeConfiguration } from '@/utils/validation'
+import toast from 'react-hot-toast'
 
 type CategoryMap = Record<string, Array<{
   value: string
@@ -36,18 +38,29 @@ export default function PropertiesPanel() {
   
   const node = selectedNode as Node
 
-  // CRITICAL FIX: Extract the value immediately to avoid synthetic event issues
-  function handleChange(field: string) {
+  // Extract handlers to reduce repetition
+  const createChangeHandler = (field: string) => {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       const value = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value
       updateNodeData(node.id, { [field]: value })
     }
   }
 
-  function handleNumberChange(field: string) {
+  const createNumberHandler = (field: string) => {
     return (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = parseFloat(e.target.value) || 0
       updateNodeData(node.id, { [field]: value })
+    }
+  }
+
+  const validateConfiguration = () => {
+    const validation = validateNodeConfiguration(node)
+    if (validation.valid) {
+      updateNodeData(node.id, { configured: true })
+      toast.success('Configuration validated successfully')
+    } else {
+      updateNodeData(node.id, { configured: false })
+      toast.error(validation.error || 'Invalid configuration')
     }
   }
 
@@ -56,15 +69,33 @@ export default function PropertiesPanel() {
     return (data.label as string) || ''
   }
 
-  const labelInput = (
+  // Common input component factory
+  const renderInput = (label: string, field: string, type: string = 'text', placeholder?: string, props?: any) => (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       <input
-        type="text"
-        value={getLabel(node.data)}
-        onChange={handleChange('label')}
+        type={type}
+        value={node.data[field] || ''}
+        onChange={createChangeHandler(field)}
+        placeholder={placeholder}
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+        {...props}
       />
+    </div>
+  )
+
+  const renderSelect = (label: string, field: string, options: Array<{value: string, label: string}>) => (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <select
+        value={node.data[field] || options[0].value}
+        onChange={createChangeHandler(field)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+      >
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
     </div>
   )
 
@@ -73,25 +104,16 @@ export default function PropertiesPanel() {
       <h3 className="text-lg font-semibold mb-4">Properties</h3>
 
       <div className="space-y-4">
-        {labelInput}
+        {renderInput('Label', 'label')}
 
         {/* Signal node */}
         {isSignalNode(node) && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Signal Type
-              </label>
-              <select
-                value={(node.data as SignalNodeData).signalType || 'float'}
-                onChange={handleChange('signalType')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              >
-                <option value="bool">Boolean</option>
-                <option value="int">Integer</option>
-                <option value="float">Float</option>
-              </select>
-            </div>
+            {renderSelect('Signal Type', 'signalType', [
+              { value: 'bool', label: 'Boolean' },
+              { value: 'int', label: 'Integer' },
+              { value: 'float', label: 'Float' }
+            ])}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -102,7 +124,7 @@ export default function PropertiesPanel() {
                   <input
                     type="checkbox"
                     checked={Boolean((node.data as SignalNodeData).initial)}
-                    onChange={handleChange('initial')}
+                    onChange={createChangeHandler('initial')}
                     className="mr-2"
                   />
                   <span>{(node.data as SignalNodeData).initial ? 'True' : 'False'}</span>
@@ -111,7 +133,7 @@ export default function PropertiesPanel() {
                 <input
                   type="number"
                   value={Number((node.data as SignalNodeData).initial) || 0}
-                  onChange={handleNumberChange('initial')}
+                  onChange={createNumberHandler('initial')}
                   step={(node.data as SignalNodeData).signalType === 'float' ? '0.1' : '1'}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
                 />
@@ -120,7 +142,7 @@ export default function PropertiesPanel() {
           </>
         )}
 
-        {/* Block node with better params handling */}
+        {/* Block node */}
         {isBlockNode(node) && (
           <>
             <div>
@@ -129,7 +151,7 @@ export default function PropertiesPanel() {
               </label>
               <select
                 value={(node.data as BlockNodeData).blockType || 'AND'}
-                onChange={handleChange('blockType')}
+                onChange={createChangeHandler('blockType')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 {Object.entries(blockTypesByCategory).map(([cat, types]) => (
@@ -149,43 +171,22 @@ export default function PropertiesPanel() {
           </>
         )}
 
-        {/* Twilio node - Fixed validation */}
+        {/* Twilio node */}
         {isTwilioNode(node) && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Action Type
-              </label>
-              <select
-                value={(node.data as TwilioNodeData).actionType || 'sms'}
-                onChange={handleChange('actionType')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              >
-                <option value="sms">SMS</option>
-                <option value="call">Voice Call</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                To Number
-              </label>
-              <input
-                type="tel"
-                value={(node.data as TwilioNodeData).toNumber || ''}
-                onChange={handleChange('toNumber')}
-                placeholder="+1234567890"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
-
+            {renderSelect('Action Type', 'actionType', [
+              { value: 'sms', label: 'SMS' },
+              { value: 'call', label: 'Voice Call' }
+            ])}
+            {renderInput('To Number', 'toNumber', 'tel', '+1234567890')}
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Content
               </label>
               <textarea
                 value={(node.data as TwilioNodeData).content || ''}
-                onChange={handleChange('content')}
+                onChange={createChangeHandler('content')}
                 rows={4}
                 placeholder={
                   (node.data as TwilioNodeData).actionType === 'call'
@@ -196,194 +197,106 @@ export default function PropertiesPanel() {
               />
             </div>
 
-            <div className="mt-2">
-              <button
-                onClick={() => {
-                  const isValid = !!(node.data as TwilioNodeData).toNumber && 
-                                 !!(node.data as TwilioNodeData).content
-                  updateNodeData(node.id, { configured: isValid })
-                }}
-                className="px-3 py-1 bg-petra-500 text-white rounded hover:bg-petra-600"
-              >
-                Validate Configuration
-              </button>
-            </div>
+            <button
+              onClick={validateConfiguration}
+              className="w-full px-3 py-2 bg-petra-500 text-white rounded hover:bg-petra-600 transition-colors"
+            >
+              Validate Configuration
+            </button>
           </>
         )}
 
-        {/* MQTT node */}
+        {/* Enhanced MQTT node with username/password */}
         {isMqttNode(node) && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Broker Host
-              </label>
-              <input
-                type="text"
-                value={(node.data as MqttNodeData).brokerHost || ''}
-                onChange={handleChange('brokerHost')}
-                placeholder="mqtt.lithos.systems"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
+            {renderInput('Broker Host', 'brokerHost', 'text', 'mqtt.lithos.systems')}
+            {renderInput('Broker Port', 'brokerPort', 'number')}
+            {renderInput('Client ID', 'clientId', 'text', 'petra-01')}
+            {renderInput('Topic Prefix', 'topicPrefix', 'text', 'petra/plc')}
+            
+            <div className="border-t pt-4 mt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Authentication (Optional)</h4>
+              {renderInput('Username', 'username', 'text', 'Leave empty for anonymous')}
+              {renderInput('Password', 'password', 'password', 'Leave empty for anonymous')}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Broker Port
-              </label>
-              <input
-                type="number"
-                value={(node.data as MqttNodeData).brokerPort || 1883}
-                onChange={handleNumberChange('brokerPort')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
+            {renderSelect('Mode', 'mode', [
+              { value: 'read_write', label: 'Read/Write' },
+              { value: 'read', label: 'Read Only' },
+              { value: 'write', label: 'Write Only' }
+            ])}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Client ID
-              </label>
+            <label className="flex items-center mt-2">
               <input
-                type="text"
-                value={(node.data as MqttNodeData).clientId || ''}
-                onChange={handleChange('clientId')}
-                placeholder="petra-01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+                type="checkbox"
+                checked={Boolean((node.data as MqttNodeData).publishOnChange)}
+                onChange={createChangeHandler('publishOnChange')}
+                className="mr-2"
               />
-            </div>
+              <span className="text-sm">Publish on change</span>
+            </label>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Topic Prefix
-              </label>
-              <input
-                type="text"
-                value={(node.data as MqttNodeData).topicPrefix || ''}
-                onChange={handleChange('topicPrefix')}
-                placeholder="petra/plc"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
-
-            <div className="mt-2">
-              <button
-                onClick={() => {
-                  const isValid = !!(node.data as MqttNodeData).brokerHost && 
-                                 !!(node.data as MqttNodeData).clientId
-                  updateNodeData(node.id, { configured: isValid })
-                }}
-                className="px-3 py-1 bg-petra-500 text-white rounded hover:bg-petra-600"
-              >
-                Validate Configuration
-              </button>
-            </div>
+            <button
+              onClick={validateConfiguration}
+              className="w-full px-3 py-2 bg-petra-500 text-white rounded hover:bg-petra-600 transition-colors"
+            >
+              Validate Configuration
+            </button>
           </>
         )}
 
-        {/* S7 node */}
+        {/* Enhanced S7 node with IP configuration */}
         {isS7Node(node) && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Signal Name
-              </label>
-              <input
-                type="text"
-                value={(node.data as S7NodeData).signal || ''}
-                onChange={handleChange('signal')}
-                placeholder="motor_running"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
+            <div className="border-b pb-4 mb-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Connection Settings</h4>
+              {renderInput('IP Address', 'ip', 'text', '192.168.1.100')}
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {renderInput('Rack', 'rack', 'number')}
+                {renderInput('Slot', 'slot', 'number')}
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Area
-              </label>
-              <select
-                value={(node.data as S7NodeData).area || 'DB'}
-                onChange={handleChange('area')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              >
-                <option value="DB">DB – Data Block</option>
-                <option value="I">I – Inputs</option>
-                <option value="Q">Q – Outputs</option>
-                <option value="M">M – Markers</option>
-              </select>
-            </div>
+            {renderInput('Signal Name', 'signal', 'text', 'motor_running')}
+            
+            {renderSelect('Area', 'area', [
+              { value: 'DB', label: 'DB – Data Block' },
+              { value: 'I', label: 'I – Inputs' },
+              { value: 'Q', label: 'Q – Outputs' },
+              { value: 'M', label: 'M – Markers' }
+            ])}
 
             {(node.data as S7NodeData).area === 'DB' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  DB Number
-                </label>
-                <input
-                  type="number"
-                  value={(node.data as S7NodeData).dbNumber || 0}
-                  onChange={handleNumberChange('dbNumber')}
-                  min="0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-                />
-              </div>
+              renderInput('DB Number', 'dbNumber', 'number')
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Address
-              </label>
-              <input
-                type="number"
-                value={(node.data as S7NodeData).address || 0}
-                onChange={handleNumberChange('address')}
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
+            {renderInput('Address', 'address', 'number')}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Data Type
-              </label>
-              <select
-                value={(node.data as S7NodeData).dataType || 'bool'}
-                onChange={handleChange('dataType')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              >
-                <option value="bool">Bool</option>
-                <option value="byte">Byte</option>
-                <option value="word">Word</option>
-                <option value="int">Int</option>
-                <option value="dint">DInt</option>
-                <option value="real">Real</option>
-              </select>
-            </div>
+            {renderSelect('Data Type', 'dataType', [
+              { value: 'bool', label: 'Bool' },
+              { value: 'byte', label: 'Byte' },
+              { value: 'word', label: 'Word' },
+              { value: 'int', label: 'Int' },
+              { value: 'dint', label: 'DInt' },
+              { value: 'real', label: 'Real' }
+            ])}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Direction
-              </label>
-              <select
-                value={(node.data as S7NodeData).direction || 'read'}
-                onChange={handleChange('direction')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              >
-                <option value="read">Read</option>
-                <option value="write">Write</option>
-                <option value="read_write">Read/Write</option>
-              </select>
-            </div>
+            {(node.data as S7NodeData).dataType === 'bool' && (
+              renderInput('Bit', 'bit', 'number')
+            )}
 
-            <div className="mt-2">
-              <button
-                onClick={() => {
-                  const isValid = !!(node.data as S7NodeData).signal
-                  updateNodeData(node.id, { configured: isValid })
-                }}
-                className="px-3 py-1 bg-petra-500 text-white rounded hover:bg-petra-600"
-              >
-                Validate Configuration
-              </button>
-            </div>
+            {renderSelect('Direction', 'direction', [
+              { value: 'read', label: 'Read' },
+              { value: 'write', label: 'Write' },
+              { value: 'read_write', label: 'Read/Write' }
+            ])}
+
+            <button
+              onClick={validateConfiguration}
+              className="w-full px-3 py-2 bg-petra-500 text-white rounded hover:bg-petra-600 transition-colors"
+            >
+              Validate Configuration
+            </button>
           </>
         )}
       </div>
@@ -404,6 +317,15 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
     return defaultValue
   }
 
+  const createParamHandler = (key: string, isFloat: boolean = false) => {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = isFloat ? parseFloat(e.target.value) || 0 : parseInt(e.target.value) || 0
+      updateNodeData(nodeId, { 
+        params: { ...params, [key]: value } 
+      })
+    }
+  }
+
   switch (blockType) {
     case 'TON':
     case 'TOF':
@@ -415,12 +337,7 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
           <input
             type="number"
             value={getParamNumber('preset_ms', 1000)}
-            onChange={(e) => {
-              const value = parseInt(e.target.value) || 1000
-              updateNodeData(nodeId, { 
-                params: { ...params, preset_ms: value } 
-              })
-            }}
+            onChange={createParamHandler('preset_ms')}
             min="0"
             step="100"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
@@ -437,12 +354,7 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
           <input
             type="number"
             value={getParamNumber('increment', 1)}
-            onChange={(e) => {
-              const value = parseInt(e.target.value) || 1
-              updateNodeData(nodeId, { 
-                params: { ...params, increment: value } 
-              })
-            }}
+            onChange={createParamHandler('increment')}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
           />
         </div>
@@ -458,12 +370,7 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
             <input
               type="number"
               value={getParamNumber('frequency', 1.0)}
-              onChange={(e) => {
-                const value = parseFloat(e.target.value) || 1.0
-                updateNodeData(nodeId, { 
-                  params: { ...params, frequency: value } 
-                })
-              }}
+              onChange={createParamHandler('frequency', true)}
               min="0"
               step="0.1"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
@@ -476,12 +383,7 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
             <input
               type="number"
               value={getParamNumber('amplitude', 10.0)}
-              onChange={(e) => {
-                const value = parseFloat(e.target.value) || 10.0
-                updateNodeData(nodeId, { 
-                  params: { ...params, amplitude: value } 
-                })
-              }}
+              onChange={createParamHandler('amplitude', true)}
               min="0"
               step="0.1"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
