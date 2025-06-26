@@ -3,7 +3,8 @@ use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::{info, warn, debug};
+use tracing::{info, warn, debug, error};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MqttConfig {
@@ -18,6 +19,22 @@ pub struct MqttConfig {
     // Optional fields - will use env vars if not provided
     pub username: Option<String>,
     pub password: Option<String>,
+    // New: subscriptions for reading values from MQTT
+    #[serde(default)]
+    pub subscriptions: Vec<MqttSubscription>,
+}
+
+/// Configuration for MQTT signal subscriptions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MqttSubscription {
+    /// Topic to subscribe to (can include wildcards)
+    pub topic: String,
+    /// Signal name to update with received value
+    pub signal: String,
+    /// Optional value path for JSON payloads (e.g., "sensor.value")
+    pub value_path: Option<String>,
+    /// Data type to convert to
+    pub data_type: String,
 }
 
 fn default_qos() -> u8 { 1 }
@@ -34,6 +51,7 @@ impl Default for MqttConfig {
             publish_on_change: true,
             username: None,
             password: None,
+            subscriptions: Vec::new(),
         }
     }
 }
@@ -59,6 +77,8 @@ pub struct MqttHandler {
     pub(crate) bus: SignalBus,
     pub(crate) config: MqttConfig,
     pub(crate) signal_change_rx: Option<mpsc::Receiver<(String, Value)>>,
+    // Map topic patterns to subscriptions
+    subscription_map: HashMap<String, MqttSubscription>,
 }
 
 impl MqttHandler {
@@ -88,6 +108,12 @@ impl MqttHandler {
         }
 
         let (client, eventloop) = AsyncClient::new(mqttoptions, 100);
+        
+        // Build subscription map
+        let mut subscription_map = HashMap::new();
+        for sub in &config.subscriptions {
+            subscription_map.insert(sub.topic.clone(), sub.clone());
+        }
 
         Ok(Self {
             client,
@@ -95,6 +121,7 @@ impl MqttHandler {
             bus,
             config,
             signal_change_rx: None,
+            subscription_map,
         })
     }
 
@@ -103,16 +130,25 @@ impl MqttHandler {
         self.signal_change_rx = Some(rx);
     }
 
-
     pub async fn start(&mut self) -> Result<()> {
+        // Subscribe to command topic
         let cmd_topic = format!("{}/cmd", self.config.topic_prefix);
         self.client
             .subscribe(&cmd_topic, QoS::AtLeastOnce)
             .await
             .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
+        // Subscribe to configured value topics
+        for sub in &self.config.subscriptions {
+            self.client
+                .subscribe(&sub.topic, QoS::AtLeastOnce)
+                .await
+                .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            info!("Subscribed to {} -> signal {}", sub.topic, sub.signal);
+        }
+
         info!("MQTT connected to {}:{}", self.config.broker_host, self.config.broker_port);
-        info!("Subscribed to {}", cmd_topic);
+        info!("Subscribed to {} and {} value topics", cmd_topic, self.config.subscriptions.len());
 
         self.publish_status("online").await?;
         Ok(())
@@ -163,6 +199,13 @@ impl MqttHandler {
 
         debug!("MQTT received on {}: {}", topic, payload_str);
 
+        // Check if this is a subscribed value topic
+        if let Some(subscription) = self.find_subscription(&topic) {
+            self.handle_value_update(subscription, &payload_str).await;
+            return;
+        }
+
+        // Otherwise, try to parse as command
         match serde_json::from_str::<MqttMessage>(&payload_str) {
             Ok(msg) => match msg {
                 MqttMessage::SetSignal { name, value } => {
@@ -186,7 +229,71 @@ impl MqttHandler {
                     self.publish_stats().await;
                 }
             },
-            Err(e) => warn!("Invalid MQTT command: {}", e),
+            Err(_) => {
+                // Not a command, might be raw value for subscription
+                debug!("Received non-command message on {}", topic);
+            }
+        }
+    }
+
+    fn find_subscription(&self, topic: &str) -> Option<MqttSubscription> {
+        // First try exact match
+        if let Some(sub) = self.subscription_map.get(topic) {
+            return Some(sub.clone());
+        }
+        
+        // Then try wildcard matches
+        for (pattern, sub) in &self.subscription_map {
+            if mqtt_matches(topic, pattern) {
+                return Some(sub.clone());
+            }
+        }
+        
+        None
+    }
+
+    async fn handle_value_update(&mut self, subscription: MqttSubscription, payload: &str) {
+        // Try to parse the value based on configured data type
+        let value = match subscription.data_type.as_str() {
+            "bool" => {
+                // Handle various boolean representations
+                match payload.trim().to_lowercase().as_str() {
+                    "true" | "1" | "on" | "yes" => Some(Value::Bool(true)),
+                    "false" | "0" | "off" | "no" => Some(Value::Bool(false)),
+                    _ => None,
+                }
+            }
+            "int" => {
+                payload.trim().parse::<i32>().ok().map(Value::Int)
+            }
+            "float" => {
+                payload.trim().parse::<f64>().ok().map(Value::Float)
+            }
+            _ => {
+                // Try JSON parsing if value_path is specified
+                if let Some(path) = &subscription.value_path {
+                    extract_json_value(payload, path, &subscription.data_type)
+                } else {
+                    None
+                }
+            }
+        };
+
+        match value {
+            Some(v) => {
+                match self.bus.set(&subscription.signal, v.clone()) {
+                    Ok(()) => {
+                        info!("MQTT updated {} = {} from topic {}", subscription.signal, v, subscription.topic);
+                    }
+                    Err(e) => {
+                        error!("Failed to update signal {} from MQTT: {}", subscription.signal, e);
+                    }
+                }
+            }
+            None => {
+                warn!("Failed to parse value '{}' as {} for signal {}", 
+                    payload, subscription.data_type, subscription.signal);
+            }
         }
     }
 
@@ -253,5 +360,51 @@ impl Drop for MqttHandler {
             let _ = client.publish(&topic, QoS::AtLeastOnce, true, "offline").await;
             let _ = client.disconnect().await;
         });
+    }
+}
+
+// Helper function to match MQTT topics with wildcards
+fn mqtt_matches(topic: &str, pattern: &str) -> bool {
+    let topic_parts: Vec<&str> = topic.split('/').collect();
+    let pattern_parts: Vec<&str> = pattern.split('/').collect();
+    
+    if pattern_parts.contains(&"#") {
+        // # matches everything after
+        let hash_pos = pattern_parts.iter().position(|&p| p == "#").unwrap();
+        if hash_pos != pattern_parts.len() - 1 {
+            return false; // # must be last
+        }
+        return topic_parts.len() >= hash_pos && 
+               topic_parts[..hash_pos] == pattern_parts[..hash_pos];
+    }
+    
+    if topic_parts.len() != pattern_parts.len() {
+        return false;
+    }
+    
+    for (t, p) in topic_parts.iter().zip(pattern_parts.iter()) {
+        if p != &"+" && t != p {
+            return false;
+        }
+    }
+    
+    true
+}
+
+// Helper function to extract value from JSON payload
+fn extract_json_value(payload: &str, path: &str, data_type: &str) -> Option<Value> {
+    let json: serde_json::Value = serde_json::from_str(payload).ok()?;
+    let parts: Vec<&str> = path.split('.').collect();
+    
+    let mut current = &json;
+    for part in parts {
+        current = current.get(part)?;
+    }
+    
+    match data_type {
+        "bool" => current.as_bool().map(Value::Bool),
+        "int" => current.as_i64().map(|i| Value::Int(i as i32)),
+        "float" => current.as_f64().map(Value::Float),
+        _ => None,
     }
 }
