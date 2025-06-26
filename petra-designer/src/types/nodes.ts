@@ -1,3 +1,4 @@
+// src/types/nodes.ts
 import type { Node } from '@xyflow/react'
 
 /* ---------- Base data interfaces ---------- */
