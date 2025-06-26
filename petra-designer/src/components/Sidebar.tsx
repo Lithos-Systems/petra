@@ -43,6 +43,28 @@ const nodeTypes = [
     color: 'text-red-500',
     description: 'Siemens S7 mapping',
   },
+  {
+    type: 'alarm',
+    label: 'Alarm',
+    icon: FaBell,
+    color: 'text-yellow-500',
+    description: 'Monitor & alert',
+  },
+  {
+    type: 'contact',
+    label: 'Contact',
+    icon: FaUser,
+    color: 'text-indigo-500',
+    description: 'Alert recipient',
+  },
+  {
+    type: 'email',
+    label: 'Email',
+    icon: FaEnvelope,
+    color: 'text-blue-500',
+    description: 'Email alerts',
+  },
+]
 ]
 
 export default function Sidebar() {
