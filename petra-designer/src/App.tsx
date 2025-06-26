@@ -1,4 +1,3 @@
-// Add this to your App.tsx in the Flow component
 import { useCallback, useEffect, DragEvent, MouseEvent } from 'react'
 import {
   ReactFlow,
@@ -12,6 +11,7 @@ import {
 } from '@xyflow/react'
 
 import { Toaster } from 'react-hot-toast'
+import toast from 'react-hot-toast'  // Add this import
 import { useFlowStore } from './store/flowStore'
 import { nodeTypes } from './nodes'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -40,6 +40,7 @@ function Flow() {
   useEffect(() => {
     console.log('ReactFlow mounted. nodes:', nodes.length, 'edges:', edges.length)
   }, [nodes, edges])
+
   const onEdgeClick = useCallback(
     (event: MouseEvent, edge: any) => {
       event.stopPropagation() // Prevent node selection
@@ -48,6 +49,7 @@ function Flow() {
     },
     [deleteEdge]
   )
+
   const deletePressed = useKeyPress(['Delete', 'Backspace'])
   useEffect(() => {
     if (deletePressed && selectedNode) {
