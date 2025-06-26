@@ -51,12 +51,17 @@ export default function PropertiesPanel() {
     }
   }
 
+  // Helper to ensure label is a string
+  const getLabel = (data: any): string => {
+    return (data.label as string) || ''
+  }
+
   const labelInput = (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
       <input
         type="text"
-        value={node.data.label || ''}
+        value={getLabel(node.data)}
         onChange={handleChange('label')}
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
       />
@@ -105,7 +110,7 @@ export default function PropertiesPanel() {
               ) : (
                 <input
                   type="number"
-                  value={(node.data as SignalNodeData).initial ?? 0}
+                  value={Number((node.data as SignalNodeData).initial) || 0}
                   onChange={handleNumberChange('initial')}
                   step={(node.data as SignalNodeData).signalType === 'float' ? '0.1' : '1'}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
@@ -391,6 +396,14 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
   const blockType = data.blockType
   const params = data.params || {}
 
+  // Helper to get number value from params
+  const getParamNumber = (key: string, defaultValue: number): number => {
+    const value = params[key]
+    if (typeof value === 'number') return value
+    if (typeof value === 'string') return parseFloat(value) || defaultValue
+    return defaultValue
+  }
+
   switch (blockType) {
     case 'TON':
     case 'TOF':
@@ -401,7 +414,7 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
           </label>
           <input
             type="number"
-            value={params.preset_ms || 1000}
+            value={getParamNumber('preset_ms', 1000)}
             onChange={(e) => {
               const value = parseInt(e.target.value) || 1000
               updateNodeData(nodeId, { 
@@ -423,7 +436,7 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
           </label>
           <input
             type="number"
-            value={params.increment || 1}
+            value={getParamNumber('increment', 1)}
             onChange={(e) => {
               const value = parseInt(e.target.value) || 1
               updateNodeData(nodeId, { 
@@ -444,7 +457,7 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
             </label>
             <input
               type="number"
-              value={params.frequency || 1.0}
+              value={getParamNumber('frequency', 1.0)}
               onChange={(e) => {
                 const value = parseFloat(e.target.value) || 1.0
                 updateNodeData(nodeId, { 
@@ -462,7 +475,7 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
             </label>
             <input
               type="number"
-              value={params.amplitude || 10.0}
+              value={getParamNumber('amplitude', 10.0)}
               onChange={(e) => {
                 const value = parseFloat(e.target.value) || 10.0
                 updateNodeData(nodeId, { 
