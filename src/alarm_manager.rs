@@ -1,410 +1,513 @@
-use crate::{error::*, signal::SignalBus, value::Value};
-use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
+use crate::{error::*, value::Value, signal::SignalBus};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
-use tokio::sync::mpsc;
-use tracing::{info, warn, debug, error};
 use std::collections::HashMap;
+use std::sync::Arc;
+use parking_lot::RwLock;
+use chrono::{DateTime, Utc, Local, Timelike};
+use tokio::time::{interval, Duration};
+use tracing::{info, warn, error};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MqttConfig {
-    pub broker_host: String,
-    pub broker_port: u16,
-    pub client_id: String,
-    pub topic_prefix: String,
-    #[serde(default = "default_qos")]
-    pub qos: u8,
-    #[serde(default = "default_publish_on_change")]
-    pub publish_on_change: bool,
-    // Optional fields - will use env vars if not provided
-    pub username: Option<String>,
-    pub password: Option<String>,
-    // New: subscriptions for reading values from MQTT
-    #[serde(default)]
-    pub subscriptions: Vec<MqttSubscription>,
+pub struct AlarmConfig {
+    pub alarms: Vec<AlarmDefinition>,
+    pub contacts: Vec<Contact>,
+    pub escalation_chains: HashMap<String, Vec<String>>, // alarm_id -> vec of contact_ids
 }
 
-/// Configuration for MQTT signal subscriptions
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MqttSubscription {
-    /// Topic to subscribe to (can include wildcards)
-    pub topic: String,
-    /// Signal name to update with received value
+pub struct AlarmDefinition {
+    pub id: String,
+    pub name: String,
     pub signal: String,
-    /// Optional value path for JSON payloads (e.g., "sensor.value")
-    pub value_path: Option<String>,
-    /// Data type to convert to
-    pub data_type: String,
+    pub condition: AlarmCondition,
+    pub setpoint: f64,
+    pub severity: AlarmSeverity,
+    pub delay_seconds: u32,
+    pub repeat_interval_seconds: u32,
+    pub message_template: String,
+    pub require_acknowledgment: bool,
+    pub auto_reset: bool,
 }
 
-fn default_qos() -> u8 { 1 }
-fn default_publish_on_change() -> bool { true }
-
-impl Default for MqttConfig {
-    fn default() -> Self {
-        Self {
-            broker_host: "mqtt.lithos.systems".to_string(),
-            broker_port: 1883,
-            client_id: "petra-plc".to_string(),
-            topic_prefix: "petra/plc".to_string(),
-            qos: 1,
-            publish_on_change: true,
-            username: None,
-            password: None,
-            subscriptions: Vec::new(),
-        }
-    }
-}
-
-/// Message types exchanged over MQTT
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum MqttMessage {
-    /// Set a signal to a new value
-    SetSignal { name: String, value: Value },
-    /// Request the current value of a signal
-    GetSignal { name: String },
-    /// Request a snapshot of all signals
-    GetAllSignals,
-    /// Request engine statistics
-    GetStats,
+#[serde(rename_all = "snake_case")]
+pub enum AlarmCondition {
+    Above,
+    Below,
+    Equals,
+    NotEquals,
+    Deadband { low: f64, high: f64 },
 }
 
-/// Handles MQTT connectivity and message processing
-pub struct MqttHandler {
-    pub(crate) client: AsyncClient,
-    pub(crate) eventloop: EventLoop,
-    pub(crate) bus: SignalBus,
-    pub(crate) config: MqttConfig,
-    pub(crate) signal_change_rx: Option<mpsc::Receiver<(String, Value)>>,
-    // Map topic patterns to subscriptions
-    subscription_map: HashMap<String, MqttSubscription>,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AlarmSeverity {
+    Info = 1,
+    Warning = 2,
+    Critical = 3,
+    Emergency = 4,
 }
 
-impl MqttHandler {
-    pub fn new(bus: SignalBus, config: MqttConfig) -> Result<Self> {
-        let mut mqttoptions = MqttOptions::new(
-            &config.client_id,
-            &config.broker_host,
-            config.broker_port,
-        );
-        mqttoptions.set_keep_alive(Duration::from_secs(30));
-        
-        // Check config first, then environment variables
-        let username = config
-            .username
-            .clone()
-            .or_else(|| std::env::var("MQTT_USERNAME").ok());
-        let password = config
-            .password
-            .clone()
-            .or_else(|| std::env::var("MQTT_PASSWORD").ok());
-        
-        if let (Some(user), Some(pass)) = (&username, &password) {
-            mqttoptions.set_credentials(user, pass);
-            info!("MQTT authentication configured for user: {}", user);
-        } else {
-            info!("MQTT using anonymous connection");
-        }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Contact {
+    pub id: String,
+    pub name: String,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub preferred_method: ContactMethod,
+    pub priority: u32,
+    pub escalation_delay_seconds: u32,
+    pub work_hours_only: bool,
+    pub work_hours: WorkHours,
+}
 
-        let (client, eventloop) = AsyncClient::new(mqttoptions, 100);
-        
-        // Build subscription map
-        let mut subscription_map = HashMap::new();
-        for sub in &config.subscriptions {
-            subscription_map.insert(sub.topic.clone(), sub.clone());
-        }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContactMethod {
+    Email,
+    Sms,
+    Call,
+}
 
-        Ok(Self {
-            client,
-            eventloop,
-            bus,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkHours {
+    pub start_hour: u8,
+    pub end_hour: u8,
+    pub days: Vec<chrono::Weekday>,
+    pub timezone: String,
+}
+
+#[derive(Debug, Clone)]
+struct ActiveAlarm {
+    alarm: AlarmDefinition,
+    triggered_at: DateTime<Utc>,
+    last_notification: Option<DateTime<Utc>>,
+    escalation_level: usize,
+    acknowledged: bool,
+    acknowledged_by: Option<String>,
+    notification_count: u32,
+}
+
+pub struct AlarmManager {
+    config: AlarmConfig,
+    bus: SignalBus,
+    active_alarms: Arc<RwLock<HashMap<String, ActiveAlarm>>>,
+    alarm_history: Arc<RwLock<Vec<AlarmEvent>>>,
+    email_sender: Option<Arc<dyn EmailSender>>,
+    sms_sender: Option<Arc<dyn SmsSender>>,
+    call_sender: Option<Arc<dyn CallSender>>,
+    running: Arc<RwLock<bool>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlarmEvent {
+    pub alarm_id: String,
+    pub timestamp: DateTime<Utc>,
+    pub event_type: AlarmEventType,
+    pub severity: AlarmSeverity,
+    pub value: f64,
+    pub message: String,
+    pub acknowledged_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlarmEventType {
+    Triggered,
+    Cleared,
+    Acknowledged,
+    Escalated,
+    NotificationSent,
+}
+
+#[async_trait::async_trait]
+pub trait EmailSender: Send + Sync {
+    async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<()>;
+}
+
+#[async_trait::async_trait]
+pub trait SmsSender: Send + Sync {
+    async fn send_sms(&self, to: &str, message: &str) -> Result<()>;
+}
+
+#[async_trait::async_trait]
+pub trait CallSender: Send + Sync {
+    async fn make_call(&self, to: &str, message: &str) -> Result<()>;
+}
+
+impl AlarmManager {
+    pub fn new(config: AlarmConfig, bus: SignalBus) -> Self {
+        Self {
             config,
-            signal_change_rx: None,
-            subscription_map,
-        })
-    }
-
-    /// Provide a channel receiving signal change notifications
-    pub fn set_signal_change_channel(&mut self, rx: mpsc::Receiver<(String, Value)>) {
-        self.signal_change_rx = Some(rx);
-    }
-
-    pub async fn start(&mut self) -> Result<()> {
-        // Subscribe to command topic
-        let cmd_topic = format!("{}/cmd", self.config.topic_prefix);
-        self.client
-            .subscribe(&cmd_topic, QoS::AtLeastOnce)
-            .await
-            .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-
-        // Subscribe to configured value topics
-        for sub in &self.config.subscriptions {
-            self.client
-                .subscribe(&sub.topic, QoS::AtLeastOnce)
-                .await
-                .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-            info!("Subscribed to {} -> signal {}", sub.topic, sub.signal);
+            bus,
+            active_alarms: Arc::new(RwLock::new(HashMap::new())),
+            alarm_history: Arc::new(RwLock::new(Vec::with_capacity(10000))),
+            email_sender: None,
+            sms_sender: None,
+            call_sender: None,
+            running: Arc::new(RwLock::new(false)),
         }
-
-        info!("MQTT connected to {}:{}", self.config.broker_host, self.config.broker_port);
-        info!("Subscribed to {} and {} value topics", cmd_topic, self.config.subscriptions.len());
-
-        self.publish_status("online").await?;
-        Ok(())
     }
 
-    pub async fn run(&mut self) -> Result<()> {
-        loop {
+    pub fn set_email_sender(&mut self, sender: Arc<dyn EmailSender>) {
+        self.email_sender = Some(sender);
+    }
+
+    pub fn set_sms_sender(&mut self, sender: Arc<dyn SmsSender>) {
+        self.sms_sender = Some(sender);
+    }
+
+    pub fn set_call_sender(&mut self, sender: Arc<dyn CallSender>) {
+        self.call_sender = Some(sender);
+    }
+
+    pub async fn run(&self) -> Result<()> {
+        *self.running.write() = true;
+        info!("Alarm manager started with {} alarms", self.config.alarms.len());
+
+        let mut check_interval = interval(Duration::from_secs(1));
+        let mut notification_interval = interval(Duration::from_secs(10));
+
+        while *self.running.read() {
             tokio::select! {
-                event = self.eventloop.poll() => {
-                    match event {
-                        Ok(Event::Incoming(Packet::Publish(p))) => {
-                            self.handle_incoming_message(p.topic, p.payload.to_vec()).await;
-                        }
-                        Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                            info!("MQTT reconnected");
-                            self.start().await?;
-                        }
-                        Err(e) => {
-                            warn!("MQTT error: {}", e);
-                            tokio::time::sleep(Duration::from_secs(5)).await;
-                        }
-                        _ => {}
-                    }
+                _ = check_interval.tick() => {
+                    self.check_alarms().await;
                 }
-                Some((name, value)) = async {
-                    if let Some(rx) = &mut self.signal_change_rx {
-                        rx.recv().await
-                    } else {
-                        None
-                    }
-                } => {
-                    if self.config.publish_on_change {
-                        self.publish_signal(&name, &value).await;
-                    }
+                _ = notification_interval.tick() => {
+                    self.process_notifications().await;
                 }
             }
         }
-    }
 
-    async fn handle_incoming_message(&mut self, topic: String, payload: Vec<u8>) {
-        let payload_str = match String::from_utf8(payload) {
-            Ok(s) => s,
-            Err(e) => {
-                warn!("Invalid UTF-8 in MQTT message: {}", e);
-                return;
-            }
-        };
-
-        debug!("MQTT received on {}: {}", topic, payload_str);
-
-        // Check if this is a subscribed value topic
-        if let Some(subscription) = self.find_subscription(&topic) {
-            self.handle_value_update(subscription, &payload_str).await;
-            return;
-        }
-
-        // Otherwise, try to parse as command
-        match serde_json::from_str::<MqttMessage>(&payload_str) {
-            Ok(msg) => match msg {
-                MqttMessage::SetSignal { name, value } => {
-                    match self.bus.set(&name, value.clone()) {
-                        Ok(()) => {
-                            info!("MQTT set {} = {}", name, value);
-                        }
-                        Err(e) => warn!("Failed to set signal: {}", e),
-                    }
-                }
-                MqttMessage::GetSignal { name } => {
-                    match self.bus.get(&name) {
-                        Ok(value) => self.publish_signal(&name, &value).await,
-                        Err(e) => warn!("Signal not found: {}", e),
-                    }
-                }
-                MqttMessage::GetAllSignals => {
-                    self.publish_all_signals().await;
-                }
-                MqttMessage::GetStats => {
-                    self.publish_stats().await;
-                }
-            },
-            Err(_) => {
-                // Not a command, might be raw value for subscription
-                debug!("Received non-command message on {}", topic);
-            }
-        }
-    }
-
-    fn find_subscription(&self, topic: &str) -> Option<MqttSubscription> {
-        // First try exact match
-        if let Some(sub) = self.subscription_map.get(topic) {
-            return Some(sub.clone());
-        }
-        
-        // Then try wildcard matches
-        for (pattern, sub) in &self.subscription_map {
-            if mqtt_matches(topic, pattern) {
-                return Some(sub.clone());
-            }
-        }
-        
-        None
-    }
-
-    async fn handle_value_update(&mut self, subscription: MqttSubscription, payload: &str) {
-        // Try to parse the value based on configured data type
-        let value = match subscription.data_type.as_str() {
-            "bool" => {
-                // Handle various boolean representations
-                match payload.trim().to_lowercase().as_str() {
-                    "true" | "1" | "on" | "yes" => Some(Value::Bool(true)),
-                    "false" | "0" | "off" | "no" => Some(Value::Bool(false)),
-                    _ => None,
-                }
-            }
-            "int" => {
-                payload.trim().parse::<i32>().ok().map(Value::Int)
-            }
-            "float" => {
-                payload.trim().parse::<f64>().ok().map(Value::Float)
-            }
-            _ => {
-                // Try JSON parsing if value_path is specified
-                if let Some(path) = &subscription.value_path {
-                    extract_json_value(payload, path, &subscription.data_type)
-                } else {
-                    None
-                }
-            }
-        };
-
-        match value {
-            Some(v) => {
-                match self.bus.set(&subscription.signal, v.clone()) {
-                    Ok(()) => {
-                        info!("MQTT updated {} = {} from topic {}", subscription.signal, v, subscription.topic);
-                    }
-                    Err(e) => {
-                        error!("Failed to update signal {} from MQTT: {}", subscription.signal, e);
-                    }
-                }
-            }
-            None => {
-                warn!("Failed to parse value '{}' as {} for signal {}", 
-                    payload, subscription.data_type, subscription.signal);
-            }
-        }
-    }
-
-    async fn publish_signal(&mut self, name: &str, value: &Value) {
-        let topic = format!("{}/signals/{}", self.config.topic_prefix, name);
-        let payload = serde_json::json!({
-            "name": name,
-            "value": value,
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })
-        .to_string();
-
-        debug!("Publishing {} = {} to {}", name, value, topic);
-
-        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
-            warn!("Failed to publish signal: {}", e);
-        }
-    }
-
-    async fn publish_all_signals(&mut self) {
-        let topic = format!("{}/signals", self.config.topic_prefix);
-        let signals = self.bus.snapshot();
-        let payload = serde_json::json!({
-            "signals": signals.into_iter().map(|(k, v)| {
-                serde_json::json!({ "name": k, "value": v })
-            }).collect::<Vec<_>>(),
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })
-        .to_string();
-
-        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
-            warn!("Failed to publish signals: {}", e);
-        }
-    }
-
-    async fn publish_stats(&mut self) {
-        let topic = format!("{}/stats", self.config.topic_prefix);
-        let payload = serde_json::json!({
-            "status": "running",
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })
-        .to_string();
-
-        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
-            warn!("Failed to publish stats: {}", e);
-        }
-    }
-
-    async fn publish_status(&mut self, status: &str) -> Result<()> {
-        let topic = format!("{}/status", self.config.topic_prefix);
-        self.client
-            .publish(&topic, QoS::AtLeastOnce, true, status)
-            .await
-            .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         Ok(())
     }
-}
 
-impl Drop for MqttHandler {
-    fn drop(&mut self) {
-        let topic = format!("{}/status", self.config.topic_prefix);
-        let client = self.client.clone();
-        tokio::spawn(async move {
-            let _ = client.publish(&topic, QoS::AtLeastOnce, true, "offline").await;
-            let _ = client.disconnect().await;
-        });
-    }
-}
-
-// Helper function to match MQTT topics with wildcards
-fn mqtt_matches(topic: &str, pattern: &str) -> bool {
-    let topic_parts: Vec<&str> = topic.split('/').collect();
-    let pattern_parts: Vec<&str> = pattern.split('/').collect();
-    
-    if pattern_parts.contains(&"#") {
-        // # matches everything after
-        let hash_pos = pattern_parts.iter().position(|&p| p == "#").unwrap();
-        if hash_pos != pattern_parts.len() - 1 {
-            return false; // # must be last
-        }
-        return topic_parts.len() >= hash_pos && 
-               topic_parts[..hash_pos] == pattern_parts[..hash_pos];
-    }
-    
-    if topic_parts.len() != pattern_parts.len() {
-        return false;
-    }
-    
-    for (t, p) in topic_parts.iter().zip(pattern_parts.iter()) {
-        if p != &"+" && t != p {
-            return false;
+    async fn check_alarms(&self) {
+        for alarm_def in &self.config.alarms {
+            if let Err(e) = self.check_single_alarm(alarm_def).await {
+                error!("Error checking alarm {}: {}", alarm_def.id, e);
+            }
         }
     }
-    
-    true
+
+    async fn check_single_alarm(&self, alarm_def: &AlarmDefinition) -> Result<()> {
+        // Get current signal value
+        let value = self.bus.get_float(&alarm_def.signal)?;
+        
+        // Check condition
+        let condition_met = match &alarm_def.condition {
+            AlarmCondition::Above => value > alarm_def.setpoint,
+            AlarmCondition::Below => value < alarm_def.setpoint,
+            AlarmCondition::Equals => (value - alarm_def.setpoint).abs() < f64::EPSILON,
+            AlarmCondition::NotEquals => (value - alarm_def.setpoint).abs() >= f64::EPSILON,
+            AlarmCondition::Deadband { low, high } => value < *low || value > *high,
+        };
+
+        let mut active_alarms = self.active_alarms.write();
+        let now = Utc::now();
+
+        if condition_met {
+            // Check if alarm already active
+            if let Some(active) = active_alarms.get_mut(&alarm_def.id) {
+                // Update value
+                active.alarm = alarm_def.clone();
+            } else {
+                // Check delay
+                // TODO: Implement delay logic with state tracking
+                
+                // Create new active alarm
+                let active = ActiveAlarm {
+                    alarm: alarm_def.clone(),
+                    triggered_at: now,
+                    last_notification: None,
+                    escalation_level: 0,
+                    acknowledged: false,
+                    acknowledged_by: None,
+                    notification_count: 0,
+                };
+
+                active_alarms.insert(alarm_def.id.clone(), active);
+
+                // Log event
+                self.log_event(AlarmEvent {
+                    alarm_id: alarm_def.id.clone(),
+                    timestamp: now,
+                    event_type: AlarmEventType::Triggered,
+                    severity: alarm_def.severity,
+                    value,
+                    message: self.format_message(alarm_def, value),
+                    acknowledged_by: None,
+                });
+
+                info!("Alarm triggered: {} (value: {})", alarm_def.name, value);
+            }
+        } else {
+            // Condition not met - check if we should clear
+            if let Some(active) = active_alarms.remove(&alarm_def.id) {
+                if alarm_def.auto_reset || active.acknowledged {
+                    self.log_event(AlarmEvent {
+                        alarm_id: alarm_def.id.clone(),
+                        timestamp: now,
+                        event_type: AlarmEventType::Cleared,
+                        severity: alarm_def.severity,
+                        value,
+                        message: format!("Alarm cleared: {}", alarm_def.name),
+                        acknowledged_by: active.acknowledged_by,
+                    });
+
+                    info!("Alarm cleared: {}", alarm_def.name);
+                } else {
+                    // Put it back - requires acknowledgment
+                    active_alarms.insert(alarm_def.id.clone(), active);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_notifications(&self) {
+        let now = Utc::now();
+        let mut alarms_to_notify = Vec::new();
+
+        {
+            let mut active_alarms = self.active_alarms.write();
+            for (id, active) in active_alarms.iter_mut() {
+                if active.acknowledged && !active.alarm.require_acknowledgment {
+                    continue;
+                }
+
+                let should_notify = active.last_notification
+                    .map(|last| {
+                        let elapsed = now.signed_duration_since(last).num_seconds() as u32;
+                        elapsed >= active.alarm.repeat_interval_seconds
+                    })
+                    .unwrap_or(true);
+
+                if should_notify {
+                    active.last_notification = Some(now);
+                    active.notification_count += 1;
+                    alarms_to_notify.push((id.clone(), active.clone()));
+                }
+            }
+        }
+
+        // Send notifications
+        for (id, active) in alarms_to_notify {
+            if let Some(contacts) = self.config.escalation_chains.get(&id) {
+                let contact_id = contacts.get(active.escalation_level)
+                    .or_else(|| contacts.last())
+                    .cloned();
+
+                if let Some(contact_id) = contact_id {
+                    if let Some(contact) = self.config.contacts.iter().find(|c| c.id == contact_id) {
+                        if self.should_contact_now(contact) {
+                            if let Err(e) = self.notify_contact(contact, &active).await {
+                                error!("Failed to notify {}: {}", contact.name, e);
+                            } else {
+                                self.log_notification_event(&active);
+                                
+                                // Check escalation
+                                self.check_escalation(&id, active.escalation_level).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn should_contact_now(&self, contact: &Contact) -> bool {
+        if !contact.work_hours_only {
+            return true;
+       }
+
+       // Check work hours
+       let now = Local::now();
+       let weekday = now.weekday();
+       let hour = now.hour() as u8;
+
+       contact.work_hours.days.contains(&weekday) && 
+           hour >= contact.work_hours.start_hour && 
+           hour < contact.work_hours.end_hour
+   }
+
+   async fn notify_contact(&self, contact: &Contact, alarm: &ActiveAlarm) -> Result<()> {
+       let message = self.format_message(&alarm.alarm, 0.0); // TODO: Get actual value
+
+       match contact.preferred_method {
+           ContactMethod::Email => {
+               if let (Some(email), Some(sender)) = (&contact.email, &self.email_sender) {
+                   sender.send_email(
+                       email,
+                       &format!("ALARM: {}", alarm.alarm.name),
+                       &message
+                   ).await?;
+               }
+           }
+           ContactMethod::Sms => {
+               if let (Some(phone), Some(sender)) = (&contact.phone, &self.sms_sender) {
+                   sender.send_sms(phone, &message).await?;
+               }
+           }
+           ContactMethod::Call => {
+               if let (Some(phone), Some(sender)) = (&contact.phone, &self.call_sender) {
+                   sender.make_call(phone, &message).await?;
+               }
+           }
+       }
+
+       Ok(())
+   }
+
+   async fn check_escalation(&self, alarm_id: &str, current_level: usize) {
+       if let Some(contacts) = self.config.escalation_chains.get(alarm_id) {
+           if current_level < contacts.len() - 1 {
+               // Schedule escalation
+               let escalation_delay = self.config.contacts
+                   .iter()
+                   .find(|c| c.id == contacts[current_level])
+                   .map(|c| c.escalation_delay_seconds)
+                   .unwrap_or(300);
+
+               let alarm_id = alarm_id.to_string();
+               let active_alarms = Arc::clone(&self.active_alarms);
+               
+               tokio::spawn(async move {
+                   tokio::time::sleep(Duration::from_secs(escalation_delay as u64)).await;
+                   
+                   let mut alarms = active_alarms.write();
+                   if let Some(alarm) = alarms.get_mut(&alarm_id) {
+                       if !alarm.acknowledged {
+                           alarm.escalation_level += 1;
+                           info!("Escalating alarm {} to level {}", alarm_id, alarm.escalation_level + 1);
+                       }
+                   }
+               });
+           }
+       }
+   }
+
+   fn format_message(&self, alarm: &AlarmDefinition, value: f64) -> String {
+       alarm.message_template
+           .replace("{name}", &alarm.name)
+           .replace("{value}", &format!("{:.2}", value))
+           .replace("{setpoint}", &format!("{:.2}", alarm.setpoint))
+           .replace("{signal}", &alarm.signal)
+   }
+
+   fn log_event(&self, event: AlarmEvent) {
+       let mut history = self.alarm_history.write();
+       history.push(event);
+       
+       // Keep only last 10000 events
+       if history.len() > 10000 {
+           history.drain(0..1000);
+       }
+   }
+
+   fn log_notification_event(&self, alarm: &ActiveAlarm) {
+       self.log_event(AlarmEvent {
+           alarm_id: alarm.alarm.id.clone(),
+           timestamp: Utc::now(),
+           event_type: AlarmEventType::NotificationSent,
+           severity: alarm.alarm.severity,
+           value: 0.0, // TODO: Get actual value
+           message: format!("Notification #{} sent", alarm.notification_count),
+           acknowledged_by: None,
+       });
+   }
+
+   pub fn acknowledge_alarm(&self, alarm_id: &str, acknowledged_by: &str) -> Result<()> {
+       let mut active_alarms = self.active_alarms.write();
+       
+       if let Some(alarm) = active_alarms.get_mut(alarm_id) {
+           alarm.acknowledged = true;
+           alarm.acknowledged_by = Some(acknowledged_by.to_string());
+           
+           self.log_event(AlarmEvent {
+               alarm_id: alarm_id.to_string(),
+               timestamp: Utc::now(),
+               event_type: AlarmEventType::Acknowledged,
+               severity: alarm.alarm.severity,
+               value: 0.0,
+               message: format!("Acknowledged by {}", acknowledged_by),
+               acknowledged_by: Some(acknowledged_by.to_string()),
+           });
+           
+           Ok(())
+       } else {
+           Err(PlcError::Config(format!("Alarm {} not active", alarm_id)))
+       }
+   }
+
+   pub fn get_active_alarms(&self) -> Vec<AlarmInfo> {
+       self.active_alarms.read()
+           .values()
+           .map(|a| AlarmInfo {
+               id: a.alarm.id.clone(),
+               name: a.alarm.name.clone(),
+               severity: a.alarm.severity,
+               triggered_at: a.triggered_at,
+               acknowledged: a.acknowledged,
+               notification_count: a.notification_count,
+               escalation_level: a.escalation_level,
+           })
+           .collect()
+   }
+
+   pub fn get_alarm_history(&self, limit: usize) -> Vec<AlarmEvent> {
+       let history = self.alarm_history.read();
+       let start = history.len().saturating_sub(limit);
+       history[start..].to_vec()
+   }
 }
 
-// Helper function to extract value from JSON payload
-fn extract_json_value(payload: &str, path: &str, data_type: &str) -> Option<Value> {
-    let json: serde_json::Value = serde_json::from_str(payload).ok()?;
-    let parts: Vec<&str> = path.split('.').collect();
-    
-    let mut current = &json;
-    for part in parts {
-        current = current.get(part)?;
-    }
-    
-    match data_type {
-        "bool" => current.as_bool().map(Value::Bool),
-        "int" => current.as_i64().map(|i| Value::Int(i as i32)),
-        "float" => current.as_f64().map(Value::Float),
-        _ => None,
-    }
+#[derive(Debug, Clone, Serialize)]
+pub struct AlarmInfo {
+   pub id: String,
+   pub name: String,
+   pub severity: AlarmSeverity,
+   pub triggered_at: DateTime<Utc>,
+   pub acknowledged: bool,
+   pub notification_count: u32,
+   pub escalation_level: usize,
 }
+
+// Email implementation using SMTP
+pub struct SmtpEmailSender {
+   smtp_host: String,
+   smtp_port: u16,
+   smtp_user: String,
+   smtp_pass: String,
+   from_email: String,
+}
+
+#[async_trait::async_trait]
+impl EmailSender for SmtpEmailSender {
+   async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<()> {
+       // Use lettre crate for SMTP
+       // This is a placeholder - you'd implement actual SMTP sending
+       info!("Sending email to {}: {}", to, subject);
+       Ok(())
+   }
+}
+
+// SMS implementation using Twilio (reuse existing)
+pub struct TwilioSmsSender {
+   client: reqwest::Client,
+   account_sid: String,
+   auth_token: String,
+   from_number: String,
+}
+
+#[async_trait::async_trait]
+impl SmsSender for TwilioSmsSender {
+   async fn send_sms(&self, to: &str, message: &str) -> Result<()> {
+       // Reuse existing Twilio implementation
+       info!("Sending SMS to {}: {}", to, message);
+       Ok(())
+   }
+}
+
+// Implement similar for calls
