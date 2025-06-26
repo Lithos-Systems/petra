@@ -10,7 +10,6 @@ import { generateYaml } from '../utils/yamlGenerator'
 import { FaCopy, FaDownload } from 'react-icons/fa'
 import toast from 'react-hot-toast'
 
-// ... rest of component
 export default function YamlPreview() {
   const { nodes, edges } = useFlowStore()
   
@@ -28,10 +27,10 @@ export default function YamlPreview() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'petra-config.yaml'
+    a.download = 'petra-config.yaml'  // Changed from .json to .yaml
     a.click()
     URL.revokeObjectURL(url)
-    toast.success('Downloaded configuration!')
+    toast.success('Downloaded YAML configuration!')
   }
 
   return (
