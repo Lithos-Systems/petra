@@ -5,6 +5,7 @@ pub mod value;
 pub mod signal;
 pub mod block;
 pub mod config;
+pub mod alarms;
 pub mod engine;
 pub mod mqtt;
 pub mod twilio;
