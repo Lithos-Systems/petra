@@ -24,6 +24,15 @@ function SignalNode({ data, selected }: NodeProps) {
         {signalData.signalType}: {String(signalData.initial)}
       </div>
 
+      {signalData.mode === 'read' && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="w-3 h-3"
+          style={{ background: color }}
+        />
+      )}
+
       <Handle
         type="source"
         position={Position.Right}

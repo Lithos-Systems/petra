@@ -10,6 +10,7 @@ export interface BaseNodeData {
 export interface SignalNodeData extends BaseNodeData {
   signalType: 'bool' | 'int' | 'float'
   initial: boolean | number
+  mode: 'read' | 'write'
 }
 
 export interface BlockNodeData extends BaseNodeData {

@@ -189,6 +189,7 @@ function getDefaultNodeData(type: string): any {
         label: 'New Signal',
         signalType: 'float',
         initial: 0,
+        mode: 'write',
       }
     case 'block':
       const blockType = 'AND'

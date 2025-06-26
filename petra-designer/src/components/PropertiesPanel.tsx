@@ -103,6 +103,11 @@ export default function PropertiesPanel() {
         {/* Signal node */}
         {isSignalNode(node) && (
           <>
+            {renderSelect('Mode', 'mode', [
+              { value: 'write', label: 'Write' },
+              { value: 'read', label: 'Read' },
+            ])}
+
             {renderSelect('Signal Type', 'signalType', [
               { value: 'bool', label: 'Boolean' },
               { value: 'int', label: 'Integer' },
