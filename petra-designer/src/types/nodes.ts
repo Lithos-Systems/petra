@@ -32,14 +32,22 @@ export interface MqttNodeData extends BaseNodeData {
   brokerPort: number
   clientId: string
   topicPrefix: string
+  username?: string
+  password?: string
+  mode: 'read' | 'write' | 'read_write'
+  publishOnChange: boolean
 }
 
 export interface S7NodeData extends BaseNodeData {
   configured: boolean
+  ip: string
+  rack: number
+  slot: number
   area: 'DB' | 'I' | 'Q' | 'M'
   dbNumber: number
   address: number
   dataType: 'bool' | 'byte' | 'word' | 'int' | 'dint' | 'real'
+  bit?: number
   direction: 'read' | 'write' | 'read_write'
   signal: string
 }
