@@ -36,6 +36,8 @@ export interface MqttNodeData extends BaseNodeData {
   password?: string
   mode: 'read' | 'write' | 'read_write'
   publishOnChange: boolean
+  signalName?: string  // The specific signal to read/write
+  signalType?: 'bool' | 'int' | 'float'  // Type of the signal
 }
 
 export interface S7NodeData extends BaseNodeData {
