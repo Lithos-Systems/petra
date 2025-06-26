@@ -91,6 +91,10 @@ function validateSignalNode(data: SignalNodeData): ValidationResult {
     return { valid: false, error: 'Invalid signal type' }
   }
 
+  if (data.mode && !['read', 'write'].includes(data.mode)) {
+    return { valid: false, error: 'Invalid signal mode' }
+  }
+
   return { valid: true }
 }
 
