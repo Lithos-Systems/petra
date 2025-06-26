@@ -1,4 +1,4 @@
-// src/App.tsx
+// Add this to your App.tsx in the Flow component
 import { useCallback, useEffect, DragEvent, MouseEvent } from 'react'
 import {
   ReactFlow,
@@ -8,9 +8,10 @@ import {
   MiniMap,
   ReactFlowProvider,
   type Node,
+  useKeyPress,
 } from '@xyflow/react'
-import { Toaster } from 'react-hot-toast'
 
+import { Toaster } from 'react-hot-toast'
 import { useFlowStore } from './store/flowStore'
 import { nodeTypes } from './nodes'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -30,6 +31,7 @@ function Flow() {
     selectedNode,
     addNode,
     setSelectedNode,
+    deleteEdge, 
   } = useFlowStore()
 
   // Add keyboard shortcuts
@@ -38,7 +40,21 @@ function Flow() {
   useEffect(() => {
     console.log('ReactFlow mounted. nodes:', nodes.length, 'edges:', edges.length)
   }, [nodes, edges])
-
+  const onEdgeClick = useCallback(
+    (event: MouseEvent, edge: any) => {
+      event.stopPropagation() // Prevent node selection
+      deleteEdge(edge.id)
+      toast.success('Connection deleted')
+    },
+    [deleteEdge]
+  )
+  const deletePressed = useKeyPress(['Delete', 'Backspace'])
+  useEffect(() => {
+    if (deletePressed && selectedNode) {
+      // Only delete nodes when a node is selected
+      // Edges are deleted by clicking on them
+    }
+  }, [deletePressed, selectedNode])
   const onDragOver = useCallback((e: DragEvent) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
@@ -110,9 +126,11 @@ function Flow() {
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
+            onEdgeClick={onEdgeClick} 
             onDragOver={onDragOver}
             onDrop={onDrop}
             nodeTypes={nodeTypes}
+            deleteKeyCode={null}
             fitView
             fitViewOptions={{ padding: 0.2 }}
             className="bg-gray-50"
