@@ -8,6 +8,15 @@ export function useKeyboardShortcuts() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore events when typing inside inputs or other editable elements
+      const target = e.target as HTMLElement | null
+      const isEditable =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      if (isEditable) return
+
       // Delete selected node
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNode) {
         e.preventDefault()
