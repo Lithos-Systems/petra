@@ -54,6 +54,41 @@ export interface S7NodeData extends BaseNodeData {
   direction: 'read' | 'write' | 'read_write'
   signal: string
 }
+export interface ContactNodeData extends BaseNodeData {
+  configured: boolean
+  name: string
+  email?: string
+  phone?: string
+  preferredMethod: 'email' | 'sms' | 'call'
+  priority: number  // 1 = highest priority
+  escalationDelay: number  // seconds before escalating to next contact
+  workHoursOnly: boolean
+  timezone: string
+}
+
+export interface AlarmNodeData extends BaseNodeData {
+  configured: boolean
+  condition: 'above' | 'below' | 'equals' | 'not_equals' | 'deadband'
+  severity: 'info' | 'warning' | 'critical' | 'emergency'
+  delaySeconds: number  // Time condition must be true before alarming
+  repeatInterval: number  // Seconds between repeated notifications
+  requireAcknowledgment: boolean
+  autoReset: boolean
+  message: string
+}
+
+export interface EmailNodeData extends BaseNodeData {
+  configured: boolean
+  toEmail: string
+  ccEmails?: string[]
+  subject: string
+  body: string
+  provider: 'smtp' | 'sendgrid' | 'ses'
+  smtpHost?: string
+  smtpPort?: number
+  smtpUser?: string
+  smtpPass?: string
+}
 
 // Type alias for backwards compatibility
 export type PetraNode = Node
