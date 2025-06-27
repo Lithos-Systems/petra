@@ -11,7 +11,40 @@ pub struct Counter {
     increment: i32,
     count: i32,
 }
+pub struct BlockExecutor {
+    failure_count: AtomicU32,
+    max_failures: u32,
+    circuit_open: AtomicBool,
+    last_attempt: RwLock<Instant>,
+}
 
+impl BlockExecutor {
+    pub async fn execute_with_circuit_breaker(&self, block: &mut dyn Block, bus: &SignalBus) -> Result<()> {
+        if self.circuit_open.load(Ordering::Relaxed) {
+            let last = self.last_attempt.read();
+            if last.elapsed() < Duration::from_secs(60) {
+                return Err(PlcError::CircuitOpen);
+            }
+            // Try to close circuit
+            self.circuit_open.store(false, Ordering::Relaxed);
+        }
+        
+        match block.execute(bus) {
+            Ok(_) => {
+                self.failure_count.store(0, Ordering::Relaxed);
+                Ok(())
+            }
+            Err(e) => {
+                let failures = self.failure_count.fetch_add(1, Ordering::Relaxed);
+                if failures >= self.max_failures {
+                    self.circuit_open.store(true, Ordering::Relaxed);
+                    *self.last_attempt.write() = Instant::now();
+                }
+                Err(e)
+            }
+        }
+    }
+}
 impl Block for Counter {
     fn execute(&mut self, bus: &SignalBus) -> Result<()> {
         let enabled = bus.get_bool(&self.enable_input).unwrap_or(false);
