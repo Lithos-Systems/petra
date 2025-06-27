@@ -4,15 +4,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use std::time::{Duration, Instant};
-use tracing::warn;
+use tracing::{warn, trace};
 
-#[derive(Clone)]
 pub struct ValidationRules {
     signal_name_pattern: Regex,
-    value_ranges: Arc<RwLock<HashMap<String, ValueRange>>>,
+    value_ranges: HashMap<String, ValueRange>,
     rate_limits: Arc<RwLock<HashMap<String, RateLimit>>>,
-    forbidden_patterns: Vec<Regex>,
-    max_string_length: usize,
+    change_limits: HashMap<String, ChangeLimit>,
+    dependencies: HashMap<String, Vec<SignalDependency>>,
 }
 
 #[derive(Debug, Clone)]
@@ -24,210 +23,212 @@ pub struct ValueRange {
 
 #[derive(Debug)]
 pub struct RateLimit {
-    max_updates: u32,
-    window: Duration,
-    timestamps: RwLock<Vec<Instant>>,
+    pub max_updates_per_second: f64,
+    pub window: Duration,
+    pub last_update: Instant,
+    pub update_count: u32,
 }
 
-impl RateLimit {
-    pub fn new(max_updates: u32, window: Duration) -> Self {
-        Self {
-            max_updates,
-            window,
-            timestamps: RwLock::new(Vec::with_capacity(max_updates as usize)),
-        }
-    }
-    
-    pub fn check(&self) -> bool {
-        let now = Instant::now();
-        let mut timestamps = self.timestamps.write();
-        
-        // Remove old timestamps
-        timestamps.retain(|&ts| now.duration_since(ts) < self.window);
-        
-        if timestamps.len() < self.max_updates as usize {
-            timestamps.push(now);
-            true
-        } else {
-            false
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct ChangeLimit {
+    pub max_change_per_second: f64,
+    pub last_value: Option<Value>,
+    pub last_update: Option<Instant>,
 }
 
-impl Default for ValidationRules {
-    fn default() -> Self {
-        Self {
-            signal_name_pattern: Regex::new(r"^[a-zA-Z][a-zA-Z0-9_]{0,63}$").unwrap(),
-            value_ranges: Arc::new(RwLock::new(HashMap::new())),
-            rate_limits: Arc::new(RwLock::new(HashMap::new())),
-            forbidden_patterns: vec![
-                Regex::new(r"(?i)(password|secret|key)").unwrap(),
-                Regex::new(r"(?i)(drop|delete|truncate)").unwrap(),
-            ],
-            max_string_length: 1024,
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct SignalDependency {
+    pub depends_on: String,
+    pub condition: DependencyCondition,
+}
+
+#[derive(Debug, Clone)]
+pub enum DependencyCondition {
+    Equals(Value),
+    GreaterThan(f64),
+    LessThan(f64),
+    InRange(f64, f64),
 }
 
 impl ValidationRules {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            signal_name_pattern: Regex::new(r"^[a-zA-Z][a-zA-Z0-9_]*$").unwrap(),
+            value_ranges: HashMap::new(),
+            rate_limits: Arc::new(RwLock::new(HashMap::new())),
+            change_limits: HashMap::new(),
+            dependencies: HashMap::new(),
+        }
     }
     
-    pub fn with_signal_pattern(mut self, pattern: &str) -> Result<Self> {
-        self.signal_name_pattern = Regex::new(pattern)
-            .map_err(|e| PlcError::Config(format!("Invalid signal pattern: {}", e)))?;
-        Ok(self)
+    pub fn add_value_range(&mut self, signal: String, range: ValueRange) {
+        self.value_ranges.insert(signal, range);
     }
     
-    pub fn add_value_range(&self, signal: String, range: ValueRange) {
-        self.value_ranges.write().insert(signal, range);
-    }
-    
-    pub fn add_rate_limit(&self, signal: String, max_updates: u32, window: Duration) {
+    pub fn add_rate_limit(&mut self, signal: String, max_per_second: f64) {
         self.rate_limits.write().insert(
             signal,
-            RateLimit::new(max_updates, window)
+            RateLimit {
+                max_updates_per_second: max_per_second,
+                window: Duration::from_secs(1),
+                last_update: Instant::now(),
+                update_count: 0,
+            },
         );
     }
     
-    pub fn validate_signal_name(&self, name: &str) -> Result<()> {
-        // Check length
-        if name.is_empty() || name.len() > 64 {
-            return Err(PlcError::Config(format!(
-                "Signal name '{}' must be 1-64 characters",
-                name
-            )));
-        }
+    pub fn validate_signal_update(
+        &self,
+        name: &str,
+        value: &Value,
+        bus: &crate::signal::SignalBus,
+    ) -> Result<ValidationResult> {
+        let mut result = ValidationResult::default();
         
-        // Check pattern
+        // Check signal name format
         if !self.signal_name_pattern.is_match(name) {
-            return Err(PlcError::Config(format!(
-                "Signal name '{}' doesn't match required pattern",
-                name
-            )));
-        }
-        
-        // Check forbidden patterns
-        for pattern in &self.forbidden_patterns {
-            if pattern.is_match(name) {
-                return Err(PlcError::Config(format!(
-                    "Signal name '{}' contains forbidden pattern",
-                    name
-                )));
-            }
-        }
-        
-        Ok(())
-    }
-    
-    pub fn validate_value(&self, signal: &str, value: &Value) -> Result<()> {
-        // Check string length
-        if let Value::Float(f) = value {
-            if f.is_nan() || f.is_infinite() {
-                return Err(PlcError::Config(format!(
-                    "Signal '{}' cannot have NaN or infinite values",
-                    signal
-                )));
-            }
+            result.add_error(ValidationError::InvalidSignalName(name.to_string()));
         }
         
         // Check value ranges
-        if let Some(range) = self.value_ranges.read().get(signal) {
-            match value {
-                Value::Float(f) => {
-                    if let Some(min) = range.min {
-                        if *f < min {
-                            return Err(PlcError::Config(format!(
-                                "Signal '{}' value {} is below minimum {}",
-                                signal, f, min
-                            )));
-                        }
-                    }
-                    if let Some(max) = range.max {
-                        if *f > max {
-                            return Err(PlcError::Config(format!(
-                                "Signal '{}' value {} is above maximum {}",
-                                signal, f, max
-                            )));
-                        }
-                    }
-                }
-                Value::Int(i) => {
-                    let f = *i as f64;
-                    if let Some(min) = range.min {
-                        if f < min {
-                            return Err(PlcError::Config(format!(
-                                "Signal '{}' value {} is below minimum {}",
-                                signal, i, min
-                            )));
-                        }
-                    }
-                    if let Some(max) = range.max {
-                        if f > max {
-                            return Err(PlcError::Config(format!(
-                                "Signal '{}' value {} is above maximum {}",
-                                signal, i, max
-                            )));
-                        }
-                    }
-                }
-                _ => {}
+        if let Some(range) = self.value_ranges.get(name) {
+            if !self.check_value_range(value, range) {
+                result.add_error(ValidationError::ValueOutOfRange {
+                    signal: name.to_string(),
+                    value: value.clone(),
+                    range: range.clone(),
+                });
             }
+        }
+        
+        // Check rate limits
+        if let Some(rate_result) = self.check_rate_limit(name) {
+            if !rate_result {
+                result.add_warning(ValidationWarning::RateLimitExceeded(name.to_string()));
+            }
+        }
+        
+        // Check dependencies
+        if let Some(deps) = self.dependencies.get(name) {
+            for dep in deps {
+                if let Err(e) = self.check_dependency(dep, bus) {
+                    result.add_error(ValidationError::DependencyNotMet {
+                        signal: name.to_string(),
+                        dependency: dep.depends_on.clone(),
+                        reason: e.to_string(),
+                    });
+                }
+            }
+        }
+        
+        Ok(result)
+    }
+    
+    fn check_value_range(&self, value: &Value, range: &ValueRange) -> bool {
+        match value {
+            Value::Float(f) => {
+                if let Some(min) = range.min {
+                    if *f < min {
+                        return false;
+                    }
+                }
+                if let Some(max) = range.max {
+                    if *f > max {
+                        return false;
+                    }
+                }
+                true
+            }
+            Value::Int(i) => {
+                let f = *i as f64;
+                if let Some(min) = range.min {
+                    if f < min {
+                        return false;
+                    }
+                }
+                if let Some(max) = range.max {
+                    if f > max {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => {
+                if let Some(allowed) = &range.allowed_values {
+                    allowed.contains(value)
+                } else {
+                    true
+                }
+            }
+        }
+    }
+    
+    fn check_rate_limit(&self, name: &str) -> Option<bool> {
+        let mut limits = self.rate_limits.write();
+        
+        if let Some(limit) = limits.get_mut(name) {
+            let now = Instant::now();
+            let elapsed = now.duration_since(limit.last_update);
             
-            // Check allowed values
-            if let Some(allowed) = &range.allowed_values {
-                if !allowed.contains(value) {
+            if elapsed >= limit.window {
+                // Reset window
+                limit.last_update = now;
+                limit.update_count = 1;
+                Some(true)
+            } else {
+                limit.update_count += 1;
+                let rate = limit.update_count as f64 / elapsed.as_secs_f64();
+                Some(rate <= limit.max_updates_per_second)
+            }
+        } else {
+            None
+        }
+    }
+    
+    fn check_dependency(
+        &self,
+        dep: &SignalDependency,
+        bus: &crate::signal::SignalBus,
+    ) -> Result<()> {
+        let dep_value = bus.get(&dep.depends_on)?;
+        
+        match &dep.condition {
+            DependencyCondition::Equals(expected) => {
+                if dep_value != *expected {
                     return Err(PlcError::Config(format!(
-                        "Signal '{}' value {:?} is not in allowed list",
-                        signal, value
+                        "Expected {} to be {:?}, but was {:?}",
+                        dep.depends_on, expected, dep_value
                     )));
                 }
             }
-        }
-        
-        Ok(())
-    }
-    
-    pub fn check_rate_limit(&self, signal: &str) -> Result<()> {
-        if let Some(limiter) = self.rate_limits.read().get(signal) {
-            if !limiter.check() {
-                return Err(PlcError::Config(format!(
-                    "Rate limit exceeded for signal '{}'",
-                    signal
-                )));
-            }
-        }
-        Ok(())
-    }
-    
-    pub fn validate_signal_update(&self, name: &str, value: &Value) -> Result<()> {
-        self.validate_signal_name(name)?;
-        self.validate_value(name, value)?;
-        self.check_rate_limit(name)?;
-        Ok(())
-    }
-    
-    pub fn validate_config(&self, config: &crate::config::Config) -> Result<()> {
-        // Validate all signal names
-        for signal in &config.signals {
-            self.validate_signal_name(&signal.name)?;
-        }
-        
-        // Validate block configurations
-        for block in &config.blocks {
-            // Check inputs/outputs reference valid signals
-            for input in block.inputs.values() {
-                if !config.signals.iter().any(|s| &s.name == input) {
-                    warn!("Block '{}' references non-existent signal '{}'", 
-                        block.name, input);
+            DependencyCondition::GreaterThan(threshold) => {
+                if let Value::Float(f) = dep_value {
+                    if f <= *threshold {
+                        return Err(PlcError::Config(format!(
+                            "Expected {} > {}, but was {}",
+                            dep.depends_on, threshold, f
+                        )));
+                    }
                 }
             }
-            
-            for output in block.outputs.values() {
-                if !config.signals.iter().any(|s| &s.name == output) {
-                    warn!("Block '{}' references non-existent signal '{}'", 
-                        block.name, output);
+            DependencyCondition::LessThan(threshold) => {
+                if let Value::Float(f) = dep_value {
+                    if f >= *threshold {
+                        return Err(PlcError::Config(format!(
+                            "Expected {} < {}, but was {}",
+                            dep.depends_on, threshold, f
+                        )));
+                    }
+                }
+            }
+            DependencyCondition::InRange(min, max) => {
+                if let Value::Float(f) = dep_value {
+                    if f < *min || f > *max {
+                        return Err(PlcError::Config(format!(
+                            "Expected {} in range [{}, {}], but was {}",
+                            dep.depends_on, min, max, f
+                        )));
+                    }
                 }
             }
         }
@@ -236,28 +237,44 @@ impl ValidationRules {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_signal_name_validation() {
-        let rules = ValidationRules::new();
-        
-        assert!(rules.validate_signal_name("valid_signal_123").is_ok());
-        assert!(rules.validate_signal_name("_invalid").is_err());
-        assert!(rules.validate_signal_name("123invalid").is_err());
-        assert!(rules.validate_signal_name("").is_err());
-        assert!(rules.validate_signal_name(&"x".repeat(65)).is_err());
+#[derive(Debug, Default)]
+pub struct ValidationResult {
+    pub errors: Vec<ValidationError>,
+    pub warnings: Vec<ValidationWarning>,
+}
+
+impl ValidationResult {
+    pub fn is_valid(&self) -> bool {
+        self.errors.is_empty()
     }
     
-    #[test]
-    fn test_rate_limiting() {
-        let limiter = RateLimit::new(3, Duration::from_secs(1));
-        
-        assert!(limiter.check());
-        assert!(limiter.check());
-        assert!(limiter.check());
-        assert!(!limiter.check()); // Should fail on 4th attempt
+    pub fn add_error(&mut self, error: ValidationError) {
+        self.errors.push(error);
     }
+    
+    pub fn add_warning(&mut self, warning: ValidationWarning) {
+        self.warnings.push(warning);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ValidationError {
+    InvalidSignalName(String),
+    ValueOutOfRange {
+        signal: String,
+        value: Value,
+        range: ValueRange,
+    },
+    DependencyNotMet {
+        signal: String,
+        dependency: String,
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum ValidationWarning {
+    RateLimitExceeded(String),
+    UnusualValue { signal: String, value: Value },
+    StaleData { signal: String, age: Duration },
 }
