@@ -1,0 +1,65 @@
+# Production Petra configuration with TLS
+signals:
+  - name: temperature
+    type: float
+    initial: 0.0
+  - name: pressure
+    type: float
+    initial: 0.0
+  - name: alarm_active
+    type: bool
+    initial: false
+
+blocks:
+  - name: high_temp_alarm
+    type: comparison
+    inputs:
+      a: temperature
+      b:
+        type: const
+        value: 85.0
+    operation: ">"
+    output: alarm_active
+
+mqtt:
+  broker_host: mqtt.petra.systems
+  broker_port: 8883
+  client_id: ${HOSTNAME}
+  topic_prefix: petra/${HOSTNAME}
+  use_tls: true
+  ca_cert: /certs/ca.crt
+  client_cert: /certs/client.crt
+  client_key: /certs/client.key
+  publish_on_change: true
+  subscriptions:
+    - topic: petra/+/temperature
+      signal: remote_temp
+      data_type: float
+
+storage:
+  strategy: write_through
+  compression: zstd
+  local:
+    path: ./data/history
+    retention_days: 7
+    max_size_gb: 10
+  remote:
+    type: clickhouse
+    config:
+      host: clickhouse
+      port: 8123
+      database: petra_timeseries
+      username: petra
+      password: ${CLICKHOUSE_PASSWORD}
+      table: signals
+      batch_size: 1000
+      flush_interval_secs: 10
+
+security:
+  enable_audit_logging: true
+  require_tls: true
+  signed_configs: true
+
+engine:
+  scan_time_ms: 100
+  max_jitter_ms: 50
