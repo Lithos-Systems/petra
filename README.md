@@ -608,8 +608,7 @@ See `LICENSE` file for full AGPL-3.0 terms.
 
 ## Support & Community
 
-- **Documentation**: [docs.petra-plc.com](https://docs.petra-plc.com)
 - **Issues**: GitHub Issues for bugs and feature requests
-- **Discussions**: GitHub Discussions for community support
-- **Enterprise Support**: Contact enterprise@lithos.systems for commercial licensing and support
+- **Discussions**: Discord Discussions for Community Support
+- **Enterprise Support**: Contact nathan@lithos.systems for commercial licensing and support
 ```
