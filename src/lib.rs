@@ -7,6 +7,8 @@ pub mod block;
 pub mod config;
 pub mod alarms;
 pub mod engine;
+#[cfg(feature = "enhanced")]
+pub mod engine_enhanced;
 pub mod mqtt;
 pub mod twilio;
 pub mod twilio_block;
@@ -29,6 +31,8 @@ pub mod s7;
 
 #[cfg(feature = "advanced-storage")]
 pub mod storage;
+#[cfg(feature = "advanced-storage")]
+pub use storage::{StorageConfig, StorageManager, WriteAheadLog};
 
 pub use error::{PlcError, Result};
 pub use value::Value;

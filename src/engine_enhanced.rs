@@ -8,6 +8,8 @@ use tracing::{info, warn, debug, error};
 use metrics::{histogram, counter, gauge};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use parking_lot::RwLock;
+use std::collections::HashMap;
+use serde::Serialize;
 
 pub struct EnhancedEngine {
     bus: SignalBus,
