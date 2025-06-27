@@ -5,7 +5,9 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{info, warn, debug, error};
 use std::collections::HashMap;
+#[cfg(feature = "security")]
 use rustls::{ClientConfig, RootCertStore, Certificate, PrivateKey};
+#[cfg(feature = "security")]
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,6 +144,7 @@ impl MqttHandler {
         })
     }
 
+    #[cfg(feature = "security")]
     fn build_tls_config(config: &MqttConfig) -> Result<Transport> {
         use std::io::BufReader;
         use std::fs;
@@ -204,6 +207,11 @@ impl MqttHandler {
 
         let tls_config = TlsConfiguration::Rustls(Arc::new(client_config));
         Ok(Transport::tls_with_config(tls_config))
+    }
+
+    #[cfg(not(feature = "security"))]
+    fn build_tls_config(_config: &MqttConfig) -> Result<Transport> {
+        Err(PlcError::Config("TLS support not enabled".to_string()))
     }
 
     /// Provide a channel receiving signal change notifications
