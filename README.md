@@ -230,6 +230,12 @@ cargo run --bin parquet_viewer export data/history/petra_123.parquet --output da
 cargo run --bin parquet_viewer stats ./data/history/
 ```
 
+### Benchmarking
+
+```bash
+cargo bench
+```
+
 ---
 
 ## Feature Flags
@@ -239,6 +245,9 @@ cargo run --bin parquet_viewer stats ./data/history/
 | `s7-support`         | Siemens S7 PLC communication via rust-snap7                                       | ✅       |
 | `history`            | Parquet-based historical data logging with retention and compression              | ✅       |
 | `advanced-storage`   | Enterprise storage: ClickHouse, S3, RocksDB WAL, automatic failover              | ❌       |
+| `opcua-support`      | Expose signals via an OPC-UA server                                           | ❌       |
+| `modbus-support`     | Modbus TCP/RTU drivers                                                         | ❌       |
+| `security`           | Signed configs and TLS support                                                | ❌       |
 
 ```bash
 # Enable all features
@@ -255,13 +264,15 @@ cargo build --no-default-features
 ### **Industrial Connectivity**
 * **Siemens S7 PLCs**: Direct communication with S7-300/400/1200/1500 series
 * **MQTT Integration**: Bi-directional IoT/SCADA connectivity
-* **Modbus Support**: [Planned] RS485 and TCP Modbus communication
+* **Modbus Support**: RS485 and TCP Modbus communication
+* **OPC-UA Server**: Expose signals over OPC-UA with configurable security
 
 ### **Data Management**
 * **Parquet Logging**: Compressed columnar storage with configurable retention
 * **ClickHouse Integration**: High-performance time-series database backend
 * **S3 Storage**: Cloud archival with automatic lifecycle management
 * **Write-Ahead Log**: RocksDB-based WAL for data durability
+* **Security Controls**: Signed configs and role-based access
 
 ### **Alerting & Monitoring**
 * **Twilio Integration**: SMS and voice alerts with customizable TwiML
@@ -310,6 +321,7 @@ cargo build --no-default-features
 * **Storage Rate**: 100MB+ Parquet files with ZSTD compression
 * **S7 Communication**: Optimized bulk reads with <50ms latency
 * **Memory Usage**: <100MB for typical 1000-signal configuration
+* **Benchmarks**: Criterion suite in `benches/` for engine performance
 
 ---
 
@@ -344,9 +356,9 @@ storage: {strategy: "local_first", s3_backup: true}
 
 ## Contributing
 
-Petra is licensed under **AGPL-3.0-or-later**. Key areas for contribution:
+- Petra is licensed under **AGPL-3.0-or-later**. Key areas for contribution:
 
-- **Additional PLCs**: Modbus, EtherNet/IP, OPC-UA drivers
+- **Additional PLCs**: EtherNet/IP, BACnet drivers
 - **Logic Blocks**: PID controllers, statistical functions, custom algorithms  
 - **Storage Backends**: InfluxDB, TimescaleDB, additional cloud providers
 - **Dashboard Features**: Alarm management, trend analysis, configuration editor

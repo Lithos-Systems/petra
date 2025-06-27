@@ -1,6 +1,10 @@
 // Add to src/config_security.rs
 use ring::signature::{Ed25519KeyPair, VerificationAlgorithm, ED25519};
+use crate::{Config, PlcError, Result};
+use serde::{Serialize, Deserialize};
+use serde_yaml;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedConfig {
     pub config: Config,
     pub signature: Vec<u8>,

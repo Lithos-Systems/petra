@@ -4,6 +4,11 @@ use crate::s7::S7Config;
 use crate::twilio::TwilioConfig;
 use crate::history::HistoryConfig;
 use crate::alarms::AlarmConfig;
+#[cfg(feature = "opcua-support")]
+use crate::opcua::opcua::OpcUaConfig;
+#[cfg(feature = "modbus-support")]
+use crate::modbus::modbus::ModbusConfig;
+use crate::security::SecurityConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -31,6 +36,14 @@ pub struct Config {
     pub storage: Option<crate::storage::StorageConfig>,
     #[serde(default)]
     pub alarms: Option<AlarmConfig>,
+    #[cfg(feature = "opcua-support")]
+    #[serde(default)]
+    pub opcua: Option<OpcUaConfig>,
+    #[cfg(feature = "modbus-support")]
+    #[serde(default)]
+    pub modbus: Option<ModbusConfig>,
+    #[serde(default)]
+    pub security: Option<SecurityConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

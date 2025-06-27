@@ -75,8 +75,8 @@ jsonschema = { version = "0.18", optional = true }
 
 # Security enhancements
 ring = "0.17"
-webpki = "0.22"
-rustls = "0.23"
+webpki = { version = "0.22", optional = true }
+rustls = { version = "0.23", optional = true }
 audit = { version = "0.1", optional = true }
 
 # OPC-UA support
@@ -141,3 +141,6 @@ s7-support = []
 history = []
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
 json-schema = ["schemars", "jsonschema"]
+opcua-support = ["opcua"]
+modbus-support = ["tokio-modbus"]
+security = ["audit", "rustls", "webpki"]
