@@ -21,7 +21,7 @@ pub fn configure_realtime(config: &RealtimeConfig) -> Result<()> {
             
             if libc::sched_setschif libc::sched_setscheduler(0, policy, &param) != 0 {
                let err = std::io::Error::last_os_error();
-               warn!("Failed to set real-time priority: {}. Running with normal priority.", err);
+               warn!("Failed to set real-time priority: {} (try running as root)", err);
            } else {
                info!("Set real-time priority to {} with policy {}", priority, 
                    if config.use_fifo { "SCHED_FIFO" } else { "SCHED_RR" });
@@ -48,7 +48,7 @@ pub fn configure_realtime(config: &RealtimeConfig) -> Result<()> {
        }
    }
    
-   // Set memory locking
+   // Configure memory locking
    if config.lock_memory {
        unsafe {
            if libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) != 0 {
@@ -88,34 +88,20 @@ impl Default for RealtimeConfig {
    }
 }
 
-// Helper to parse CPU list from string (e.g., "0,2-4,6")
-pub fn parse_cpu_list(s: &str) -> Result<Vec<usize>> {
-   let mut cpus = Vec::new();
-   
-   for part in s.split(',') {
-       let part = part.trim();
-       if part.contains('-') {
-           let range: Vec<&str> = part.split('-').collect();
-           if range.len() != 2 {
-               return Err(PlcError::Config(format!("Invalid CPU range: {}", part)));
-           }
-           
-           let start: usize = range[0].parse()
-               .map_err(|_| PlcError::Config(format!("Invalid CPU number: {}", range[0])))?;
-           let end: usize = range[1].parse()
-               .map_err(|_| PlcError::Config(format!("Invalid CPU number: {}", range[1])))?;
-           
-           for cpu in start..=end {
-               cpus.push(cpu);
-           }
-       } else {
-           let cpu: usize = part.parse()
-               .map_err(|_| PlcError::Config(format!("Invalid CPU number: {}", part)))?;
-           cpus.push(cpu);
-       }
-   }
-   
-   cpus.sort_unstable();
-   cpus.dedup();
-   Ok(cpus)
+// Helper to suggest kernel parameters
+pub fn suggest_kernel_tuning() {
+   println!("Suggested kernel parameters for /etc/sysctl.d/99-petra.conf:");
+   println!("# Network optimizations");
+   println!("net.core.rmem_max = 134217728");
+   println!("net.core.wmem_max = 134217728");
+   println!("net.ipv4.tcp_rmem = 4096 87380 134217728");
+   println!("net.ipv4.tcp_wmem = 4096 65536 134217728");
+   println!("net.core.netdev_max_backlog = 5000");
+   println!();
+   println!("# Real-time optimizations");
+   println!("kernel.sched_rt_runtime_us = -1");
+   println!("vm.swappiness = 10");
+   println!();
+   println!("# CPU isolation (add to /etc/default/grub):");
+   println!("GRUB_CMDLINE_LINUX=\"isolcpus=2,3 nohz_full=2,3 rcu_nocbs=2,3\"");
 }
