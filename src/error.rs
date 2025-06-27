@@ -22,6 +22,10 @@ pub enum PlcError {
     /// Returned value type does not match the expected type
     #[error("Type mismatch: expected {expected}, got {actual}")]
     TypeMismatch { expected: &'static str, actual: &'static str },
+
+    /// Circuit breaker is open for a block
+    #[error("Circuit breaker open")]
+    CircuitOpen,
 }
 
 /// Convenient alias over [`Result`] using [`PlcError`]
