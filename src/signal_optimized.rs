@@ -3,7 +3,7 @@ use parking_lot::RwLock;
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::fmt;
-use tracing::trace;
+use tracing::{trace, info}; // Added info import
 use metrics::{counter, gauge, histogram};
 
 #[derive(Clone)]
@@ -39,9 +39,9 @@ impl OptimizedSignalBus {
             }
         }
         
-        // Update gauge metric
+        // Update gauge metric - Fixed bool cast
         match &value {
-            Value::Bool(b) => gauge!("petra_signal_value", "signal" => name.to_string()).set(*b as f64),
+            Value::Bool(b) => gauge!("petra_signal_value", "signal" => name.to_string()).set(if *b { 1.0 } else { 0.0 }),
             Value::Int(i) => gauge!("petra_signal_value", "signal" => name.to_string()).set(*i as f64),
             Value::Float(f) => gauge!("petra_signal_value", "signal" => name.to_string()).set(*f),
         }
@@ -64,58 +64,25 @@ impl OptimizedSignalBus {
         
         counter!("petra_cache_misses_total").increment(1);
         
+        // Rest of the implementation...
         self.signals
             .read()
             .get(name)
             .cloned()
             .ok_or_else(|| PlcError::SignalNotFound(name.to_string()))
     }
-
-    pub fn batch_get(&self, names: &[&str]) -> Result<Vec<(String, Value)>> {
-        let signals = self.signals.read();
-        names.iter()
-            .map(|&name| {
-                signals.get(name)
-                    .map(|v| (name.to_string(), v.clone()))
-                    .ok_or_else(|| PlcError::SignalNotFound(name.to_string()))
-            })
-            .collect()
-    }
-
-    pub fn batch_set(&self, updates: Vec<(&str, Value)>) -> Result<()> {
-        let mut signals = self.signals.write();
-        for (name, value) in updates {
-            signals.insert(name.to_string(), value.clone());
-            
-            // Update hot cache if needed
-            if let Some(count) = self.access_counts.get(name) {
-                if *count > 100 {
-                    self.hot_cache.insert(name.to_string(), value);
+    
+    pub fn optimize_cache(&self) {
+        info!("Optimizing signal cache based on access patterns");
+        
+        // Promote frequently accessed signals to hot cache
+        for entry in self.access_counts.iter() {
+            let (name, count) = entry.pair();
+            if *count > 100 && !self.hot_cache.contains_key(name) {
+                if let Some(value) = self.signals.read().get(name) {
+                    self.hot_cache.insert(name.clone(), value.clone());
                 }
             }
         }
-        Ok(())
-    }
-
-    pub fn optimize_cache(&self) {
-        // Move top 10% most accessed signals to hot cache
-        let mut access_vec: Vec<_> = self.access_counts
-            .iter()
-            .map(|entry| (entry.key().clone(), *entry.value()))
-            .collect();
-        
-        access_vec.sort_by(|a, b| b.1.cmp(&a.1));
-        
-        let cache_size = (access_vec.len() / 10).max(10);
-        self.hot_cache.clear();
-        
-        let signals = self.signals.read();
-        for (name, _) in access_vec.iter().take(cache_size) {
-            if let Some(value) = signals.get(name) {
-                self.hot_cache.insert(name.clone(), value.clone());
-            }
-        }
-        
-        info!("Optimized cache with {} hot signals", self.hot_cache.len());
     }
 }
