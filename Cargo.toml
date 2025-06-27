@@ -88,6 +88,29 @@ tokio-modbus = { version = "0.7", optional = true }
 # Performance monitoring
 pprof = { version = "0.13", optional = true }
 
+# Real-time support
+libc = "0.2"
+
+# Enhanced monitoring
+warp = "0.3"
+
+# Validation
+regex = "1.10"
+
+# Security
+ring = "0.17"
+base64 = "0.22"
+
+# Enhanced WAL
+crc32fast = "1.4"
+bincode = "1.3"
+
+# Property testing
+proptest = "1.4"
+
+# Benchmarking  
+criterion = { version = "0.5", features = ["html_reports"] }
+
 [dev-dependencies]
 criterion = "0.5"
 proptest = "1.4"
