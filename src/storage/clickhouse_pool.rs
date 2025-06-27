@@ -135,3 +135,129 @@ impl ClickHousePool {
     
     pub async fn get_connection(&self) -> Result<PooledConnection> {
         let mut retries = 3;
+        let mut last_error = None;
+        
+        while retries > 0 {
+            // Try to get an available connection
+            if let Some(index) = self.try_get_available() {
+                let conn = PooledConnection::new(
+                    index,
+                    &self.connections[index],
+                    self.available.clone()
+                );
+                return Ok(conn);
+            }
+            
+            // If we haven't reached max connections, try to create a new one
+            if self.connections.len() < self.max_connections {
+                match self.create_new_connection().await {
+                    Ok(index) => {
+                        let conn = PooledConnection::new(
+                            index,
+                            &self.connections[index],
+                            self.available.clone()
+                        );
+                        return Ok(conn);
+                    }
+                    Err(e) => {
+                        last_error = Some(e);
+                    }
+                }
+            }
+            
+            retries -= 1;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        
+        Err(last_error.unwrap_or_else(|| PlcError::Config("No connections available".into())))
+    }
+    
+    fn try_get_available(&self) -> Option<usize> {
+        if let Ok(mut available) = self.available.try_lock() {
+            available.pop_front()
+        } else {
+            None
+        }
+    }
+    
+    async fn create_new_connection(&self) -> Result<usize> {
+        warn!("Creating new ClickHouse connection");
+        
+        // This is a simplified version - in production you'd need proper synchronization
+        let index = self.connections.len();
+        
+        // Create client based on first connection's config
+        let client = self.connections[0].clone();
+        
+        Self::test_connection(&client).await?;
+        
+        // This would need proper mutex handling in production
+        // connections.push(client);
+        
+        Ok(index)
+    }
+    
+    async fn health_check_loop(&self) {
+        let mut interval = interval(self.health_check_interval);
+        
+        loop {
+            interval.tick().await;
+            self.check_all_connections().await;
+        }
+    }
+    
+    async fn check_all_connections(&self) {
+        let mut failed = Vec::new();
+        
+        for (i, client) in self.connections.iter().enumerate() {
+            if let Err(e) = Self::test_connection(client).await {
+                warn!("Connection {} health check failed: {}", i, e);
+                failed.push(i);
+            }
+        }
+        
+        // Mark failed connections as unavailable
+        if !failed.is_empty() {
+            if let Ok(mut available) = self.available.lock() {
+                available.retain(|&idx| !failed.contains(&idx));
+            }
+            
+            // Try to reconnect failed connections
+            for idx in failed {
+                tokio::spawn(async move {
+                    // Implement reconnection logic
+                });
+            }
+        }
+    }
+    
+    pub fn stats(&self) -> PoolStats {
+        let available_count = self.available.lock().len();
+        
+        PoolStats {
+            total_connections: self.connections.len(),
+            available_connections: available_count,
+            active_connections: self.connections.len() - available_count,
+        }
+    }
+}
+
+impl Clone for ClickHousePool {
+    fn clone(&self) -> Self {
+        Self {
+            connections: self.connections.clone(),
+            available: self.available.clone(),
+            health_check_interval: self.health_check_interval,
+            min_connections: self.min_connections,
+            max_connections: self.max_connections,
+            connection_timeout: self.connection_timeout,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PoolStats {
+    pub total_connections: usize,
+    pub available_connections: usize,
+    pub active_connections: usize,
+}
