@@ -114,6 +114,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [dev-dependencies]
 criterion = "0.5"
 proptest = "1.4"
+tokio-test = "0.4"
 
 # Update the [[bin]] section to include new binaries
 [[bin]]
