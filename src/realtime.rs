@@ -19,7 +19,7 @@ pub fn configure_realtime(config: &RealtimeConfig) -> Result<()> {
                 libc::SCHED_RR
             };
             
-            if libc::sched_setschif libc::sched_setscheduler(0, policy, &param) != 0 {
+            if libc::sched_setscheduler(0, policy, &param) != 0 {
                let err = std::io::Error::last_os_error();
                warn!("Failed to set real-time priority: {} (try running as root)", err);
            } else {

@@ -161,6 +161,11 @@ impl EnhancedEngine {
         Ok(())
     }
 
+    pub fn stop(&self) {
+        info!("Stopping engine...");
+        self.running.store(false, Ordering::Relaxed);
+    }
+
     pub fn detailed_stats(&self) -> DetailedStats {
         let scan_times = self.scan_times.read();
         let avg_scan_time = if scan_times.is_empty() {

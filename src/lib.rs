@@ -5,12 +5,21 @@ pub mod value;
 pub mod signal;
 pub mod block;
 pub mod config;
+pub mod config_secure;
 pub mod alarms;
 pub mod engine;
 #[cfg(feature = "enhanced")]
 pub mod engine_enhanced;
 #[cfg(feature = "enhanced")]
 pub mod signal_optimized;
+#[cfg(feature = "enhanced")]
+pub mod signal_enhanced;
+#[cfg(feature = "enhanced")]
+pub mod health;
+#[cfg(feature = "enhanced")]
+pub mod realtime;
+#[cfg(feature = "enhanced")]
+pub mod validation;
 pub mod mqtt;
 pub mod twilio;
 pub mod twilio_block;
@@ -41,6 +50,17 @@ pub use value::Value;
 pub use signal::SignalBus;
 #[cfg(feature = "enhanced")]
 pub use signal_optimized::OptimizedSignalBus;
+#[cfg(feature = "enhanced")]
+pub use signal_enhanced::{EnhancedSignalBus, SignalBusConfig};
+#[cfg(feature = "enhanced")]
+pub use health::{HealthChecker, HealthReport, MqttHealthCheck, EngineHealthCheck, health_endpoint};
+#[cfg(all(feature = "enhanced", feature = "advanced-storage"))]
+pub use health::StorageHealthCheck;
+#[cfg(feature = "enhanced")]
+pub use realtime::{RealtimeConfig, configure_realtime};
+#[cfg(feature = "enhanced")]
+pub use validation::{ValidationRules, ValueRange};
+pub use config_secure::{ConfigSigner, ConfigVerifier, SecureConfig};
 pub use config::Config;
 pub use engine::{Engine, EngineStats};
 pub use mqtt::{MqttHandler, MqttMessage};

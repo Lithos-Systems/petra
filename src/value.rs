@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Value {
     Bool(bool),

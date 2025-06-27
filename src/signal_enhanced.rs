@@ -84,7 +84,7 @@ impl EnhancedSignalBus {
             update_count: 0,
         });
         
-        entry.value = value;
+        entry.value = value.clone();
         entry.timestamp = Instant::now();
         entry.update_count += 1;
         
@@ -92,7 +92,7 @@ impl EnhancedSignalBus {
         
         // Check if should be promoted to hot cache
         if entry.update_count > self.config.hot_signal_threshold {
-            self.promote_to_hot_cache(name, value);
+            self.promote_to_hot_cache(name, value.clone());
         }
         
         Ok(())
@@ -102,7 +102,7 @@ impl EnhancedSignalBus {
         // Check hot cache first
         if let Some(cell) = self.hot_cache.get(name) {
             self.stats.cache_hits.fetch_add(1);
-            return Ok(cell.load());
+            return Ok(cell.value().load());
         }
         
         self.stats.cache_misses.fetch_add(1);
