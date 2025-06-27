@@ -1,10 +1,12 @@
 use crate::{error::*, signal::SignalBus, value::Value};
-use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
+use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS, Transport, TlsConfiguration};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{info, warn, debug, error};
 use std::collections::HashMap;
+use rustls::{ClientConfig, RootCertStore, Certificate, PrivateKey};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MqttConfig {
@@ -19,6 +21,12 @@ pub struct MqttConfig {
     // Optional fields - will use env vars if not provided
     pub username: Option<String>,
     pub password: Option<String>,
+    // TLS Configuration
+    #[serde(default)]
+    pub use_tls: bool,
+    pub ca_cert: Option<String>,
+    pub client_cert: Option<String>,
+    pub client_key: Option<String>,
     // New: subscriptions for reading values from MQTT
     #[serde(default)]
     pub subscriptions: Vec<MqttSubscription>,
@@ -43,7 +51,7 @@ fn default_publish_on_change() -> bool { true }
 impl Default for MqttConfig {
     fn default() -> Self {
         Self {
-            broker_host: "mqtt.lithos.systems".to_string(),
+            broker_host: "localhost".to_string(),
             broker_port: 1883,
             client_id: "petra-plc".to_string(),
             topic_prefix: "petra/plc".to_string(),
@@ -51,6 +59,10 @@ impl Default for MqttConfig {
             publish_on_change: true,
             username: None,
             password: None,
+            use_tls: false,
+            ca_cert: None,
+            client_cert: None,
+            client_key: None,
             subscriptions: Vec::new(),
         }
     }
@@ -90,7 +102,7 @@ impl MqttHandler {
         );
         mqttoptions.set_keep_alive(Duration::from_secs(30));
         
-        // Check config first, then environment variables
+        // Configure authentication
         let username = config
             .username
             .clone()
@@ -103,8 +115,13 @@ impl MqttHandler {
         if let (Some(user), Some(pass)) = (&username, &password) {
             mqttoptions.set_credentials(user, pass);
             info!("MQTT authentication configured for user: {}", user);
-        } else {
-            info!("MQTT using anonymous connection");
+        }
+
+        // Configure TLS if enabled
+        if config.use_tls {
+            let transport = Self::build_tls_config(&config)?;
+            mqttoptions.set_transport(transport);
+            info!("MQTT TLS enabled with client certificates");
         }
 
         let (client, eventloop) = AsyncClient::new(mqttoptions, 100);
@@ -123,6 +140,70 @@ impl MqttHandler {
             signal_change_rx: None,
             subscription_map,
         })
+    }
+
+    fn build_tls_config(config: &MqttConfig) -> Result<Transport> {
+        use std::io::BufReader;
+        use std::fs;
+
+        // Load CA certificate
+        let ca_cert_path = config.ca_cert.as_ref()
+            .or_else(|| std::env::var("MQTT_CA_CERT").ok().as_ref())
+            .ok_or_else(|| PlcError::Config("TLS enabled but no CA certificate specified".to_string()))?;
+        
+        let ca_cert_pem = fs::read_to_string(ca_cert_path)
+            .map_err(|e| PlcError::Config(format!("Failed to read CA certificate: {}", e)))?;
+        
+        let ca_cert = rustls_pemfile::certs(&mut BufReader::new(ca_cert_pem.as_bytes()))
+            .map_err(|e| PlcError::Config(format!("Failed to parse CA certificate: {}", e)))?
+            .into_iter()
+            .map(Certificate)
+            .collect::<Vec<_>>();
+
+        // Create root certificate store
+        let mut root_store = RootCertStore::empty();
+        for cert in ca_cert {
+            root_store.add(&cert)
+                .map_err(|e| PlcError::Config(format!("Failed to add CA certificate: {}", e)))?;
+        }
+
+        // Create client config
+        let mut client_config = ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        // Load client certificate and key if provided
+        if let (Some(cert_path), Some(key_path)) = (
+            config.client_cert.as_ref().or_else(|| std::env::var("MQTT_CLIENT_CERT").ok().as_ref()),
+            config.client_key.as_ref().or_else(|| std::env::var("MQTT_CLIENT_KEY").ok().as_ref())
+        ) {
+            let cert_pem = fs::read_to_string(cert_path)
+                .map_err(|e| PlcError::Config(format!("Failed to read client certificate: {}", e)))?;
+            let key_pem = fs::read_to_string(key_path)
+                .map_err(|e| PlcError::Config(format!("Failed to read client key: {}", e)))?;
+
+            let certs = rustls_pemfile::certs(&mut BufReader::new(cert_pem.as_bytes()))
+                .map_err(|e| PlcError::Config(format!("Failed to parse client certificate: {}", e)))?
+                .into_iter()
+                .map(Certificate)
+                .collect::<Vec<_>>();
+
+            let key = rustls_pemfile::pkcs8_private_keys(&mut BufReader::new(key_pem.as_bytes()))
+                .map_err(|e| PlcError::Config(format!("Failed to parse client key: {}", e)))?
+                .into_iter()
+                .next()
+                .ok_or_else(|| PlcError::Config("No private key found in client key file".to_string()))?;
+
+            client_config = ClientConfig::builder()
+                .with_safe_defaults()
+                .with_root_certificates(root_store)
+                .with_client_auth_cert(certs, PrivateKey(key))
+                .map_err(|e| PlcError::Config(format!("Failed to configure client auth: {}", e)))?;
+        }
+
+        let tls_config = TlsConfiguration::Rustls(Arc::new(client_config));
+        Ok(Transport::tls_with_config(tls_config))
     }
 
     /// Provide a channel receiving signal change notifications
@@ -147,7 +228,8 @@ impl MqttHandler {
             info!("Subscribed to {} -> signal {}", sub.topic, sub.signal);
         }
 
-        info!("MQTT connected to {}:{}", self.config.broker_host, self.config.broker_port);
+        let transport_type = if self.config.use_tls { "TLS" } else { "TCP" };
+        info!("MQTT connected to {}:{} ({})", self.config.broker_host, self.config.broker_port, transport_type);
         info!("Subscribed to {} and {} value topics", cmd_topic, self.config.subscriptions.len());
 
         self.publish_status("online").await?;
