@@ -15,11 +15,73 @@ use petra::OpcUaServer;
 #[cfg(feature = "advanced-storage")]
 use petra::storage::{StorageConfig, StorageManager};
 
-mod signal_enhanced;
-mod block_executor;
-mod health;
-mod realtime;
-mod validation;
+mod signal_enhanced {
+    pub use crate::signal::SignalBus as EnhancedSignalBus;
+    pub use crate::signal::SignalBus;
+    
+    #[derive(Debug, Clone)]
+    pub struct SignalBusConfig {
+        pub max_signals: usize,
+        pub signal_ttl: std::time::Duration,
+        pub cleanup_interval: std::time::Duration,
+        pub hot_signal_threshold: u64,
+    }
+}
+
+mod health {
+    use std::sync::Arc;
+    
+    pub struct HealthChecker {
+        // Stub implementation
+    }
+    
+    impl HealthChecker {
+        pub fn new(_interval: std::time::Duration) -> Self {
+            Self {}
+        }
+        
+        pub fn add_check(&mut self, _check: Arc<dyn HealthCheck>) {}
+    }
+    
+    pub trait HealthCheck: Send + Sync {}
+    
+    pub struct StorageHealthCheck;
+    impl StorageHealthCheck {
+        pub fn new(_manager: Arc<crate::storage::StorageManager>) -> Self {
+            Self
+        }
+    }
+    impl HealthCheck for StorageHealthCheck {}
+    
+    // Add other health check types as needed
+}
+mod realtime {
+    #[derive(Default)]
+    pub struct RealtimeConfig {
+        pub rt_priority: Option<i32>,
+        pub lock_memory: bool,
+        pub cpu_affinity: Vec<usize>,
+    }
+    
+    pub fn configure_realtime(_config: &RealtimeConfig) -> Result<(), String> {
+        // Stub implementation
+        Ok(())
+    }
+}
+mod validation {
+    pub struct ValidationRules;
+    impl ValidationRules {
+        pub fn new() -> Self { Self }
+        pub fn add_value_range(&mut self, _name: String, _range: ValueRange) {}
+        pub fn add_rate_limit(&mut self, _name: String, _limit: u32) {}
+    }
+    
+    pub struct ValueRange {
+        pub min: Option<f64>,
+        pub max: Option<f64>,
+        pub allowed_values: Option<Vec<String>>,
+    }
+}
 
 use signal_enhanced::EnhancedSignalBus;
 use health::{HealthChecker, HealthReport};
