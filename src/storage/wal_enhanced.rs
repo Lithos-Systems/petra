@@ -1,263 +1,221 @@
-use crate::error::*;
-use clickhouse::Client;
-use std::sync::Arc;
-use parking_lot::Mutex;
-use std::collections::VecDeque;
-use std::time::Duration;
-use tokio::time::interval;
-use tracing::{info, warn, error};
+use crate::{error::*, value::Value};
+use rocksdb::{DB, Options, WriteBatch};
+use serde::{Serialize, Deserialize};
+use std::path::Path;
+use bincode;
+use crc32fast::Hasher;
+use tracing::{info, error, warn};
 
-pub struct ClickHousePool {
-    connections: Vec<Client>,
-    available: Arc<Mutex<VecDeque<usize>>>,
-    health_check_interval: Duration,
-    min_connections: usize,
-    max_connections: usize,
-    connection_timeout: Duration,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WalEntry {
+    pub sequence: u64,
+    pub timestamp: i64,
+    pub operation: WalOperation,
+    pub checksum: u32,
 }
 
-pub struct PooledConnection {
-    index: usize,
-    client: Client,
-    pool: Arc<Mutex<VecDeque<usize>>>,
+#[derive(Debug, Serialize, Deserialize)]
+pub enum WalOperation {
+    SignalUpdate { name: String, value: Value },
+    Batch { updates: Vec<(String, Value)> },
+    Checkpoint { marker: u64 },
 }
 
-impl PooledConnection {
-    fn new(index: usize, client: &Client, pool: Arc<Mutex<VecDeque<usize>>>) -> Self {
-        Self {
-            index,
-            client: client.clone(),
-            pool,
+pub struct EnhancedWal {
+    db: DB,
+    sequence: AtomicU64,
+    corruption_count: AtomicU64,
+}
+
+impl EnhancedWal {
+    pub fn new(path: &Path) -> Result<Self> {
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.set_write_buffer_size(16 * 1024 * 1024); // 16MB
+        opts.set_max_write_buffer_number(3);
+        opts.set_target_file_size_base(64 * 1024 * 1024); // 64MB
+        opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+        
+        let db = DB::open(&opts, path)
+            .map_err(|e| PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to open WAL: {}", e)
+            )))?;
+        
+        // Find the last sequence number
+        let last_seq = Self::find_last_sequence(&db);
+        
+        Ok(Self {
+            db,
+            sequence: AtomicU64::new(last_seq + 1),
+            corruption_count: AtomicU64::new(0),
+        })
+    }
+    
+    fn find_last_sequence(db: &DB) -> u64 {
+        let iter = db.iterator(rocksdb::IteratorMode::End);
+        
+        for (key, _) in iter {
+            if let Ok(seq) = Self::key_to_sequence(&key) {
+                return seq;
+            }
+        }
+        
+        0
+    }
+    
+    fn key_to_sequence(key: &[u8]) -> Result<u64> {
+        if key.len() == 8 {
+            Ok(u64::from_be_bytes([
+                key[0], key[1], key[2], key[3],
+                key[4], key[5], key[6], key[7]
+            ]))
+        } else {
+            Err(PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid key format"
+            )))
         }
     }
     
-    pub fn client(&self) -> &Client {
-        &self.client
-    }
-}
-
-impl Drop for PooledConnection {
-    fn drop(&mut self) {
-        // Return connection to pool
-        if let Ok(mut available) = self.pool.lock() {
-            available.push_back(self.index);
-        }
-    }
-}
-
-impl ClickHousePool {
-    pub async fn new(
-        url: &str,
-        database: &str,
-        username: Option<&str>,
-        password: Option<&str>,
-        min_connections: usize,
-        max_connections: usize,
-    ) -> Result<Self> {
-        let mut connections = Vec::with_capacity(max_connections);
-        let mut available = VecDeque::with_capacity(max_connections);
+    pub fn append(&self, operation: WalOperation) -> Result<u64> {
+        let seq = self.sequence.fetch_add(1, Ordering::Relaxed);
         
-        // Create initial connections
-        for i in 0..min_connections {
-            let client = Self::create_client(url, database, username, password)?;
-            
-            // Test the connection
-            if let Err(e) = Self::test_connection(&client).await {
-                error!("Failed to create connection {}: {}", i, e);
-                continue;
-            }
-            
-            connections.push(client);
-            available.push_back(i);
-        }
-        
-        if connections.is_empty() {
-            return Err(PlcError::Config("Failed to create any ClickHouse connections".into()));
-        }
-        
-        info!("Created ClickHouse pool with {} connections", connections.len());
-        
-        let pool = Self {
-            connections,
-            available: Arc::new(Mutex::new(available)),
-            health_check_interval: Duration::from_secs(30),
-            min_connections,
-            max_connections,
-            connection_timeout: Duration::from_secs(5),
+        let entry = WalEntry {
+            sequence: seq,
+            timestamp: chrono::Utc::now().timestamp_nanos(),
+            operation,
+            checksum: 0, // Will be calculated below
         };
         
-        // Start health check task
-        let pool_clone = pool.clone();
-        tokio::spawn(async move {
-            pool_clone.health_check_loop().await;
-        });
+        // Serialize without checksum first
+        let mut data = bincode::serialize(&entry)
+            .map_err(|e| PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Serialization error: {}", e)
+            )))?;
         
-        Ok(pool)
+        // Calculate checksum
+        let mut hasher = Hasher::new();
+        hasher.update(&data);
+        let checksum = hasher.finalize();
+        
+        // Update the entry with checksum
+        let entry_with_checksum = WalEntry { checksum, ..entry };
+        
+        let data = bincode::serialize(&entry_with_checksum)
+            .map_err(|e| PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Serialization error: {}", e)
+            )))?;
+        
+        let key = seq.to_be_bytes();
+        self.db.put(&key, &data)
+            .map_err(|e| PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("WAL write error: {}", e)
+            )))?;
+        
+        Ok(seq)
     }
     
-    fn create_client(
-        url: &str,
-        database: &str,
-        username: Option<&str>,
-        password: Option<&str>,
-    ) -> Result<Client> {
-        let mut client = Client::default()
-            .with_url(url)
-            .with_database(database)
-            .with_option("connect_timeout", "5")
-            .with_option("send_timeout", "30")
-            .with_option("receive_timeout", "30")
-            .with_option("tcp_keepalive_idle", "60")
-            .with_option("tcp_keepalive_interval", "5")
-            .with_option("tcp_keepalive_cnt", "3");
+    pub fn read_range_with_checksum(&self, start: u64, end: u64) -> Result<Vec<WalEntry>> {
+        let mut entries = Vec::new();
+        let mut corrupted = 0;
         
-        if let Some(user) = username {
-            client = client.with_user(user);
+        let start_key = start.to_be_bytes();
+        let iter = self.db.iterator(rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward));
+        
+        for (key, value) in iter {
+            let seq = Self::key_to_sequence(&key)?;
+            
+            if seq > end {
+                break;
+            }
+            
+            match bincode::deserialize::<WalEntry>(&value) {
+                Ok(mut entry) => {
+                    // Verify checksum
+                    let stored_checksum = entry.checksum;
+                    entry.checksum = 0;
+                    
+                    let data = bincode::serialize(&entry).unwrap();
+                    let mut hasher = Hasher::new();
+                    hasher.update(&data);
+                    let calculated_checksum = hasher.finalize();
+                    
+                    if stored_checksum == calculated_checksum {
+                        entry.checksum = stored_checksum;
+                        entries.push(entry);
+                    } else {
+                        corrupted += 1;
+                        warn!(
+                            "Corrupted WAL entry at sequence {}: checksum mismatch",
+                            seq
+                        );
+                    }
+                }
+                Err(e) => {
+                    corrupted += 1;
+                    error!("Failed to deserialize WAL entry at sequence {}: {}", seq, e);
+                }
+            }
         }
         
-        if let Some(pass) = password {
-            client = client.with_password(pass);
+        if corrupted > 0 {
+            self.corruption_count.fetch_add(corrupted, Ordering::Relaxed);
+            warn!("Found {} corrupted entries during WAL read", corrupted);
         }
         
-        Ok(client)
+        Ok(entries)
     }
     
-    async fn test_connection(client: &Client) -> Result<()> {
-        let query = client.query("SELECT 1");
+    pub fn checkpoint(&self, keep_entries: u64) -> Result<()> {
+        info!("Creating WAL checkpoint, keeping last {} entries", keep_entries);
         
-        tokio::time::timeout(Duration::from_secs(5), query.fetch_one::<u8>())
-            .await
-            .map_err(|_| PlcError::Config("Connection test timeout".into()))?
-            .map_err(|e| PlcError::Config(format!("Connection test failed: {}", e)))?;
+        // Find the cutoff sequence
+        let current_seq = self.sequence.load(Ordering::Relaxed);
+        if current_seq <= keep_entries {
+            return Ok(());
+        }
+        
+        let cutoff = current_seq - keep_entries;
+        
+        // Delete old entries
+        let mut batch = WriteBatch::default();
+        let mut deleted = 0;
+        
+        let iter = self.db.iterator(rocksdb::IteratorMode::Start);
+        for (key, _) in iter {
+            let seq = Self::key_to_sequence(&key)?;
+            
+            if seq >= cutoff {
+                break;
+            }
+            
+            batch.delete(&key);
+            deleted += 1;
+            
+            if deleted % 10000 == 0 {
+                self.db.write(batch)?;
+                batch = WriteBatch::default();
+            }
+        }
+        
+        if deleted > 0 {
+            self.db.write(batch)?;
+            info!("Deleted {} old WAL entries", deleted);
+        }
+        
+        // Compact the database
+        self.db.compact_range(None::<&[u8]>, None::<&[u8]>);
         
         Ok(())
     }
     
-    pub async fn get_connection(&self) -> Result<PooledConnection> {
-        let mut retries = 3;
-        let mut last_error = None;
-        
-        while retries > 0 {
-            // Try to get an available connection
-            if let Some(index) = self.try_get_available() {
-                let conn = PooledConnection::new(
-                    index,
-                    &self.connections[index],
-                    self.available.clone()
-                );
-                return Ok(conn);
-            }
-            
-            // If we haven't reached max connections, try to create a new one
-            if self.connections.len() < self.max_connections {
-                match self.create_new_connection().await {
-                    Ok(index) => {
-                        let conn = PooledConnection::new(
-                            index,
-                            &self.connections[index],
-                            self.available.clone()
-                        );
-                        return Ok(conn);
-                    }
-                    Err(e) => {
-                        last_error = Some(e);
-                    }
-                }
-            }
-            
-            retries -= 1;
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        
-        Err(last_error.unwrap_or_else(|| PlcError::Config("No connections available".into())))
-    }
-    
-    fn try_get_available(&self) -> Option<usize> {
-        if let Ok(mut available) = self.available.try_lock() {
-            available.pop_front()
-        } else {
-            None
-        }
-    }
-    
-    async fn create_new_connection(&self) -> Result<usize> {
-        warn!("Creating new ClickHouse connection");
-        
-        // This is a simplified version - in production you'd need proper synchronization
-        let index = self.connections.len();
-        
-        // Create client based on first connection's config
-        let client = self.connections[0].clone();
-        
-        Self::test_connection(&client).await?;
-        
-        // This would need proper mutex handling in production
-        // connections.push(client);
-        
-        Ok(index)
-    }
-    
-    async fn health_check_loop(&self) {
-        let mut interval = interval(self.health_check_interval);
-        
-        loop {
-            interval.tick().await;
-            self.check_all_connections().await;
-        }
-    }
-    
-    async fn check_all_connections(&self) {
-        let mut failed = Vec::new();
-        
-        for (i, client) in self.connections.iter().enumerate() {
-            if let Err(e) = Self::test_connection(client).await {
-                warn!("Connection {} health check failed: {}", i, e);
-                failed.push(i);
-            }
-        }
-        
-        // Mark failed connections as unavailable
-        if !failed.is_empty() {
-            if let Ok(mut available) = self.available.lock() {
-                available.retain(|&idx| !failed.contains(&idx));
-            }
-            
-            // Try to reconnect failed connections
-            for idx in failed {
-                tokio::spawn(async move {
-                    // Implement reconnection logic
-                });
-            }
-        }
-    }
-    
-    pub fn stats(&self) -> PoolStats {
-        let available_count = self.available.lock().len();
-        
-        PoolStats {
-            total_connections: self.connections.len(),
-            available_connections: available_count,
-            active_connections: self.connections.len() - available_count,
-        }
+    pub fn corruption_count(&self) -> u64 {
+        self.corruption_count.load(Ordering::Relaxed)
     }
 }
 
-impl Clone for ClickHousePool {
-    fn clone(&self) -> Self {
-        Self {
-            connections: self.connections.clone(),
-            available: self.available.clone(),
-            health_check_interval: self.health_check_interval,
-            min_connections: self.min_connections,
-            max_connections: self.max_connections,
-            connection_timeout: self.connection_timeout,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PoolStats {
-    pub total_connections: usize,
-    pub available_connections: usize,
-    pub active_connections: usize,
-}
+use std::sync::atomic::{AtomicU64, Ordering};
