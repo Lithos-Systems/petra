@@ -2,7 +2,11 @@
 pub mod local;
 pub mod remote;
 pub mod wal;
+#[cfg(feature = "enhanced")]
+pub mod wal_enhanced;
 pub mod manager;
+#[cfg(feature = "enhanced")]
+pub mod manager_enhanced;
 pub mod clickhouse;
 
 use crate::{error::*, value::Value};
@@ -130,3 +134,13 @@ fn default_max_retries() -> u32 { 3 }
 fn default_retry_delay_ms() -> u64 { 1000 }
 fn default_compression_ch() -> bool { true }
 fn default_async_insert() -> bool { true }
+
+#[cfg(feature = "enhanced")]
+pub use manager_enhanced::EnhancedStorageManager as StorageManager;
+#[cfg(feature = "enhanced")]
+pub use wal_enhanced::EnhancedWal as WriteAheadLog;
+
+#[cfg(not(feature = "enhanced"))]
+pub use manager::StorageManager;
+#[cfg(not(feature = "enhanced"))]
+pub use wal::WriteAheadLog;

@@ -1,4 +1,8 @@
-use petra::{Config, Engine, MqttHandler, S7Connector, TwilioConnector, HistoryManager, Result};
+use petra::{Config, MqttHandler, S7Connector, TwilioConnector, HistoryManager, Result};
+#[cfg(feature = "enhanced")]
+use petra::engine_enhanced::EnhancedEngine as Engine;
+#[cfg(not(feature = "enhanced"))]
+use petra::Engine;
 use tokio::signal;
 use tokio::sync::mpsc;
 use tracing::{error, info};
