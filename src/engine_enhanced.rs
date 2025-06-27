@@ -8,6 +8,7 @@ use tracing::{info, warn, debug, error};
 use metrics::{histogram, counter, gauge};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use parking_lot::RwLock;
+use crate::signal_optimized::OptimizedSignalBus;
 use std::collections::HashMap;
 use serde::Serialize;
 

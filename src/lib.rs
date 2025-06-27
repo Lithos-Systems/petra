@@ -9,6 +9,8 @@ pub mod alarms;
 pub mod engine;
 #[cfg(feature = "enhanced")]
 pub mod engine_enhanced;
+#[cfg(feature = "enhanced")]
+pub mod signal_optimized;
 pub mod mqtt;
 pub mod twilio;
 pub mod twilio_block;
@@ -37,6 +39,8 @@ pub use storage::{StorageConfig, StorageManager, WriteAheadLog};
 pub use error::{PlcError, Result};
 pub use value::Value;
 pub use signal::SignalBus;
+#[cfg(feature = "enhanced")]
+pub use signal_optimized::OptimizedSignalBus;
 pub use config::Config;
 pub use engine::{Engine, EngineStats};
 pub use mqtt::{MqttHandler, MqttMessage};
