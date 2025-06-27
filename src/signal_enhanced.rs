@@ -1,162 +1,213 @@
-use crate::{error::*, block::Block, signal::SignalBus};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use crate::{error::*, value::Value};
+use dashmap::DashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
-use tracing::{warn, error, instrument};
+use crossbeam::atomic::AtomicCell;
+use std::collections::HashMap;
+use tracing::{trace, warn};
 
-pub struct BlockExecutor {
-    name: String,
-    failure_count: AtomicU32,
-    max_failures: u32,
-    circuit_open: AtomicBool,
-    last_attempt: RwLock<Instant>,
-    last_error: RwLock<Option<String>>,
-    reset_timeout: Duration,
-    half_open_max_calls: u32,
-    half_open_calls: AtomicU32,
-    half_open_failures: AtomicU32,
+pub struct EnhancedSignalBus {
+    signals: Arc<DashMap<String, SignalEntry>>,
+    hot_cache: Arc<DashMap<String, Arc<AtomicCell<Value>>>>,
+    config: SignalBusConfig,
+    stats: Arc<SignalStats>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CircuitState {
-    Closed,
-    Open,
-    HalfOpen,
+#[derive(Debug, Clone)]
+pub struct SignalEntry {
+    pub value: Value,
+    pub timestamp: Instant,
+    pub update_count: u64,
 }
 
-impl BlockExecutor {
-    pub fn new(name: String, max_failures: u32, reset_timeout: Duration) -> Self {
+#[derive(Debug, Clone)]
+pub struct SignalBusConfig {
+    pub max_signals: usize,
+    pub signal_ttl: Duration,
+    pub cleanup_interval: Duration,
+    pub hot_signal_threshold: u64,
+}
+
+impl Default for SignalBusConfig {
+    fn default() -> Self {
         Self {
-            name,
-            failure_count: AtomicU32::new(0),
-            max_failures,
-            circuit_open: AtomicBool::new(false),
-            last_attempt: RwLock::new(Instant::now()),
-            last_error: RwLock::new(None),
-            reset_timeout,
-            half_open_max_calls: 3,
-            half_open_calls: AtomicU32::new(0),
-            half_open_failures: AtomicU32::new(0),
+            max_signals: 10_000,
+            signal_ttl: Duration::from_secs(3600), // 1 hour
+            cleanup_interval: Duration::from_secs(60),
+            hot_signal_threshold: 100, // Updates per cleanup interval
         }
     }
-    
-    #[instrument(skip(self, block, bus), fields(block_name = %self.name))]
-    pub async fn execute_with_circuit_breaker(
-        &self,
-        block: &mut dyn Block,
-        bus: &SignalBus,
-    ) -> Result<()> {
-        let state = self.current_state();
+}
+
+#[derive(Debug, Default)]
+pub struct SignalStats {
+    pub total_updates: AtomicCell<u64>,
+    pub cache_hits: AtomicCell<u64>,
+    pub cache_misses: AtomicCell<u64>,
+    pub evictions: AtomicCell<u64>,
+}
+
+impl EnhancedSignalBus {
+    pub fn new(config: SignalBusConfig) -> Self {
+        let bus = Self {
+            signals: Arc::new(DashMap::new()),
+            hot_cache: Arc::new(DashMap::new()),
+            config,
+            stats: Arc::new(SignalStats::default()),
+        };
         
-        match state {
-            CircuitState::Open => {
-                return Err(PlcError::Config(format!(
-                    "Circuit breaker open for block '{}': {}",
-                    self.name,
-                    self.last_error.read().as_ref().unwrap_or(&"Unknown error".to_string())
-                )));
-            }
-            CircuitState::HalfOpen => {
-                let calls = self.half_open_calls.fetch_add(1, Ordering::Relaxed);
-                if calls >= self.half_open_max_calls {
-                    // Transition back to open if we've tried enough
-                    if self.half_open_failures.load(Ordering::Relaxed) > 0 {
-                        self.open_circuit();
-                        return Err(PlcError::Config(format!(
-                            "Circuit breaker re-opened for block '{}'",
-                            self.name
-                        )));
-                    }
-                }
-            }
-            CircuitState::Closed => {}
-        }
+        // Start cleanup task
+        let bus_clone = bus.clone();
+        tokio::spawn(async move {
+            bus_clone.cleanup_task().await;
+        });
         
-        match block.execute(bus) {
-            Ok(_) => {
-                self.on_success();
-                Ok(())
-            }
-            Err(e) => {
-                self.on_failure(e.to_string());
-                Err(e)
-            }
-        }
+        bus
     }
     
-    fn current_state(&self) -> CircuitState {
-        if !self.circuit_open.load(Ordering::Relaxed) {
-            return CircuitState::Closed;
+    pub fn set(&self, name: &str, value: Value) -> Result<()> {
+        trace!("Set {} = {}", name, value);
+        
+        // Update hot cache if exists
+        if let Some(cell) = self.hot_cache.get(name) {
+            cell.store(value.clone());
+            self.stats.cache_hits.fetch_add(1);
+        } else {
+            self.stats.cache_misses.fetch_add(1);
         }
         
-        let last_attempt = *self.last_attempt.read();
-        if last_attempt.elapsed() >= self.reset_timeout {
-            // Try half-open state
-            self.half_open_calls.store(0, Ordering::Relaxed);
-            self.half_open_failures.store(0, Ordering::Relaxed);
-            return CircuitState::HalfOpen;
+        // Update main storage
+        let mut entry = self.signals.entry(name.to_string()).or_insert(SignalEntry {
+            value: value.clone(),
+            timestamp: Instant::now(),
+            update_count: 0,
+        });
+        
+        entry.value = value;
+        entry.timestamp = Instant::now();
+        entry.update_count += 1;
+        
+        self.stats.total_updates.fetch_add(1);
+        
+        // Check if should be promoted to hot cache
+        if entry.update_count > self.config.hot_signal_threshold {
+            self.promote_to_hot_cache(name, value);
         }
         
-        CircuitState::Open
+        Ok(())
     }
     
-    fn on_success(&self) {
-        match self.current_state() {
-            CircuitState::HalfOpen => {
-                let calls = self.half_open_calls.load(Ordering::Relaxed);
-                let failures = self.half_open_failures.load(Ordering::Relaxed);
-                
-                if calls >= self.half_open_max_calls && failures == 0 {
-                    // Close the circuit
-                    self.circuit_open.store(false, Ordering::Relaxed);
-                    self.failure_count.store(0, Ordering::Relaxed);
-                    warn!("Circuit breaker closed for block '{}'", self.name);
-                }
-            }
-            CircuitState::Closed => {
-                self.failure_count.store(0, Ordering::Relaxed);
-            }
-            _ => {}
+    pub fn get(&self, name: &str) -> Result<Value> {
+        // Check hot cache first
+        if let Some(cell) = self.hot_cache.get(name) {
+            self.stats.cache_hits.fetch_add(1);
+            return Ok(cell.load());
         }
-    }
-    
-    fn on_failure(&self, error: String) {
-        *self.last_error.write() = Some(error.clone());
         
-        match self.current_state() {
-            CircuitState::HalfOpen => {
-                self.half_open_failures.fetch_add(1, Ordering::Relaxed);
-                self.open_circuit();
-            }
-            CircuitState::Closed => {
-                let failures = self.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
-                if failures >= self.max_failures {
-                    self.open_circuit();
-                }
-            }
-            _ => {}
+        self.stats.cache_misses.fetch_add(1);
+        
+        self.signals
+            .get(name)
+            .map(|entry| entry.value.clone())
+            .ok_or_else(|| PlcError::SignalNotFound(name.to_string()))
+    }
+    
+    fn promote_to_hot_cache(&self, name: &str, value: Value) {
+        if self.hot_cache.len() < 1000 { // Limit hot cache size
+            self.hot_cache.insert(
+                name.to_string(),
+                Arc::new(AtomicCell::new(value))
+            );
+            trace!("Promoted {} to hot cache", name);
         }
     }
     
-    fn open_circuit(&self) {
-        self.circuit_open.store(true, Ordering::Relaxed);
-        *self.last_attempt.write() = Instant::now();
-        error!(
-            "Circuit breaker opened for block '{}' after {} failures",
-            self.name,
-            self.max_failures
-        );
+    async fn cleanup_task(&self) {
+        let mut interval = tokio::time::interval(self.config.cleanup_interval);
+        
+        loop {
+            interval.tick().await;
+            self.cleanup_stale_signals();
+            self.cleanup_cold_cache();
+        }
     }
     
-    pub fn reset(&self) {
-        self.circuit_open.store(false, Ordering::Relaxed);
-        self.failure_count.store(0, Ordering::Relaxed);
-        self.half_open_calls.store(0, Ordering::Relaxed);
-        self.half_open_failures.store(0, Ordering::Relaxed);
-        *self.last_error.write() = None;
+    fn cleanup_stale_signals(&self) {
+        let now = Instant::now();
+        let mut evicted = 0;
+        
+        self.signals.retain(|_, entry| {
+            let should_keep = now.duration_since(entry.timestamp) < self.config.signal_ttl;
+            if !should_keep {
+                evicted += 1;
+            }
+            should_keep
+        });
+        
+        if evicted > 0 {
+            self.stats.evictions.fetch_add(evicted);
+            warn!("Evicted {} stale signals", evicted);
+        }
+        
+        // Enforce max signals limit
+        if self.signals.len() > self.config.max_signals {
+            let to_remove = self.signals.len() - self.config.max_signals;
+            let mut entries: Vec<_> = self.signals.iter()
+                .map(|e| (e.key().clone(), e.timestamp))
+                .collect();
+            
+            entries.sort_by_key(|(_, ts)| *ts);
+            
+            for (key, _) in entries.into_iter().take(to_remove) {
+                self.signals.remove(&key);
+                self.hot_cache.remove(&key);
+                evicted += 1;
+            }
+            
+            self.stats.evictions.fetch_add(evicted as u64);
+        }
     }
     
-    pub fn state(&self) -> CircuitState {
-        self.current_state()
+    fn cleanup_cold_cache(&self) {
+        // Reset update counts and demote cold signals
+        for mut entry in self.signals.iter_mut() {
+            if entry.update_count < self.config.hot_signal_threshold / 2 {
+                self.hot_cache.remove(entry.key());
+            }
+            entry.update_count = 0;
+        }
+    }
+    
+    pub fn stats(&self) -> SignalBusStats {
+        SignalBusStats {
+            total_signals: self.signals.len(),
+            hot_cache_size: self.hot_cache.len(),
+            total_updates: self.stats.total_updates.load(),
+            cache_hits: self.stats.cache_hits.load(),
+            cache_misses: self.stats.cache_misses.load(),
+            evictions: self.stats.evictions.load(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SignalBusStats {
+    pub total_signals: usize,
+    pub hot_cache_size: usize,
+    pub total_updates: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub evictions: u64,
+}
+
+impl Clone for EnhancedSignalBus {
+    fn clone(&self) -> Self {
+        Self {
+            signals: self.signals.clone(),
+            hot_cache: self.hot_cache.clone(),
+            config: self.config.clone(),
+            stats: self.stats.clone(),
+        }
     }
 }
