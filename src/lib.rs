@@ -10,6 +10,13 @@ pub mod engine;
 pub mod mqtt;
 pub mod twilio;
 pub mod twilio_block;
+#[cfg(feature = "opcua-support")]
+pub mod opcua;
+
+#[cfg(feature = "modbus-support")]
+pub mod modbus;
+
+pub mod security;
 
 #[cfg(feature = "json-schema")]
 pub mod config_schema;
@@ -37,5 +44,13 @@ pub use history::{HistoryManager, HistoryConfig, SignalHistory};
 pub use s7::{S7Connector, S7Config, S7Mapping, S7Area, S7DataType, Direction};
 
 pub use twilio::{TwilioConnector, TwilioConfig, TwilioAction, TwilioActionType};
+
+#[cfg(feature = "opcua-support")]
+pub use opcua::{OpcUaConfig, OpcUaServer};
+
+#[cfg(feature = "modbus-support")]
+pub use modbus::modbus::{ModbusConfig, ModbusConnection, ModbusTransport};
+
+pub use security::{SecurityConfig, AuthToken, UserRole};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

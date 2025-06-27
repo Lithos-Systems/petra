@@ -2,7 +2,8 @@
 #[cfg(feature = "modbus-support")]
 pub mod modbus {
     use tokio_modbus::prelude::*;
-    
+    use serde::{Serialize, Deserialize};
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct ModbusConfig {
         pub connections: Vec<ModbusConnection>,
@@ -22,5 +23,13 @@ pub mod modbus {
     pub enum ModbusTransport {
         Tcp { host: String, port: u16 },
         Rtu { device: String, baud_rate: u32, slave: u8 },
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ModbusMapping {
+        pub signal: String,
+        pub address: u16,
+        pub data_type: String,
+        pub direction: String,
     }
 }

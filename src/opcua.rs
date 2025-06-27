@@ -1,9 +1,13 @@
 // Add src/opcua.rs
 #[cfg(feature = "opcua-support")]
 pub mod opcua {
-    use opcua::server::{ServerBuilder, Session};
-    use opcua::types::*;
+    use opcua::server::{ServerBuilder, Server};
+    use opcua::types::SecurityPolicy;
+    use std::path::PathBuf;
+    use crate::{SignalBus, Result};
+    use serde::{Serialize, Deserialize};
     
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct OpcUaConfig {
         pub endpoint: String,
         pub port: u16,
@@ -34,6 +38,11 @@ pub mod opcua {
             self.register_signals(&server).await?;
             
             server.run().await;
+            Ok(())
+        }
+
+        async fn register_signals(&self, _server: &Server) -> Result<()> {
+            // placeholder implementation - map signals to OPC-UA nodes
             Ok(())
         }
     }

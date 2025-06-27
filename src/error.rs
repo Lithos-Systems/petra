@@ -1,29 +1,28 @@
-// Enhance src/error.rs
+use thiserror::Error;
+
+/// Application level error type used throughout the crate.
 #[derive(Error, Debug)]
 pub enum PlcError {
-    #[error("Security violation: {0}")]
-    Security(String),
-    
-    #[error("Rate limit exceeded: {0}")]
-    RateLimit(String),
-    
-    #[error("Resource exhausted: {0}")]
-    ResourceExhausted(String),
-    
-    #[error("Dependency failure: {service} - {reason}")]
-    DependencyFailure { service: String, reason: String },
-    
-    // Add structured error codes for external systems
-    #[error("E{code:04}: {message}")]
-    Coded { code: u16, message: String },
+    /// I/O related failure
+    #[error("Io error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// Invalid or inconsistent configuration
+    #[error("Configuration error: {0}")]
+    Config(String),
+
+    /// Error while parsing YAML configuration files
+    #[error("YAML error: {0}")]
+    Yaml(#[from] serde_yaml::Error),
+
+    /// Requested signal was not found in the bus
+    #[error("Signal not found: {0}")]
+    SignalNotFound(String),
+
+    /// Returned value type does not match the expected type
+    #[error("Type mismatch: expected {expected}, got {actual}")]
+    TypeMismatch { expected: &'static str, actual: &'static str },
 }
 
-// Add metrics and tracing
-use tracing::{instrument, error_span};
-use metrics::{counter, histogram, gauge};
-
-#[instrument(skip(self), fields(node_count = %self.nodes.len()))]
-pub async fn run(&mut self) -> Result<()> {
-    let _span = error_span!("engine_run").entered();
-    // ... existing code with enhanced telemetry
-}
+/// Convenient alias over [`Result`] using [`PlcError`]
+pub type Result<T> = std::result::Result<T, PlcError>;

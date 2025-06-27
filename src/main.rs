@@ -6,6 +6,11 @@ use tracing_subscriber;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use std::net::SocketAddr;
 
+#[cfg(feature = "opcua-support")]
+use petra::OpcUaServer;
+#[cfg(feature = "modbus-support")]
+use petra::modbus::modbus::ModbusConfig;
+
 #[cfg(feature = "advanced-storage")]
 use petra::storage::{StorageConfig, StorageManager};
 
@@ -131,6 +136,22 @@ async fn main() -> Result<()> {
         None
     };
 
+    #[cfg(feature = "modbus-support")]
+    let modbus_handle = if let Some(modbus_config) = config.modbus {
+        info!("Modbus configuration found, starting Modbus connector");
+        // Placeholder connector task
+        Some(tokio::spawn(async move {
+            let _ = modbus_config.connections.len();
+        }))
+    } else { None };
+
+    #[cfg(feature = "opcua-support")]
+    let opcua_handle = if let Some(opcua_config) = config.opcua {
+        info!("OPC-UA configuration found, starting server on port {}", opcua_config.port);
+        let mut server = OpcUaServer { config: opcua_config, bus: bus.clone(), server: None };
+        Some(tokio::spawn(async move { let _ = server.start().await; }))
+    } else { None };
+
     let ctrl_c = signal::ctrl_c();
     
     tokio::select! {
@@ -158,6 +179,14 @@ async fn main() -> Result<()> {
             }
             if let Some(s7_task) = s7_handle {
                 s7_task.abort();
+            }
+            #[cfg(feature = "modbus-support")]
+            if let Some(modbus_task) = modbus_handle {
+                modbus_task.abort();
+            }
+            #[cfg(feature = "opcua-support")]
+            if let Some(opcua_task) = opcua_handle {
+                opcua_task.abort();
             }
             
             engine_result
