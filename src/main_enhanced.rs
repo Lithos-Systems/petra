@@ -15,76 +15,10 @@ use petra::OpcUaServer;
 #[cfg(feature = "advanced-storage")]
 use petra::storage::{StorageConfig, StorageManager};
 
-mod signal_enhanced {
-    pub use crate::signal::SignalBus as EnhancedSignalBus;
-    pub use crate::signal::SignalBus;
-    
-    #[derive(Debug, Clone)]
-    pub struct SignalBusConfig {
-        pub max_signals: usize,
-        pub signal_ttl: std::time::Duration,
-        pub cleanup_interval: std::time::Duration,
-        pub hot_signal_threshold: u64,
-    }
-}
-
-mod health {
-    use std::sync::Arc;
-    
-    pub struct HealthChecker {
-        // Stub implementation
-    }
-    
-    impl HealthChecker {
-        pub fn new(_interval: std::time::Duration) -> Self {
-            Self {}
-        }
-        
-        pub fn add_check(&mut self, _check: Arc<dyn HealthCheck>) {}
-    }
-    
-    pub trait HealthCheck: Send + Sync {}
-    
-    pub struct StorageHealthCheck;
-    impl StorageHealthCheck {
-        pub fn new(_manager: Arc<crate::storage::StorageManager>) -> Self {
-            Self
-        }
-    }
-    impl HealthCheck for StorageHealthCheck {}
-    
-    // Add other health check types as needed
-}
-mod realtime {
-    #[derive(Default)]
-    pub struct RealtimeConfig {
-        pub rt_priority: Option<i32>,
-        pub lock_memory: bool,
-        pub cpu_affinity: Vec<usize>,
-    }
-    
-    pub fn configure_realtime(_config: &RealtimeConfig) -> Result<(), String> {
-        // Stub implementation
-        Ok(())
-    }
-}
-mod validation {
-    pub struct ValidationRules;
-    impl ValidationRules {
-        pub fn new() -> Self { Self }
-        pub fn add_value_range(&mut self, _name: String, _range: ValueRange) {}
-        pub fn add_rate_limit(&mut self, _name: String, _limit: u32) {}
-    }
-    
-    pub struct ValueRange {
-        pub min: Option<f64>,
-        pub max: Option<f64>,
-        pub allowed_values: Option<Vec<String>>,
-    }
-}
-
-use signal_enhanced::EnhancedSignalBus;
-use health::{HealthChecker, HealthReport};
+use petra::signal_enhanced::{EnhancedSignalBus, SignalBusConfig};
+use petra::{health, realtime, validation};
+use petra::health::{HealthChecker, HealthReport};
+use petra::ConfigVerifier;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -119,7 +53,6 @@ async fn main() -> Result<()> {
            tracing_subscriber::EnvFilter::from_default_env()
                .add_directive("petra=info".parse().unwrap()),
        )
-       .json()
        .init();
    
    // Configure real-time if requested
@@ -153,7 +86,7 @@ async fn main() -> Result<()> {
    
    // Load and verify configuration
    let config = if std::env::var("PETRA_VERIFY_CONFIG").is_ok() {
-       let verifier = config_secure::ConfigVerifier::new(vec![
+       let verifier = ConfigVerifier::new(vec![
            std::path::Path::new("/etc/petra/public_key.pem"),
        ])?;
        verifier.verify_and_load(&std::path::Path::new(&args.config))?
@@ -164,7 +97,7 @@ async fn main() -> Result<()> {
    info!("Loaded {} signals, {} blocks", config.signals.len(), config.blocks.len());
    
    // Create enhanced signal bus
-   let bus_config = signal_enhanced::SignalBusConfig {
+   let bus_config = SignalBusConfig {
        max_signals: config.max_signals.unwrap_or(10_000),
        signal_ttl: Duration::from_secs(config.signal_ttl_secs.unwrap_or(3600)),
        cleanup_interval: Duration::from_secs(60),
@@ -232,11 +165,11 @@ async fn main() -> Result<()> {
        info!("Initializing MQTT subsystem");
        
        let (mqtt_tx, mqtt_rx) = mpsc::channel(1000);
-       let mqtt_handler = MqttHandler::new(
-           mqtt_config,
+       let mut mqtt_handler = MqttHandler::new(
            enhanced_bus.clone(),
-           Some(mqtt_tx),
-       ).await?;
+           mqtt_config,
+       )?;
+       mqtt_handler.set_signal_change_channel(mqtt_tx);
        
        let mqtt_client = mqtt_handler.client();
        

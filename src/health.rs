@@ -2,7 +2,7 @@ use crate::error::*;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 use tracing::{info, warn, error};
 use std::time::{Duration, Instant};
 
@@ -13,13 +13,15 @@ pub trait HealthCheck: Send + Sync {
     fn critical(&self) -> bool { true }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct HealthStatus {
     pub healthy: bool,
     pub message: String,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, serde_json::Value>,
+    #[serde(skip)]
     pub last_check: Option<Instant>,
+    #[serde(skip)]
     pub duration_ms: Option<u64>,
 }
 
@@ -192,16 +194,19 @@ impl HealthCheck for MqttHealthCheck {
     }
 }
 
+#[cfg(feature = "advanced-storage")]
 pub struct StorageHealthCheck {
     manager: Arc<crate::storage::manager::StorageManager>,
 }
 
+#[cfg(feature = "advanced-storage")]
 impl StorageHealthCheck {
     pub fn new(manager: Arc<crate::storage::manager::StorageManager>) -> Self {
         Self { manager }
     }
 }
 
+#[cfg(feature = "advanced-storage")]
 #[async_trait]
 impl HealthCheck for StorageHealthCheck {
     async fn check(&self) -> HealthStatus {

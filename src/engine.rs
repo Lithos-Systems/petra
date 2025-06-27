@@ -19,6 +19,7 @@ pub struct Engine {
     signal_change_tx: Option<mpsc::Sender<(String, Value)>>,
     scan_jitter_buffer: Arc<Mutex<VecDeque<Duration>>>,
     target_scan_time: Duration,
+    stats_handle: Arc<parking_lot::RwLock<EngineStats>>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +80,71 @@ impl Engine {
             signal_change_tx: None,
             scan_jitter_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
             target_scan_time: Duration::from_millis(config.scan_time_ms),
+            stats_handle: Arc::new(parking_lot::RwLock::new(EngineStats {
+                running: false,
+                scan_count: 0,
+                error_count: 0,
+                uptime_secs: 0,
+                signal_count: config.signals.len(),
+                block_count: config.blocks.len(),
+            })),
+        })
+    }
+
+    pub fn new_with_bus(config: Config, bus: SignalBus) -> Result<Self> {
+        // Initialize all signals on the provided bus
+        for signal in &config.signals {
+            let value = match signal.signal_type.as_str() {
+                "bool" => Value::Bool(signal.initial.as_bool().unwrap_or(false)),
+                "int" => Value::Int(signal.initial.as_i64().unwrap_or(0) as i32),
+                "float" => Value::Float(signal.initial.as_f64().unwrap_or(0.0)),
+                _ => {
+                    return Err(PlcError::Config(format!(
+                        "Invalid signal type '{}' for signal '{}'",
+                        signal.signal_type, signal.name
+                    )));
+                }
+            };
+            bus.set(&signal.name, value.clone())?;
+            debug!("Initialized signal '{}' as {} = {}", signal.name, signal.signal_type, value);
+        }
+
+        // Create all blocks
+        let mut blocks = Vec::new();
+        for block_config in &config.blocks {
+            match create_block(block_config) {
+                Ok(block) => {
+                    info!("Created block '{}' of type '{}'", block_config.name, block_config.block_type);
+                    blocks.push(block);
+                }
+                Err(e) => {
+                    return Err(PlcError::Config(format!(
+                        "Failed to create block '{}': {}",
+                        block_config.name, e
+                    )));
+                }
+            }
+        }
+
+        Ok(Self {
+            bus,
+            blocks,
+            config: config.clone(),
+            running: Arc::new(AtomicBool::new(false)),
+            scan_count: Arc::new(AtomicU64::new(0)),
+            error_count: Arc::new(AtomicU64::new(0)),
+            start_time: Instant::now(),
+            signal_change_tx: None,
+            scan_jitter_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
+            target_scan_time: Duration::from_millis(config.scan_time_ms),
+            stats_handle: Arc::new(parking_lot::RwLock::new(EngineStats {
+                running: false,
+                scan_count: 0,
+                error_count: 0,
+                uptime_secs: 0,
+                signal_count: config.signals.len(),
+                block_count: config.blocks.len(),
+            })),
         })
     }
 
@@ -93,6 +159,7 @@ impl Engine {
 
         self.running.store(true, Ordering::Relaxed);
         info!("Engine starting with {}ms scan time", self.config.scan_time_ms);
+        *self.stats_handle.write() = self.stats();
 
         let mut ticker = interval(Duration::from_millis(self.config.scan_time_ms));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -187,9 +254,12 @@ impl Engine {
                     stats.scan_count, stats.error_count, stats.uptime_secs
                 );
             }
+
+            *self.stats_handle.write() = self.stats();
         }
 
         info!("Engine stopped after {} scans", self.scan_count.load(Ordering::Relaxed));
+        *self.stats_handle.write() = self.stats();
         Ok(())
     }
 
@@ -215,5 +285,9 @@ impl Engine {
 
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
+    }
+
+    pub fn stats_handle(&self) -> Arc<parking_lot::RwLock<EngineStats>> {
+        self.stats_handle.clone()
     }
 }
