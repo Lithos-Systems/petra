@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for CA Service
+  postgres:
+    image: postgres:16-alpine
+    container_name: petra-ca-db
+    environment:
+      POSTGRES_USER: petra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: petra_ca
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # CA Service
+  ca-service:
+    build: ./ca-service
+    container_name: petra-ca-service
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://petra:${POSTGRES_PASSWORD}@postgres:5432/petra_ca
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      FROM_EMAIL: ${FROM_EMAIL:-certificates@petra.systems}
+      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mqtt.petra.systems}
+      RUST_LOG: petra_ca_service=info
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./ca:/app/ca
+    restart: unless-stopped
+
+  # MQTT Broker with TLS
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: petra-mosquitto
+    ports:
+      - "1883:1883"  # Internal only
+      - "8883:8883"  # TLS with client certs
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+      - ./ca/root/ca.crt:/mosquitto/certs/ca.crt:ro
+      - ./mosquitto/certs:/mosquitto/certs
+    restart: unless-stopped
+
+  # ClickHouse for time-series storage
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: petra-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/config:/etc/clickhouse-server/config.d
+    environment:
+      CLICKHOUSE_USER: petra
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DB: petra_timeseries
+    restart: unless-stopped
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: petra-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/html:/usr/share/nginx/html
+    depends_on:
+      - ca-service
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  clickhouse_data:
