@@ -98,7 +98,6 @@ warp = "0.3"
 regex = "1.10"
 
 # Security
-ring = "0.17"
 base64 = "0.22"
 
 # Enhanced WAL
@@ -153,6 +152,11 @@ required-features = ["json-schema"]
 [[bin]]
 name = "mqtt_publisher"
 path = "src/bin/mqtt_publisher.rs"
+
+[[bin]]
+name = "petra-enhanced"
+path = "src/main_enhanced.rs"
+required-features = ["enhanced"]
 
 [profile.release]
 lto = true
