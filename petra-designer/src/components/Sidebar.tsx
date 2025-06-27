@@ -5,6 +5,9 @@ import {
   FaPhone,
   FaServer,
   FaIndustry,
+  FaBell,
+  FaUser,
+  FaEnvelope,
 } from 'react-icons/fa'
 
 const nodeTypes = [
@@ -64,7 +67,6 @@ const nodeTypes = [
     color: 'text-blue-500',
     description: 'Email alerts',
   },
-]
 ]
 
 export default function Sidebar() {
