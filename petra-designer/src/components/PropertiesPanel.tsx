@@ -195,7 +195,7 @@ export default function PropertiesPanel() {
                 Alarm Message
               </label>
               <textarea
-                value={node.data.message || ''}
+                value={String(node.data.message || '')}
                 onChange={createChangeHandler('message')}
                 rows={3}
                 placeholder="Use {name}, {value}, {setpoint}, {signal} as placeholders"
