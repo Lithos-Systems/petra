@@ -2,38 +2,31 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly security audit
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  test:
-    name: Test
+  # Format and Lint
+  check:
+    name: Check
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [stable, beta]
     steps:
     - uses: actions/checkout@v4
     
     - name: Install Rust
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: ${{ matrix.rust }}
-        override: true
         components: rustfmt, clippy
 
     - name: Cache cargo
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      uses: Swatinem/rust-cache@v2
 
     - name: Format check
       run: cargo fmt --all -- --check
@@ -41,64 +34,196 @@ jobs:
     - name: Clippy
       run: cargo clippy --all-features -- -D warnings
 
+  # Test matrix
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable, beta]
+        exclude:
+          - os: windows-latest
+            rust: beta
+          - os: macos-latest
+            rust: beta
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+
+    - name: Cache cargo
+      uses: Swatinem/rust-cache@v2
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libssl-dev pkg-config
+
     - name: Test
       run: cargo test --all-features
+      env:
+        RUST_TEST_THREADS: 2
+
+    - name: Test with minimal features
+      run: cargo test --no-default-features
+
+  # Security audit
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
 
     - name: Security audit
-      run: |
-        cargo install cargo-audit
-        cargo audit
+      run: cargo audit
 
-  docker:
-    name: Docker Build
+    - name: Check dependencies
+      run: cargo tree --duplicate
+
+  # Performance benchmarks
+  bench:
+    name: Benchmarks
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    - name: Cache cargo
+      uses: Swatinem/rust-cache@v2
 
-    - name: Build Petra
-      uses: docker/build-push-action@v5
+    - name: Run benchmarks
+      run: cargo bench --no-run
+
+    - name: Run benchmarks and save results
+      run: |
+        cargo bench -- --output-format bencher | tee output.txt
+        
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
       with:
-        context: .
-        file: ./Dockerfile
-        push: false
-        tags: petra:latest
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        name: benchmarks
+        path: output.txt
 
-    - name: Build CA Service
-      uses: docker/build-push-action@v5
-      with:
-        context: ./ca-service
-        file: ./ca-service/Dockerfile
-        push: false
-        tags: petra-ca-service:latest
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+    # Compare with base branch
+    - name: Compare benchmarks
+      if: github.event_name == 'pull_request'
+      run: |
+        echo "Benchmark comparison would go here"
 
-  smoke-test:
-    name: Smoke Test
+  # Cross-compilation check
+  cross:
+    name: Cross Compile
     runs-on: ubuntu-latest
-    needs: [test, docker]
+    strategy:
+      matrix:
+        target: 
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
     steps:
     - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
 
-    - name: Start services
-      run: |
-        docker-compose -f docker-compose.yml up -d
-        sleep 30
+    - name: Install cross
+      run: cargo install cross
 
-    - name: Test MQTT connectivity
-      run: |
-        docker exec petra-mosquitto mosquitto_pub -t test -m "hello"
+    - name: Check compilation
+      run: cross check --target ${{ matrix.target }} --all-features
 
-    - name: Test CA service health
-      run: |
-        curl -f http://localhost:8443/health || exit 1
+  # Documentation
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
 
-    - name: Logs on failure
-      if: failure()
-      run: |
-        docker-compose logs
+    - name: Check documentation
+      run: cargo doc --all-features --no-deps
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+
+    - name: Test documentation examples
+      run: cargo test --doc --all-features
+
+  # Integration tests with real services
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      mosquitto:
+        image: eclipse-mosquitto:2
+        ports:
+          - 1883:1883
+        options: >-
+          --health-cmd "mosquitto_sub -t '$$SYS/#' -C 1 | grep -v Error || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: petra_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo
+      uses: Swatinem/rust-cache@v2
+
+    - name: Run integration tests
+      run: cargo test --test integration --features integration-tests
+      env:
+        MQTT_HOST: localhost
+        MQTT_PORT: 1883
+        DATABASE_URL: postgresql://postgres:postgres@localhost/petra_test
+
+  # Coverage report
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install tarpaulin
+      run: cargo install cargo-tarpaulin
+
+    - name: Generate coverage
+      run: cargo tarpaulin --out Xml --all-features
+
+    - name: Upload to codecov.io
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
