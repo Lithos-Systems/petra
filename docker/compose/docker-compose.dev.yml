@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: petra-dev-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto-dev.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: petra-dev-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_USER: petra
+      CLICKHOUSE_PASSWORD: dev_password
+      CLICKHOUSE_DB: petra_dev
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: petra-dev-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus-dev.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+
+volumes:
+  mosquitto_data:
+  clickhouse_data:
+  prometheus_data:
