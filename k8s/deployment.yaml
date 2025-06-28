@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: petra
+  namespace: petra
+  labels:
+    app: petra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: petra
+  template:
+    metadata:
+      labels:
+        app: petra
+    spec:
+      containers:
+      - name: petra
+        image: petra:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/app/petra"]
+        args: ["/config/config.yaml"]
+        ports:
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: data
+          mountPath: /data
+        env:
+        - name: RUST_LOG
+          value: "petra=info"
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: metrics
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: metrics
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: petra-config
+      - name: data
+        emptyDir: {}
