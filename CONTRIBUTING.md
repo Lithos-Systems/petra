@@ -54,3 +54,49 @@ cargo test --all-features
 
 # Run with example config
 cargo run --release -- configs/examples/simple-mqtt.yaml
+
+Code Style
+
+Follow Rust standard naming conventions
+Use rustfmt for formatting
+Add documentation comments for public APIs
+Keep functions focused and small
+Prefer explicit error handling over unwrap()
+
+Testing
+
+Write unit tests for new functions
+Add integration tests for new features
+Aim for 80% code coverage
+Test error cases, not just happy paths
+
+Documentation
+
+Update API documentation for public changes
+Add examples for new features
+Update README if needed
+Add configuration examples
+
+Feature Requests
+
+Open an issue with [Feature Request] prefix
+Describe the use case
+Provide examples if possible
+Be open to discussion and alternatives
+
+Release Process
+
+Update CHANGELOG.md
+Run full test suite
+Update version in Cargo.toml
+Tag release with v prefix (e.g., v0.1.0)
+GitHub Actions will handle the rest
+
+Getting Help
+
+Discord: Join our server
+GitHub Discussions: For questions and ideas
+Email: support@petra.systems
+
+License
+By contributing, you agree that your contributions will be licensed under the AGPL-3.0 license.
