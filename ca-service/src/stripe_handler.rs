@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Json},
 };
 use serde_json::Value;
-use stripe_rust::{
+use async_stripe::{
     webhook::Webhook,
     Event, EventObject, EventType,
     CheckoutSession,
