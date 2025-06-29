@@ -719,8 +719,6 @@ rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 ```
 ## Quick Reference Card
 
-Create a `INSTALL_QUICKREF.md`:
-
 ```markdown
 # Petra Installation Quick Reference
 
