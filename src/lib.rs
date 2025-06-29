@@ -5,6 +5,7 @@ pub mod value;
 pub mod signal;
 pub mod block;
 pub mod config;
+#[cfg(feature = "security")]
 pub mod config_secure;
 pub mod alarms;
 pub mod engine;
@@ -21,7 +22,9 @@ pub mod realtime;
 #[cfg(feature = "enhanced")]
 pub mod validation;
 pub mod mqtt;
+#[cfg(feature = "web")]
 pub mod twilio;
+#[cfg(feature = "web")]
 pub mod twilio_block;
 #[cfg(feature = "opcua-support")]
 pub mod opcua;
@@ -60,6 +63,7 @@ pub use health::StorageHealthCheck;
 pub use realtime::{RealtimeConfig, configure_realtime};
 #[cfg(feature = "enhanced")]
 pub use validation::{ValidationRules, ValueRange};
+#[cfg(feature = "security")]
 pub use config_secure::{ConfigSigner, ConfigVerifier, SecureConfig};
 pub use config::Config;
 pub use engine::{Engine, EngineStats};
@@ -71,6 +75,7 @@ pub use history::{HistoryManager, HistoryConfig, SignalHistory};
 #[cfg(feature = "s7-support")]
 pub use s7::{S7Connector, S7Config, S7Mapping, S7Area, S7DataType, Direction};
 
+#[cfg(feature = "web")]
 pub use twilio::{TwilioConnector, TwilioConfig, TwilioAction, TwilioActionType};
 
 #[cfg(feature = "opcua-support")]

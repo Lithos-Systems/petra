@@ -1,7 +1,9 @@
 use crate::error::*;
 use crate::mqtt::MqttConfig;
 use crate::s7::S7Config;
+#[cfg(feature = "web")]
 use crate::twilio::TwilioConfig;
+#[cfg(feature = "history")]
 use crate::history::HistoryConfig;
 use crate::alarms::AlarmConfig;
 #[cfg(feature = "opcua-support")]
@@ -27,8 +29,10 @@ pub struct Config {
     pub mqtt: MqttConfig,
     #[serde(default)]
     pub s7: Option<S7Config>,
+    #[cfg(feature = "web")]
     #[serde(default)]
     pub twilio: Option<TwilioConfig>,
+    #[cfg(feature = "history")]
     #[serde(default)]
     pub history: Option<HistoryConfig>,
     #[cfg(feature = "advanced-storage")]
