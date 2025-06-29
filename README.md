@@ -606,6 +606,32 @@ See `LICENSE` file for full AGPL-3.0 terms.
 
 ---
 
+## Installation
+
+### Prerequisites
+
+Petra requires a Linux-based system (Ubuntu 20.04+, Debian 11+, or similar) with the following dependencies:
+
+- Rust 1.75 or later
+- C++ compiler (g++ or clang++)
+- OpenSSL development libraries
+- PostgreSQL client libraries
+- LLVM/Clang (for bindgen)
+- Docker & Docker Compose (optional, for containerized deployment)
+
+### Quick Install (Ubuntu/Debian)
+
+```bash
+# Download and run the installation script
+curl -sSL https://raw.githubusercontent.com/your-org/petra/main/install-deps.sh -o install-deps.sh
+chmod +x install-deps.sh
+./install-deps.sh
+
+# Clone and build Petra
+git clone https://github.com/your-org/petra
+cd petra
+cargo build --release
+
 ## Support & Community
 
 - **Issues**: GitHub Issues for bugs and feature requests
