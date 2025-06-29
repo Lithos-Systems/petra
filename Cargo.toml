@@ -86,6 +86,12 @@ criterion = { version = "0.5", default-features = false }
 proptest = "1.4"
 tokio-test = "0.4"
 
+# GUI dependencies (optional, for dashboard)
+eframe = { version = "0.30", optional = true }
+egui_plot = { version = "0.30", optional = true }
+
+# Utilities
+rand = { version = "0.8", optional = true }
 
 [features]
 # Minimal default for fast builds
@@ -95,7 +101,13 @@ default = ["s7-support"]
 s7-support = ["rust-snap7"]
 history = ["arrow", "parquet", "csv"]
 mqtt = []
+#GUI
+gui = ["eframe", "egui_plot"]
+examples = ["rand"]
 
+# Update dev and full features
+dev = ["metrics", "web", "json-schema", "history", "gui", "examples"]
+full = ["advanced-storage", "security", "opcua-support", "modbus-support", "history", "metrics", "web", "enhanced", "gui", "examples"]
 # Enhanced features for production optimization
 enhanced = []
 
@@ -115,7 +127,6 @@ full = ["advanced-storage", "security", "opcua-support", "modbus-support", "hist
 name = "petra"
 path = "src/main.rs"
 
-# Development binaries (optional)
 [[bin]]
 name = "s7_test"
 path = "src/bin/s7_test.rs"
@@ -124,6 +135,17 @@ required-features = ["s7-support"]
 [[bin]]
 name = "mqtt_publisher"
 path = "src/bin/mqtt_publisher.rs"
+required-features = ["examples"]
+
+[[bin]]
+name = "petra_dashboard"
+path = "src/bin/dashboard.rs"
+required-features = ["gui", "history"]
+
+[[bin]]
+name = "parquet_viewer"
+path = "src/bin/parquet_viewer.rs"
+required-features = ["history"]
 
 [profile.release]
 # Balanced for production: reasonable build time + performance
