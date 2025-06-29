@@ -3,174 +3,127 @@ name = "petra"
 version = "2.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
-description = "Programmable Engine for Telemetry, Runtime, and Automation with S7 PLC support"
+description = "Programmable Engine for Telemetry, Runtime, and Automation"
 
 [dependencies]
-tokio = { version = "1.40", features = ["rt-multi-thread", "time", "signal", "macros", "sync"] }
+# Core runtime - minimal features only
+tokio = { version = "1.40", features = ["rt-multi-thread", "time", "signal", "macros"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
+
+# Essential concurrency
 dashmap = "6.0"
+crossbeam = "0.8"
+parking_lot = "0.12"
+
+# Error handling
 thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging - minimal
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-rumqttc = "0.24"
-rand = "0.8"
+tracing-subscriber = { version = "0.3", features = ["env-filter"], default-features = false }
 
-# S7 communication library
-rust-snap7 = "1.142.2"
-clap = { version = "4", features = ["derive"] }
+# MQTT - production ready
+rumqttc = { version = "0.24", default-features = false, features = ["use-rustls"] }
 
-# HTTP client for Twilio API
-reqwest = { version = "0.11", features = ["json"] }
-htmlescape = "0.3"
+# CLI
+clap = { version = "4", features = ["derive"], default-features = false }
 
-# Metrics
-metrics = "0.23"
-metrics-exporter-prometheus = "0.15"
+# Time handling
+chrono = { version = "0.4.38", features = ["serde"], default-features = false }
 
 # Core utilities
 bytes = "1.5"
-crossbeam = "0.8"
 ringbuffer = "0.15"
-parking_lot = "0.12"
-
-# Use compatible Arrow ecosystem versions (v43 series works well)
-arrow = "55.1"
-parquet = "55.1"
-chrono = { version = "0.4.38", features = ["serde"] }
-
-# RocksDB for local WAL (Write-Ahead Log)
-rocksdb = { version = "0.21", optional = true }
-
-# Object storage support (optional)
-object_store = { version = "0.7", optional = true }
-aws-sdk-s3 = { version = "0.31", optional = true }
-aws-config = { version = "0.56", optional = true }
-
-# Compression (optional)
-zstd = { version = "0.12", optional = true }
-lz4 = { version = "1.24", optional = true }
-
-# For async traits
 async-trait = "0.1"
-
-# For history features
-futures = { version = "0.3" }
-
-# Dashboard 
-eframe = "0.29"
-egui = "0.29"
-egui_plot = "0.29"
-
-
-
-# Clickhouse
-clickhouse = { version = "0.12", features = ["lz4"], optional = true }
-csv = "1.3"
-
-# Schema
-schemars = { version = "0.8", optional = true }
-jsonschema = { version = "0.18", optional = true }
-
-# Security enhancements
-ring = "0.17"
-webpki = { version = "0.22", optional = true }
-rustls = { version = "0.23", optional = true }
-rustls-pemfile = { version = "2", optional = true }
-audit = { version = "0.1", optional = true }
-
-# OPC-UA support
-opcua = { version = "0.12", optional = true }
-
-# Modbus support
-tokio-modbus = { version = "0.7", optional = true }
-
-# Performance monitoring
-pprof = { version = "0.13", optional = true }
-
-# Real-time support
-libc = "0.2"
-
-# Enhanced monitoring
-warp = "0.3"
-
-# Validation
 regex = "1.10"
-
-# Security
 base64 = "0.22"
 
-# Enhanced WAL
-crc32fast = "1.4"
-bincode = "1.3"
+# S7 communication (only if needed)
+rust-snap7 = { version = "1.142.2", optional = true }
 
-# Property testing
-proptest = "1.4"
+# HTTP client - minimal features
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false, optional = true }
 
-# Benchmarking  
-criterion = { version = "0.5", features = ["html_reports"] }
+# Metrics - lightweight
+metrics = { version = "0.23", default-features = false, optional = true }
+metrics-exporter-prometheus = { version = "0.15", default-features = false, optional = true }
+
+# Storage - all optional for production flexibility
+arrow = { version = "55.1", default-features = false, optional = true }
+parquet = { version = "55.1", default-features = false, optional = true }
+rocksdb = { version = "0.21", default-features = false, optional = true }
+clickhouse = { version = "0.12", default-features = false, features = ["lz4"], optional = true }
+
+# Cloud storage (optional)
+object_store = { version = "0.7", default-features = false, optional = true }
+aws-sdk-s3 = { version = "0.31", default-features = false, optional = true }
+aws-config = { version = "0.56", default-features = false, optional = true }
+
+# Compression (optional)
+zstd = { version = "0.12", default-features = false, optional = true }
+lz4 = { version = "1.24", default-features = false, optional = true }
+
+# Security (optional)
+ring = { version = "0.17", default-features = false, optional = true }
+rustls = { version = "0.23", default-features = false, optional = true }
+rustls-pemfile = { version = "2", default-features = false, optional = true }
+
+# Protocol support (optional)
+opcua = { version = "0.12", default-features = false, optional = true }
+tokio-modbus = { version = "0.7", default-features = false, optional = true }
+
+# Development/debugging (optional)
+csv = { version = "1.3", optional = true }
+schemars = { version = "0.8", default-features = false, optional = true }
+jsonschema = { version = "0.18", default-features = false, optional = true }
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = { version = "0.5", default-features = false }
 proptest = "1.4"
 tokio-test = "0.4"
 
-# Update the [[bin]] section to include new binaries
-[[bin]]
-name = "storage_test"
-path = "src/bin/storage_test.rs"
+[features]
+# Minimal default for fast builds
+default = ["s7-support"]
 
-[[bin]]
-name = "petra_dashboard"
-path = "src/bin/petra_dashboard.rs"
+# Core features
+s7-support = ["rust-snap7"]
+history = ["arrow", "parquet", "csv"]
+mqtt = []
+
+# Optional heavy features
+advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
+metrics = ["dep:metrics", "metrics-exporter-prometheus"]
+web = ["reqwest"]
+security = ["ring", "rustls", "rustls-pemfile"]
+opcua-support = ["opcua"]
+modbus-support = ["tokio-modbus"]
+json-schema = ["schemars", "jsonschema"]
+
+# Development features
+dev = ["metrics", "web", "json-schema"]
+full = ["advanced-storage", "security", "opcua-support", "modbus-support", "history", "metrics", "web"]
 
 [[bin]]
 name = "petra"
 path = "src/main.rs"
 
+# Development binaries (optional)
 [[bin]]
 name = "s7_test"
 path = "src/bin/s7_test.rs"
-
-[[bin]]
-name = "simple_s7_test"
-path = "src/bin/simple_s7_test.rs"
-
-[[bin]]
-name = "twilio_test"
-path = "src/bin/twilio_test.rs"
-
-[[bin]]
-name = "parquet_viewer"
-path = "src/bin/parquet_viewer.rs"
-
-[[bin]]
-name = "generate_schema"
-path = "src/bin/generate_schema.rs"
-required-features = ["json-schema"]
+required-features = ["s7-support"]
 
 [[bin]]
 name = "mqtt_publisher"
 path = "src/bin/mqtt_publisher.rs"
 
-[[bin]]
-name = "petra-enhanced"
-path = "src/main_enhanced.rs"
-required-features = ["enhanced"]
-
 [profile.release]
-lto = true
-codegen-units = 1
+# Balanced for production: reasonable build time + performance
+lto = "thin"          # Faster than "fat", still optimized
+codegen-units = 4     # Faster than 1, still well optimized
 panic = "abort"
-
-[features]
-default = ["s7-support", "history"]
-s7-support = []
-history = []
-advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
-json-schema = ["schemars", "jsonschema"]
-opcua-support = ["opcua"]
-modbus-support = ["tokio-modbus"]
-security = ["audit", "rustls", "webpki", "rustls-pemfile"]
-enhanced = []
+strip = true          # Remove debug symbols
