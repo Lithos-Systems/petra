@@ -96,9 +96,12 @@ s7-support = ["rust-snap7"]
 history = ["arrow", "parquet", "csv"]
 mqtt = []
 
+# Enhanced features for production optimization
+enhanced = []
+
 # Optional heavy features
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
-metrics = ["metrics-exporter-prometheus"]
+metrics = ["dep:metrics", "metrics-exporter-prometheus"]
 web = ["reqwest"]
 security = ["ring", "rustls", "rustls-pemfile"]
 opcua-support = ["opcua"]
@@ -106,9 +109,8 @@ modbus-support = ["tokio-modbus"]
 json-schema = ["schemars", "jsonschema"]
 
 # Development features
-dev = ["metrics", "web", "json-schema"]
-full = ["advanced-storage", "security", "opcua-support", "modbus-support", "history", "metrics", "web"]
-
+dev = ["metrics", "web", "json-schema", "history"]
+full = ["advanced-storage", "security", "opcua-support", "modbus-support", "history", "metrics", "web", "enhanced"]
 [[bin]]
 name = "petra"
 path = "src/main.rs"
