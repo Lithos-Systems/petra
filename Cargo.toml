@@ -23,7 +23,7 @@ anyhow = "1.0"
 
 # Logging - minimal
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"], default-features = false }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], default-features = false }
 
 # MQTT - production ready
 rumqttc = { version = "0.24", default-features = false, features = ["use-rustls"] }
@@ -145,6 +145,26 @@ required-features = ["gui", "history"]
 name = "parquet_viewer"
 path = "src/bin/parquet_viewer.rs"
 required-features = ["history"]
+
+[[bin]]
+name = "storage_test"
+path = "src/bin/storage_test.rs"
+required-features = ["history"]
+
+[[bin]]
+name = "twilio_test"
+path = "src/bin/twilio_test.rs"
+required-features = ["web"]
+
+[[bin]]
+name = "simple_s7_test"
+path = "src/bin/simple_s7_test.rs"
+required-features = ["s7-support"]
+
+[[bin]]
+name = "generate_schema"
+path = "src/bin/generate_schema.rs"
+required-features = ["json-schema"]
 
 [profile.release]
 # Balanced for production: reasonable build time + performance
