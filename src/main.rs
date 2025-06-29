@@ -1,4 +1,14 @@
-use petra::{Config, MqttHandler, S7Connector, TwilioConnector, HistoryManager, Result};
+use petra::{Config, MqttHandler, Result};
+
+#[cfg(feature = "s7-support")]
+use petra::S7Connector;
+
+#[cfg(feature = "web")]
+use petra::TwilioConnector;
+
+#[cfg(feature = "history")]
+use petra::HistoryManager;
+
 #[cfg(feature = "enhanced")]
 use petra::engine_enhanced::EnhancedEngine as Engine;
 #[cfg(not(feature = "enhanced"))]
