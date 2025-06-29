@@ -1,6 +1,7 @@
 use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
 use std::time::{Instant, Duration};
 use tracing::trace;
+#[cfg(feature = "web")]
 use crate::twilio_block::TwilioBlock;
 use std::f64::consts::PI;
 use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
@@ -439,6 +440,7 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
             }))
         }
         // Add to the create_block function
+        #[cfg(feature = "web")]
         "TWILIO" => {
             let trigger = config.inputs.get("trigger")
                 .ok_or_else(|| PlcError::Config("TWILIO block requires 'trigger' input".into()))?;
@@ -465,7 +467,7 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
             let cooldown_ms = config.params.get("cooldown_ms")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(300000); // 5 minutes default
-            
+
             Ok(Box::new(TwilioBlock::new(
                 config.name.clone(),
                 trigger.clone(),

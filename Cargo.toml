@@ -7,7 +7,7 @@ description = "Programmable Engine for Telemetry, Runtime, and Automation"
 
 [dependencies]
 # Core runtime - minimal features only
-tokio = { version = "1.40", features = ["rt-multi-thread", "time", "signal", "macros"] }
+tokio = { version = "1.40", features = ["rt-multi-thread", "time", "signal", "macros", "sync"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
@@ -29,7 +29,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"], default-featu
 rumqttc = { version = "0.24", default-features = false, features = ["use-rustls"] }
 
 # CLI
-clap = { version = "4.5", features = ["std"] }
+clap = { version = "4.5", features = ["std", "derive"] }
 
 # Time handling
 chrono = { version = "0.4.38", features = ["serde"], default-features = false }
@@ -40,6 +40,7 @@ ringbuffer = "0.15"
 async-trait = "0.1"
 regex = "1.10"
 base64 = "0.22"
+htmlescape = "0.3"
 
 # S7 communication (only if needed)
 rust-snap7 = { version = "1.142.2", optional = true }
@@ -48,7 +49,7 @@ rust-snap7 = { version = "1.142.2", optional = true }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false, optional = true }
 
 # Metrics - lightweight
-metrics = { version = "0.23", default-features = false, optional = true }
+metrics = { version = "0.23", default-features = false }
 metrics-exporter-prometheus = { version = "0.15", default-features = false, optional = true }
 
 # Storage - all optional for production flexibility
@@ -97,7 +98,7 @@ mqtt = []
 
 # Optional heavy features
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
-metrics = ["dep:metrics", "metrics-exporter-prometheus"]
+metrics = ["metrics-exporter-prometheus"]
 web = ["reqwest"]
 security = ["ring", "rustls", "rustls-pemfile"]
 opcua-support = ["opcua"]

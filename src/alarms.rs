@@ -494,6 +494,7 @@ impl EmailSender for SmtpEmailSender {
 }
 
 // SMS implementation using Twilio (reuse existing)
+#[cfg(feature = "web")]
 pub struct TwilioSmsSender {
    client: reqwest::Client,
    account_sid: String,
@@ -501,6 +502,7 @@ pub struct TwilioSmsSender {
    from_number: String,
 }
 
+#[cfg(feature = "web")]
 #[async_trait::async_trait]
 impl SmsSender for TwilioSmsSender {
    async fn send_sms(&self, to: &str, message: &str) -> Result<()> {

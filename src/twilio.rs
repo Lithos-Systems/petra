@@ -247,8 +247,8 @@ impl TwilioConnector {
             
             let was_truthy = state.last_value.as_ref()
                 .map(|last| match last {
-                    Value::Bool(b) => *b,
-                    Value::Int(i) => *i != 0,
+                    Value::Bool(b) => b,
+                    Value::Int(i) => i != 0,
                     Value::Float(f) => f.abs() > f64::EPSILON,
                 })
                 .unwrap_or(false);
