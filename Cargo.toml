@@ -121,8 +121,6 @@ modbus-support = ["tokio-modbus"]
 json-schema = ["schemars", "jsonschema"]
 
 # Development features
-dev = ["metrics", "web", "json-schema", "history"]
-full = ["advanced-storage", "security", "opcua-support", "modbus-support", "history", "metrics", "web", "enhanced"]
 [[bin]]
 name = "petra"
 path = "src/main.rs"
