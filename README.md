@@ -631,6 +631,143 @@ chmod +x install-deps.sh
 git clone https://github.com/your-org/petra
 cd petra
 cargo build --release
+```
+
+### Manual Installation
+If you prefer to install dependencies manually:
+```bash
+# Update package lists
+sudo apt update
+
+# Install build essentials
+sudo apt install -y build-essential pkg-config curl git cmake
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
+# Install required libraries
+sudo apt install -y \
+    g++ \
+    libssl-dev \
+    libpq-dev \
+    llvm \
+    clang \
+    libclang-dev
+
+# Install Docker (optional)
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+```
+### Platform-Specific Notes
+#### macOS
+```bash
+# Install Homebrew if not present
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install dependencies
+brew install rust postgresql openssl llvm
+```
+#### Windows (WSL2)
+
+Install WSL2 with Ubuntu 20.04 or later
+Follow the Linux installation instructions above
+
+Building Petra
+```bash
+
+# Build with default features
+cargo build --release
+
+# Build with all features
+cargo build --release --features full
+
+# Build minimal version (no external dependencies)
+cargo build --release --no-default-features --features mqtt
+
+# Run tests
+cargo test --all-features
+```
+#### Troubleshooting
+"Unable to find libclang"
+```bash
+# Install LLVM and set environment variable
+sudo apt install -y llvm-dev libclang-dev
+export LIBCLANG_PATH=/usr/lib/llvm-14/lib
+```
+"error: linker cc not found"
+```bash
+# Install build essentials
+sudo apt install -y build-essential
+```
+Docker permission denied
+```bash
+# Add user to docker group
+sudo usermod
+-aG docker $USER
+newgrp docker  # or log out and back in
+```
+
+Slow compilation
+```bash
+# Use faster linker
+sudo apt install -y lld
+# Add to ~/.cargo/config.toml:
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+```
+## Quick Reference Card
+
+Create a `INSTALL_QUICKREF.md`:
+
+```markdown
+# Petra Installation Quick Reference
+
+## Minimum System Requirements
+- Ubuntu 20.04+ / Debian 11+ / RHEL 8+
+- 2GB RAM (4GB recommended)
+- 10GB disk space
+- x86_64 or ARM64 architecture
+
+## Essential Dependencies
+```bash
+# One-liner for Ubuntu/Debian
+sudo apt update && sudo apt install -y build-essential pkg-config libssl-dev libpq-dev g++ llvm clang libclang-dev
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source "$HOME/.cargo/env"
+```
+#### Build Commands
+```bash
+
+# Quick build (default features)
+cargo build --release
+
+# Production build (all features)
+cargo build --release --features full
+
+# Minimal edge device build
+cargo build --release --no-default-features --features mqtt
+
+# Development build with fast compilation
+cargo build --features dev
+```
+Docker Quick Start
+```bash
+# Using pre-built image
+docker run -v $(pwd)/config.yaml:/app/config.yaml ghcr.io/your-org/petra:latest
+
+# Build and run locally
+docker build -t petra .
+docker run -v $(pwd)/config.yaml:/app/config.yaml petra
+```
+Verify Installation
+```bash
+
+# Check all dependencies
+rustc --version && cargo --version && clang --version && pkg-config --version
+```
 
 ## Support & Community
 
