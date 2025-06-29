@@ -4,46 +4,44 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.7", features = ["macros"] }
-tokio = { version = "1", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Web framework - minimal features
+axum = { version = "0.7", features = ["macros"], default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tower-http = { version = "0.5", features = ["cors"], default-features = false }
 
-# Certificate handling
-rcgen = { version = "0.13", features = ["x509-parser"] }
-x509-parser = "0.16"
-pem = "3.0"
-ring = "0.17"
-rustls = "0.23"
-rustls-pemfile = "2.0"
+# Certificate handling - core only
+rcgen = { version = "0.13", default-features = false }
+rustls = { version = "0.23", default-features = false }
 
-# Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
-uuid = { version = "1.6", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
+# Database - minimal
+sqlx = { 
+    version = "0.7", 
+    features = ["runtime-tokio-rustls", "postgres", "uuid"],
+    default-features = false 
+}
 
-# Stripe
-async-stripe = { version = "0.41", features = ["runtime-tokio-hyper"] }
-hmac = "0.12"
-sha2 = "0.10"
-hex = "0.4"
+# Payments - minimal Stripe features
+async-stripe = { 
+    version = "0.41", 
+    features = ["runtime-tokio-hyper", "billing", "checkout"],
+    default-features = false 
+}
 
-# Serialization
+# Email - lightweight alternative
+lettre = { 
+    version = "0.11", 
+    features = ["tokio1-rustls", "builder"],
+    default-features = false 
+}
+
+# Essential only
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# Email
-lettre = { version = "0.11", features = ["tokio1-native-tls", "builder"] }
-handlebars = "5.0"
-
-# Environment
-dotenvy = "0.15"
-
-# Error handling
-thiserror = "1.0"
 anyhow = "1.0"
+tracing = "0.1"
 
-# Utilities
-base64 = "0.22"
+[profile.release]
+# Faster compilation, smaller binary
+lto = "thin"           # Instead of "fat"
+codegen-units = 16     # Instead of 1
+panic = "abort"
+strip = true           # Remove debug symbols
