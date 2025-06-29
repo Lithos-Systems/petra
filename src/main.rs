@@ -17,7 +17,10 @@ use tokio::signal;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use tracing_subscriber;
+
+#[cfg(feature = "metrics")]
 use metrics_exporter_prometheus::PrometheusBuilder;
+#[cfg(feature = "metrics")]
 use std::net::SocketAddr;
 
 #[cfg(feature = "opcua-support")]
@@ -56,15 +59,18 @@ async fn main() -> Result<()> {
         None
     };
 
-    // Initialize Prometheus metrics endpoint. test
-    let metrics_addr: SocketAddr = "0.0.0.0:9090".parse().unwrap();
-    PrometheusBuilder::new()
-        .with_http_listener(metrics_addr)
-        .install()
-        .expect("Failed to install Prometheus recorder");
+    // Initialize Prometheus metrics endpoint if enabled
+    #[cfg(feature = "metrics")]
+    {
+        let metrics_addr: SocketAddr = "0.0.0.0:9090".parse().unwrap();
+        PrometheusBuilder::new()
+            .with_http_listener(metrics_addr)
+            .install()
+            .expect("Failed to install Prometheus recorder");
+        info!("Metrics available at http://{}/metrics", metrics_addr);
+    }
 
     info!("Petra v{} starting", petra::VERSION);
-    info!("Metrics available at http://{}/metrics", metrics_addr);
 
     let config_path = std::env::args()
         .nth(1)
@@ -87,11 +93,12 @@ async fn main() -> Result<()> {
     engine.set_signal_change_channel(signal_tx.clone());
     
     // Setup History Manager if configured
+    #[cfg(feature = "history")]
     let history_handle = if let Some(history_config) = config.history {
         info!("History configuration found, starting history manager");
         let mut history_manager = HistoryManager::new(history_config, bus.clone())?;
         history_manager.set_signal_change_channel(history_rx);
-        
+
         Some(tokio::task::spawn_local(async move {
             if let Err(e) = history_manager.run().await {
                 error!("History manager error: {}", e);
@@ -101,6 +108,9 @@ async fn main() -> Result<()> {
         info!("No history configuration found");
         None
     };
+
+    #[cfg(not(feature = "history"))]
+    let history_handle: Option<tokio::task::JoinHandle<()>> = None;
     
     // Setup MQTT handler
     let mut mqtt = MqttHandler::new(bus.clone(), config.mqtt)?;
@@ -118,10 +128,11 @@ async fn main() -> Result<()> {
     mqtt.start().await?;
 
     // Setup Twilio
+    #[cfg(feature = "web")]
     let twilio_handle = if let Some(twilio_config) = config.twilio {
         info!("Twilio configuration found, starting Twilio connector");
         let twilio_connector = TwilioConnector::new(twilio_config, bus.clone())?;
-        
+
         Some(tokio::spawn(async move {
             if let Err(e) = twilio_connector.run().await {
                 error!("Twilio connector error: {}", e);
@@ -131,6 +142,9 @@ async fn main() -> Result<()> {
         info!("No Twilio configuration found");
         None
     };
+
+    #[cfg(not(feature = "web"))]
+    let twilio_handle: Option<tokio::task::JoinHandle<()>> = None;
 
     // Setup S7 connector if configured
     let s7_handle = if let Some(s7_config) = config.s7 {
@@ -185,9 +199,11 @@ async fn main() -> Result<()> {
             
             // Clean shutdown
             mqtt_task.abort();
+            #[cfg(feature = "history")]
             if let Some(history_task) = history_handle {
                 history_task.abort();
             }
+            #[cfg(feature = "web")]
             if let Some(twilio_task) = twilio_handle {
                 twilio_task.abort();
             }
