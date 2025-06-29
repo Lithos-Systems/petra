@@ -1,0 +1,19 @@
+# .cargo/config.toml
+[build]
+# Use all available cores
+jobs = 16  # or number of cores on your system
+
+[profile.dev]
+# Faster dev builds
+opt-level = 0
+debug = 1  # Reduced debug info
+incremental = true
+
+[profile.dev.package."*"]
+# Optimize dependencies even in dev mode
+opt-level = 2
+
+# Use faster linker (if available)
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
