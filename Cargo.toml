@@ -29,7 +29,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"], default-featu
 rumqttc = { version = "0.24", default-features = false, features = ["use-rustls"] }
 
 # CLI
-clap = { version = "4", features = ["derive"], default-features = false }
+clap = { version = "4.5", features = ["std"] }
 
 # Time handling
 chrono = { version = "0.4.38", features = ["serde"], default-features = false }
@@ -40,7 +40,6 @@ ringbuffer = "0.15"
 async-trait = "0.1"
 regex = "1.10"
 base64 = "0.22"
-clap = { version = "4.5", features = ["std"] }
 
 # S7 communication (only if needed)
 rust-snap7 = { version = "1.142.2", optional = true }
