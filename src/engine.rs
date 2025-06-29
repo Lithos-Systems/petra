@@ -6,7 +6,34 @@ use std::collections::VecDeque;
 use tokio::time::interval;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{info, warn, debug};
+#[cfg(feature = "metrics")]
 use metrics::{gauge, counter, histogram};
+
+// Provide no-op macros when the `metrics` feature is disabled so that the
+// instrumentation calls compile without pulling in the `metrics` crate.
+#[cfg(not(feature = "metrics"))]
+mod metrics_stub {
+    pub struct Metric;
+    impl Metric {
+        pub fn set(&self, _v: impl Into<f64>) {}
+        pub fn record(&self, _v: impl Into<f64>) {}
+        pub fn increment(&self, _v: impl Into<i64>) {}
+    }
+}
+use metrics_stub::Metric;
+
+#[cfg(not(feature = "metrics"))]
+macro_rules! gauge {
+    ($($t:tt)*) => { Metric {} };
+}
+#[cfg(not(feature = "metrics"))]
+macro_rules! counter {
+    ($($t:tt)*) => { Metric {} };
+}
+#[cfg(not(feature = "metrics"))]
+macro_rules! histogram {
+    ($($t:tt)*) => { Metric {} };
+}
 
 pub struct Engine {
     bus: SignalBus,

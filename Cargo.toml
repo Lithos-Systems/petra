@@ -49,7 +49,7 @@ rust-snap7 = { version = "1.142.2", optional = true }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false, optional = true }
 
 # Metrics - lightweight
-metrics = { version = "0.23", default-features = false }
+metrics = { version = "0.23", default-features = false, optional = true }
 metrics-exporter-prometheus = { version = "0.15", default-features = false, optional = true }
 
 # Storage - all optional for production flexibility
@@ -81,17 +81,18 @@ csv = { version = "1.3", optional = true }
 schemars = { version = "0.8", default-features = false, optional = true }
 jsonschema = { version = "0.18", default-features = false, optional = true }
 
-[dev-dependencies]
-criterion = { version = "0.5", default-features = false }
-proptest = "1.4"
-tokio-test = "0.4"
-
 # GUI dependencies (optional, for dashboard)
 eframe = { version = "0.30", optional = true }
 egui_plot = { version = "0.30", optional = true }
 
 # Utilities
 rand = { version = "0.8", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+proptest = "1.4"
+tokio-test = "0.4"
+
 
 [features]
 # Minimal default for fast builds
