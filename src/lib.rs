@@ -75,6 +75,7 @@ pub use history::{HistoryManager, HistoryConfig, SignalHistory};
 #[cfg(feature = "s7-support")]
 pub use s7::{S7Connector, S7Config, S7Mapping, S7Area, S7DataType, Direction};
 
+#[cfg(feature = "web")]
 pub use twilio::{TwilioConnector, TwilioConfig, TwilioAction, TwilioActionType};
 
 #[cfg(feature = "opcua-support")]
