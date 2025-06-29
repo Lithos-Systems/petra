@@ -11,7 +11,7 @@ tower-http = { version = "0.5", features = ["cors", "trace"] }
 
 # Certificate handling
 rcgen = { version = "0.13", features = ["pem"] }
-rustls = { version = "0.23" }
+rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2"
 x509-parser = "0.16"
 
@@ -19,10 +19,10 @@ x509-parser = "0.16"
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"],default-features = false }
 
 # Payments
-async-stripe = { version = "0.41", features = ["runtime-tokio-hyper", "billing", "checkout", "webhook-events"],default-features = false }
+async-stripe = {  version = "0.41",  features = ["runtime-tokio-hyper", "billing", "checkout", "webhook-events"], default-features = false }
 
-# Email
-lettre = { version = "0.11", features = ["tokio1-rustls", "builder", "smtp-transport"],default-features = false }
+# Email - Fixed with proper TLS features
+lettre = { version = "0.11",  features = [ "tokio1-rustls" , "builder", "smtp-transport", "ring", "rustls-native-certs" ], default-features = false }
 handlebars = "6"
 
 # Serialization
@@ -46,6 +46,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 hex = "0.4"
 sha2 = "0.10"
 base64 = "0.22"
+ring = "0.17"  # Add ring explicitly since multiple deps need it
 
 # HTTP
 hyper = { version = "1", features = ["server", "http1", "http2"] }
