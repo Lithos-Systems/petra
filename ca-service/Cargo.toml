@@ -19,7 +19,7 @@ x509-parser = "0.16"
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"],default-features = false }
 
 # Payments
-async-stripe = {  version = "0.41",  features = ["runtime-tokio-hyper", "billing", "checkout", "webhook-events"], default-features = false }
+async-stripe = {  version = "0.41",  features = ["runtime-tokio-hyper", "billing", "checkout", "webhook-events", "connect"], default-features = false }
 
 # Email - Fixed with proper TLS features
 lettre = { version = "0.11",  features = [ "tokio1-rustls" , "builder", "smtp-transport", "ring", "rustls-native-certs" ], default-features = false }
