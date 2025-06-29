@@ -4,44 +4,58 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Web framework - minimal features
-axum = { version = "0.7", features = ["macros"], default-features = false }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
-tower-http = { version = "0.5", features = ["cors"], default-features = false }
+# Web framework
+axum = { version = "0.7", features = ["macros", "json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
 
-# Certificate handling - core only
-rcgen = { version = "0.13", default-features = false }
-rustls = { version = "0.23", default-features = false }
+# Certificate handling
+rcgen = { version = "0.13", features = ["pem"] }
+rustls = { version = "0.23" }
+rustls-pemfile = "2"
+x509-parser = "0.16"
 
-# Database - minimal
-sqlx = { 
-    version = "0.7", 
-    features = ["runtime-tokio-rustls", "postgres", "uuid"],
-    default-features = false 
-}
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"],default-features = false }
 
-# Payments - minimal Stripe features
-async-stripe = { 
-    version = "0.41", 
-    features = ["runtime-tokio-hyper", "billing", "checkout"],
-    default-features = false 
-}
+# Payments
+async-stripe = { version = "0.41", features = ["runtime-tokio-hyper", "billing", "checkout", "webhook-events"],default-features = false }
 
-# Email - lightweight alternative
-lettre = { 
-    version = "0.11", 
-    features = ["tokio1-rustls", "builder"],
-    default-features = false 
-}
+# Email
+lettre = { version = "0.11", features = ["tokio1-rustls", "builder", "smtp-transport"],default-features = false }
+handlebars = "6"
 
-# Essential only
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["serde"] }
+
+# Error handling
 anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+hex = "0.4"
+sha2 = "0.10"
+base64 = "0.22"
+
+# HTTP
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+tower = "0.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
 
 [profile.release]
-# Faster compilation, smaller binary
-lto = "thin"           # Instead of "fat"
-codegen-units = 16     # Instead of 1
+lto = "thin"
+codegen-units = 16
 panic = "abort"
-strip = true           # Remove debug symbols
+strip = true
