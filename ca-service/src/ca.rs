@@ -39,15 +39,15 @@ impl CertificateAuthority {
             
             let key_pair = KeyPair::from_pem(&key_pem)?;
             let params = CertificateParams::from_ca_cert_pem(&cert_pem, key_pair)?;
-            let cert = Certificate::from_params(params)?;
+            let cert = CertificateBuilder::from_params(params)?.build()?;
             
             (cert, cert_pem)
         } else {
             // Create new CA
             info!("Creating new CA at {:?}", root_path);
             let cert = Self::generate_root_ca().await?;
-            let cert_pem = cert.serialize_pem()?;
-            let key_pem = cert.serialize_private_key_pem();
+            let cert_pem = cert.pem();
+            let key_pem = cert.key_pair.serialize_pem();
             
             // Save to disk
             fs::write(&cert_path, &cert_pem).await?;
