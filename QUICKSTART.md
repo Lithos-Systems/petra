@@ -4,7 +4,7 @@
 
 ```bash
 # Option 1: Download binary (fastest)
-curl -sSL https://petra.systems/install.sh | bash
+# curl -sSL https://lithos.systems/install.sh | bash
 
 # Option 2: Docker (no dependencies)
 docker run -d \
