@@ -95,21 +95,46 @@ tokio-test = "0.4"
 
 
 [features]
-# Minimal default for fast builds
 default = ["standard-monitoring"]
+
+# Core feature sets
 standard-monitoring = []
-enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer"]
-full = ["enhanced-monitoring", "advanced-storage", "metrics"]
-production = ["standard-monitoring", "advanced-storage"]
-dev = ["enhanced-monitoring", "metrics", "web"]
-# Optional heavy features
-advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
-metrics = ["dep:metrics", "metrics-exporter-prometheus"]
-web = ["reqwest"]
-security = ["ring", "rustls", "rustls-pemfile"]
-opcua-support = ["opcua"]
+enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer", "chrono"]
+optimized = ["parking_lot"]
+
+# Storage features
+advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config"]
+compression = ["zstd", "lz4"]
+wal = ["advanced-storage"]
+
+# Protocol support
+s7-support = ["snap7", "libc"]
 modbus-support = ["tokio-modbus"]
+opcua-support = ["opcua"]
+
+# Additional features
+metrics = ["dep:metrics", "metrics-exporter-prometheus"]
+web = ["reqwest", "tokio-tungstenite"]
+security = ["ring", "rustls", "rustls-pemfile", "ed25519-dalek"]
 json-schema = ["schemars", "jsonschema"]
+validation = ["regex", "validator"]
+history = ["parquet", "arrow", "datafusion"]
+alarms = ["lettre", "twilio"]
+realtime = ["libc", "nix"]
+health = ["axum", "tower", "tower-http"]
+profiling = ["pprof"]
+
+# Development features
+gui = ["eframe", "egui", "egui-phosphor", "egui_plot"]
+examples = []
+
+# Feature bundles
+enhanced = ["enhanced-monitoring", "optimized", "validation"]
+full = ["enhanced", "advanced-storage", "compression", "wal", "metrics", "web", "security", "json-schema", "history", "alarms", "health"]
+dev = ["full", "gui", "examples", "profiling"]
+
+# Production bundle (lean but with essential features)
+production = ["optimized", "standard-monitoring", "metrics", "security", "wal"]
 
 # Development features
 [[bin]]
