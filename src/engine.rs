@@ -2,37 +2,37 @@ use crate::{error::*, signal::SignalBus, block::*, config::Config, value::Value}
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Instant, Duration};
-use std::collections::VecDeque;
 use tokio::time::interval;
-use tokio::sync::{mpsc, Mutex};
-use tracing::{info, warn, debug};
+use tokio::sync::mpsc;
+use tracing::{info, warn, debug, error};
+use std::collections::VecDeque;
+use std::sync::Mutex;
+use serde::Serialize;
+use parking_lot::RwLock;
+
 #[cfg(feature = "metrics")]
-use metrics::{gauge, counter, histogram};
+use metrics::{histogram, counter, gauge};
 
-// Provide no-op macros when the `metrics` feature is disabled so that the
-// instrumentation calls compile without pulling in the `metrics` crate.
-#[cfg(not(feature = "metrics"))]
-mod metrics_stub {
-    pub struct Metric;
-    impl Metric {
-        pub fn set(&self, _v: impl Into<f64>) {}
-        pub fn record(&self, _v: impl Into<f64>) {}
-        pub fn increment(&self, _v: impl Into<i64>) {}
-    }
-}
-use metrics_stub::Metric;
+#[cfg(feature = "enhanced-monitoring")]
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 
-#[cfg(not(feature = "metrics"))]
-macro_rules! gauge {
-    ($($t:tt)*) => { Metric {} };
-}
-#[cfg(not(feature = "metrics"))]
-macro_rules! counter {
-    ($($t:tt)*) => { Metric {} };
-}
-#[cfg(not(feature = "metrics"))]
-macro_rules! histogram {
-    ($($t:tt)*) => { Metric {} };
+#[cfg(feature = "enhanced-monitoring")]
+use std::collections::HashMap;
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EngineStats {
+    pub running: bool,
+    pub scan_count: u64,
+    pub error_count: u64,
+    pub uptime_secs: u64,
+    pub signal_count: usize,
+    pub block_count: usize,
+    #[cfg(feature = "enhanced-monitoring")]
+    pub avg_scan_time_us: Option<f64>,
+    #[cfg(feature = "enhanced-monitoring")]
+    pub max_scan_time_us: Option<f64>,
+    #[cfg(feature = "enhanced-monitoring")]
+    pub block_times_us: Option<HashMap<String, f64>>,
 }
 
 pub struct Engine {
@@ -44,25 +44,34 @@ pub struct Engine {
     error_count: Arc<AtomicU64>,
     start_time: Instant,
     signal_change_tx: Option<mpsc::Sender<(String, Value)>>,
+    
+    // Standard monitoring
     scan_jitter_buffer: Arc<Mutex<VecDeque<Duration>>>,
     target_scan_time: Duration,
-    stats_handle: Arc<parking_lot::RwLock<EngineStats>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct EngineStats {
-    pub running: bool,
-    pub scan_count: u64,
-    pub error_count: u64,
-    pub uptime_secs: u64,
-    pub signal_count: usize,
-    pub block_count: usize,
+    stats_handle: Arc<RwLock<EngineStats>>,
+    
+    // Enhanced monitoring (optional)
+    #[cfg(feature = "enhanced-monitoring")]
+    scan_times: Arc<RwLock<AllocRingBuffer<Duration>>>,
+    #[cfg(feature = "enhanced-monitoring")]
+    block_execution_times: Arc<RwLock<HashMap<String, Duration>>>,
+    #[cfg(feature = "enhanced-monitoring")]
+    enable_enhanced_monitoring: bool,
 }
 
 impl Engine {
     pub fn new(config: Config) -> Result<Self> {
+        // Initialize metrics if available
+        #[cfg(feature = "metrics")]
+        {
+            gauge!("petra_engine_scan_time_ms").set(config.scan_time_ms as f64);
+            gauge!("petra_engine_signal_count").set(config.signals.len() as f64);
+            gauge!("petra_engine_block_count").set(config.blocks.len() as f64);
+        }
+        
+        // Initialize signal bus
         let bus = SignalBus::new();
-
+        
         // Initialize all signals
         for signal in &config.signals {
             let value = match signal.signal_type.as_str() {
@@ -96,6 +105,14 @@ impl Engine {
             }
         }
 
+        // Check if enhanced monitoring is enabled in config
+        #[cfg(feature = "enhanced-monitoring")]
+        let enable_enhanced_monitoring = config.engine_config
+            .as_ref()
+            .and_then(|ec| ec.get("enhanced_monitoring"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         Ok(Self {
             bus,
             blocks,
@@ -107,14 +124,26 @@ impl Engine {
             signal_change_tx: None,
             scan_jitter_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
             target_scan_time: Duration::from_millis(config.scan_time_ms),
-            stats_handle: Arc::new(parking_lot::RwLock::new(EngineStats {
+            stats_handle: Arc::new(RwLock::new(EngineStats {
                 running: false,
                 scan_count: 0,
                 error_count: 0,
                 uptime_secs: 0,
                 signal_count: config.signals.len(),
                 block_count: config.blocks.len(),
+                #[cfg(feature = "enhanced-monitoring")]
+                avg_scan_time_us: None,
+                #[cfg(feature = "enhanced-monitoring")]
+                max_scan_time_us: None,
+                #[cfg(feature = "enhanced-monitoring")]
+                block_times_us: None,
             })),
+            #[cfg(feature = "enhanced-monitoring")]
+            scan_times: Arc::new(RwLock::new(AllocRingBuffer::new(1000))),
+            #[cfg(feature = "enhanced-monitoring")]
+            block_execution_times: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(feature = "enhanced-monitoring")]
+            enable_enhanced_monitoring,
         })
     }
 
@@ -146,12 +175,19 @@ impl Engine {
                 }
                 Err(e) => {
                     return Err(PlcError::Config(format!(
-                        "Failed to create block '{}': {}",
-                        block_config.name, e
+                        "Failed to create block '{}': {}", block_config.name, e
                     )));
                 }
             }
         }
+
+        // Check if enhanced monitoring is enabled in config
+        #[cfg(feature = "enhanced-monitoring")]
+        let enable_enhanced_monitoring = config.engine_config
+            .as_ref()
+            .and_then(|ec| ec.get("enhanced_monitoring"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         Ok(Self {
             bus,
@@ -164,14 +200,26 @@ impl Engine {
             signal_change_tx: None,
             scan_jitter_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
             target_scan_time: Duration::from_millis(config.scan_time_ms),
-            stats_handle: Arc::new(parking_lot::RwLock::new(EngineStats {
+            stats_handle: Arc::new(RwLock::new(EngineStats {
                 running: false,
                 scan_count: 0,
                 error_count: 0,
                 uptime_secs: 0,
                 signal_count: config.signals.len(),
                 block_count: config.blocks.len(),
+                #[cfg(feature = "enhanced-monitoring")]
+                avg_scan_time_us: None,
+                #[cfg(feature = "enhanced-monitoring")]
+                max_scan_time_us: None,
+                #[cfg(feature = "enhanced-monitoring")]
+                block_times_us: None,
             })),
+            #[cfg(feature = "enhanced-monitoring")]
+            scan_times: Arc::new(RwLock::new(AllocRingBuffer::new(1000))),
+            #[cfg(feature = "enhanced-monitoring")]
+            block_execution_times: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(feature = "enhanced-monitoring")]
+            enable_enhanced_monitoring,
         })
     }
 
@@ -186,119 +234,133 @@ impl Engine {
 
         self.running.store(true, Ordering::Relaxed);
         info!("Engine starting with {}ms scan time", self.config.scan_time_ms);
-        *self.stats_handle.write() = self.stats();
+
+        #[cfg(feature = "enhanced-monitoring")]
+        if self.enable_enhanced_monitoring {
+            info!("Enhanced monitoring enabled");
+        }
 
         let mut ticker = interval(Duration::from_millis(self.config.scan_time_ms));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-        let mut last_scan_start = Instant::now();
 
         while self.running.load(Ordering::Relaxed) {
             ticker.tick().await;
 
             let scan_start = Instant::now();
-            let actual_interval = scan_start.duration_since(last_scan_start);
-            last_scan_start = scan_start;
-            
             let scan_num = self.scan_count.fetch_add(1, Ordering::Relaxed) + 1;
 
-            // Calculate jitter (deviation from target scan time)
-            let jitter = if actual_interval > self.target_scan_time {
-                actual_interval - self.target_scan_time
+            // Take snapshot before processing (for enhanced monitoring)
+            #[cfg(feature = "enhanced-monitoring")]
+            let pre_scan_signals = if self.enable_enhanced_monitoring {
+                Some(self.bus.snapshot())
             } else {
-                self.target_scan_time - actual_interval
+                None
             };
 
-            // Update jitter metrics
-            {
-                let mut buffer = self.scan_jitter_buffer.lock().await;
-                if buffer.len() >= 100 {
-                    buffer.pop_front();
-                }
-                buffer.push_back(jitter);
-
-                // Calculate average and max jitter
-                let avg_jitter = buffer.iter().sum::<Duration>() / buffer.len() as u32;
-                let max_jitter = buffer.iter().max().copied().unwrap_or(Duration::ZERO);
-                
-                gauge!("petra_scan_jitter_avg_us").set(avg_jitter.as_micros() as f64);
-                gauge!("petra_scan_jitter_max_us").set(max_jitter.as_micros() as f64);
-                gauge!("petra_scan_variance_us").set(jitter.as_micros() as f64);
-
-                // Warn if jitter exceeds 5x scan time
-                if jitter > self.target_scan_time * 5 {
-                    warn!(
-                        "Excessive scan jitter detected: {:?} ({}x scan time)",
-                        jitter,
-                        jitter.as_millis() / self.target_scan_time.as_millis()
-                    );
-                    counter!("petra_scan_jitter_warnings").increment(1);
-                }
-            }
-
-            // Take snapshot before processing
-            let pre_scan_signals = self.bus.snapshot();
-            
             // Execute all blocks
             for block in &mut self.blocks {
+                #[cfg(feature = "enhanced-monitoring")]
+                let block_start = if self.enable_enhanced_monitoring {
+                    Some(Instant::now())
+                } else {
+                    None
+                };
+
                 if let Err(e) = block.execute(&self.bus) {
                     self.error_count.fetch_add(1, Ordering::Relaxed);
+                    
+                    #[cfg(feature = "metrics")]
+                    counter!("petra_block_errors_total", "block" => block.name().to_string()).increment(1);
+                    
                     warn!("Block '{}' error: {}", block.name(), e);
                 }
-            }
 
-            // Determine which signals changed and send them
-            if let Some(tx) = &self.signal_change_tx {
-                let post_scan_signals = self.bus.snapshot();
-                
-                for (name, new_value) in &post_scan_signals {
-                    if let Some(old_value) = pre_scan_signals.iter().find(|(n, _)| n == name) {
-                        if &old_value.1 != new_value {
-                            let _ = tx.send((name.clone(), new_value.clone())).await;
-                        }
+                #[cfg(feature = "enhanced-monitoring")]
+                if let Some(start) = block_start {
+                    if self.enable_enhanced_monitoring {
+                        let duration = start.elapsed();
+                        self.block_execution_times.write()
+                            .insert(block.name().to_string(), duration);
+                        
+                        #[cfg(feature = "metrics")]
+                        histogram!("petra_block_execution_time_us", "block" => block.name().to_string())
+                            .record(duration.as_micros() as f64);
                     }
                 }
             }
 
             let scan_duration = scan_start.elapsed();
 
-            // Update scan duration metrics
-            histogram!("petra_scan_duration_seconds").record(scan_duration.as_secs_f64());
-            gauge!("petra_scan_duration_ms").set(scan_duration.as_millis() as f64);
-
-            if scan_duration.as_millis() > self.config.scan_time_ms as u128 {
-                warn!(
-                    "Scan {} overrun: {:?} > {}ms",
-                    scan_num, scan_duration, self.config.scan_time_ms
-                );
-                counter!("petra_scan_overruns_total").increment(1);
+            // Standard jitter monitoring
+            {
+                let mut jitter_buffer = self.scan_jitter_buffer.lock().unwrap();
+                jitter_buffer.push_back(scan_duration);
+                if jitter_buffer.len() > 100 {
+                    jitter_buffer.pop_front();
+                }
+                
+                // Check for excessive jitter
+                if scan_duration > self.target_scan_time * 5 {
+                    warn!("Excessive scan time: {:?} (target: {:?})", 
+                          scan_duration, self.target_scan_time);
+                }
             }
 
+            // Enhanced monitoring
+            #[cfg(feature = "enhanced-monitoring")]
+            if self.enable_enhanced_monitoring {
+                // Record scan time
+                self.scan_times.write().push(scan_duration);
+                
+                // Detect signal changes and send notifications
+                if let Some(pre_scan) = pre_scan_signals {
+                    let post_scan = self.bus.snapshot();
+                    for (name, pre_value) in &pre_scan {
+                        if let Some(post_value) = post_scan.get(name) {
+                            if pre_value != post_value {
+                                if let Some(tx) = &self.signal_change_tx {
+                                    let _ = tx.send((name.clone(), post_value.clone())).await;
+                                }
+                                
+                                #[cfg(feature = "metrics")]
+                                counter!("petra_signal_changes_total", "signal" => name.clone()).increment(1);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Update metrics
+            #[cfg(feature = "metrics")]
+            {
+                histogram!("petra_scan_duration_us").record(scan_duration.as_micros() as f64);
+                counter!("petra_scan_count_total").absolute(scan_num);
+                gauge!("petra_engine_running").set(1.0);
+            }
+
+            // Log periodically
             if scan_num % 1000 == 0 {
-                let stats = self.stats();
+                let error_count = self.error_count.load(Ordering::Relaxed);
+                let uptime = self.start_time.elapsed();
+                
                 info!(
-                    "Status: {} scans, {} errors, uptime: {}s",
-                    stats.scan_count, stats.error_count, stats.uptime_secs
+                    "Engine stats - Scans: {}, Errors: {}, Uptime: {:?}, Avg scan: {:?}",
+                    scan_num, error_count, uptime,
+                    self.get_average_scan_time()
                 );
             }
 
-            *self.stats_handle.write() = self.stats();
+            // Update stats handle
+            self.update_stats();
         }
 
-        info!("Engine stopped after {} scans", self.scan_count.load(Ordering::Relaxed));
-        *self.stats_handle.write() = self.stats();
+        self.running.store(false, Ordering::Relaxed);
+        
+        #[cfg(feature = "metrics")]
+        gauge!("petra_engine_running").set(0.0);
+        
+        info!("Engine stopped");
         Ok(())
-    }
-
-    /// Execute a single scan cycle synchronously. Primarily for benchmarks.
-    pub fn execute_scan_cycle(&mut self) {
-        for block in &mut self.blocks {
-            if let Err(e) = block.execute(&self.bus) {
-                self.error_count.fetch_add(1, Ordering::Relaxed);
-                warn!("Block '{}' error: {}", block.name(), e);
-            }
-        }
-        self.scan_count.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn stop(&self) {
@@ -306,26 +368,171 @@ impl Engine {
         self.running.store(false, Ordering::Relaxed);
     }
 
-    pub fn bus(&self) -> &SignalBus {
-        &self.bus
-    }
-
-    pub fn stats(&self) -> EngineStats {
-        EngineStats {
-            running: self.running.load(Ordering::Relaxed),
-            scan_count: self.scan_count.load(Ordering::Relaxed),
-            error_count: self.error_count.load(Ordering::Relaxed),
-            uptime_secs: self.start_time.elapsed().as_secs(),
-            signal_count: self.bus.signal_count(),
-            block_count: self.blocks.len(),
-        }
-    }
-
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
     }
 
-    pub fn stats_handle(&self) -> Arc<parking_lot::RwLock<EngineStats>> {
-        self.stats_handle.clone()
+    pub fn get_stats(&self) -> EngineStats {
+        self.stats_handle.read().clone()
+    }
+
+    pub fn get_bus(&self) -> &SignalBus {
+        &self.bus
+    }
+
+    pub fn get_scan_count(&self) -> u64 {
+        self.scan_count.load(Ordering::Relaxed)
+    }
+
+    pub fn get_error_count(&self) -> u64 {
+        self.error_count.load(Ordering::Relaxed)
+    }
+
+    pub fn get_uptime(&self) -> Duration {
+        self.start_time.elapsed()
+    }
+
+    fn get_average_scan_time(&self) -> Duration {
+        let jitter_buffer = self.scan_jitter_buffer.lock().unwrap();
+        if jitter_buffer.is_empty() {
+            return Duration::from_secs(0);
+        }
+        
+        let sum: Duration = jitter_buffer.iter().sum();
+        sum / jitter_buffer.len() as u32
+    }
+
+    fn update_stats(&self) {
+        let mut stats = self.stats_handle.write();
+        stats.running = self.running.load(Ordering::Relaxed);
+        stats.scan_count = self.scan_count.load(Ordering::Relaxed);
+        stats.error_count = self.error_count.load(Ordering::Relaxed);
+        stats.uptime_secs = self.start_time.elapsed().as_secs();
+        
+        #[cfg(feature = "enhanced-monitoring")]
+        if self.enable_enhanced_monitoring {
+            // Calculate average and max scan times
+            let scan_times = self.scan_times.read();
+            if !scan_times.is_empty() {
+                let times: Vec<f64> = scan_times.iter()
+                    .map(|d| d.as_micros() as f64)
+                    .collect();
+                
+                stats.avg_scan_time_us = Some(times.iter().sum::<f64>() / times.len() as f64);
+                stats.max_scan_time_us = times.iter().cloned().fold(f64::NEG_INFINITY, f64::max).into();
+            }
+            
+            // Copy block execution times
+            let block_times = self.block_execution_times.read();
+            if !block_times.is_empty() {
+                let mut times_us = HashMap::new();
+                for (name, duration) in block_times.iter() {
+                    times_us.insert(name.clone(), duration.as_micros() as f64);
+                }
+                stats.block_times_us = Some(times_us);
+            }
+        }
+    }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    pub fn get_detailed_stats(&self) -> Option<DetailedStats> {
+        if !self.enable_enhanced_monitoring {
+            return None;
+        }
+
+        let scan_times = self.scan_times.read();
+        let block_times = self.block_execution_times.read();
+        
+        Some(DetailedStats {
+            scan_time_history: scan_times.iter().map(|d| d.as_micros() as u64).collect(),
+            block_execution_times: block_times.iter()
+                .map(|(k, v)| (k.clone(), v.as_micros() as u64))
+                .collect(),
+            memory_usage: self.estimate_memory_usage(),
+        })
+    }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn estimate_memory_usage(&self) -> usize {
+        // Rough estimation of memory usage
+        let signal_count = self.bus.len();
+        let block_count = self.blocks.len();
+        
+        // Assume average sizes
+        let signal_memory = signal_count * 64;  // Signal name + value
+        let block_memory = block_count * 256;   // Block struct + strings
+        let buffer_memory = 1000 * 16;          // Scan time buffer
+        
+        signal_memory + block_memory + buffer_memory
+    }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    pub fn enable_enhanced_monitoring(&mut self, enable: bool) {
+        self.enable_enhanced_monitoring = enable;
+        info!("Enhanced monitoring {}", if enable { "enabled" } else { "disabled" });
+    }
+}
+
+#[cfg(feature = "enhanced-monitoring")]
+#[derive(Debug, Clone, Serialize)]
+pub struct DetailedStats {
+    pub scan_time_history: Vec<u64>,
+    pub block_execution_times: HashMap<String, u64>,
+    pub memory_usage: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{SignalConfig, BlockConfig};
+
+    #[tokio::test]
+    async fn test_engine_creation() {
+        let config = Config {
+            signals: vec![
+                SignalConfig {
+                    name: "test_signal".to_string(),
+                    signal_type: "bool".to_string(),
+                    initial: serde_yaml::Value::Bool(false),
+                },
+            ],
+            blocks: vec![],
+            scan_time_ms: 100,
+            mqtt: None,
+            s7: None,
+            alarms: None,
+            history: None,
+            engine_config: None,
+        };
+
+        let engine = Engine::new(config).unwrap();
+        assert!(!engine.is_running());
+        assert_eq!(engine.get_scan_count(), 0);
+        assert_eq!(engine.get_error_count(), 0);
+    }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    #[tokio::test]
+    async fn test_enhanced_monitoring() {
+        let mut config = Config {
+            signals: vec![],
+            blocks: vec![],
+            scan_time_ms: 100,
+            mqtt: None,
+            s7: None,
+            alarms: None,
+            history: None,
+            engine_config: Some(serde_yaml::Value::Mapping({
+                let mut map = serde_yaml::Mapping::new();
+                map.insert(
+                    serde_yaml::Value::String("enhanced_monitoring".to_string()),
+                    serde_yaml::Value::Bool(true),
+                );
+                map
+            })),
+        };
+
+        let engine = Engine::new(config).unwrap();
+        assert!(engine.enable_enhanced_monitoring);
     }
 }
