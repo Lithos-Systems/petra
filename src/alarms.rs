@@ -1,515 +1,726 @@
-use crate::{error::*, value::Value, signal::SignalBus};
-use serde::{Deserialize, Serialize};
+// src/alarms.rs
+use crate::{error::{Result, PlcError}, signal::SignalBus, value::Value};
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::RwLock;
-use chrono::{DateTime, Utc, Local, Timelike, Datelike};
-use tokio::time::{interval, Duration};
+use serde::{Deserialize, Serialize};
 use tracing::{info, warn, error};
+use tokio::sync::mpsc;
+use chrono::{DateTime, Utc};
+
+#[cfg(feature = "alarm-persistence")]
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlarmConfig {
-    pub alarms: Vec<AlarmDefinition>,
-    pub contacts: Vec<Contact>,
-    pub escalation_chains: HashMap<String, Vec<String>>, // alarm_id -> vec of contact_ids
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AlarmDefinition {
-    pub id: String,
     pub name: String,
-    pub signal: String,
+    pub description: String,
     pub condition: AlarmCondition,
-    pub setpoint: f64,
     pub severity: AlarmSeverity,
-    pub delay_seconds: u32,
-    pub repeat_interval_seconds: u32,
-    pub message_template: String,
-    pub require_acknowledgment: bool,
-    pub auto_reset: bool,
+    pub signal: String,
+    
+    #[serde(default)]
+    pub enabled: bool,
+    
+    #[cfg(feature = "alarm-actions")]
+    #[serde(default)]
+    pub actions: Vec<AlarmAction>,
+    
+    #[cfg(feature = "alarm-groups")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    
+    #[cfg(feature = "alarm-shelving")]
+    #[serde(default)]
+    pub can_shelve: bool,
+    
+    #[cfg(feature = "alarm-shelving")]
+    #[serde(default)]
+    pub shelve_duration_minutes: Option<u32>,
+    
+    #[cfg(feature = "alarm-history")]
+    #[serde(default = "default_true")]
+    pub track_history: bool,
+    
+    #[cfg(feature = "alarm-delay")]
+    #[serde(default)]
+    pub on_delay_ms: Option<u32>,
+    
+    #[cfg(feature = "alarm-delay")]
+    #[serde(default)]
+    pub off_delay_ms: Option<u32>,
+    
+    #[cfg(feature = "alarm-hysteresis")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hysteresis: Option<f64>,
 }
 
+fn default_true() -> bool { true }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "type")]
 pub enum AlarmCondition {
-    Above,
-    Below,
-    Equals,
-    NotEquals,
-    Deadband { low: f64, high: f64 },
+    High { threshold: f64 },
+    Low { threshold: f64 },
+    Equal { value: Value },
+    NotEqual { value: Value },
+    InRange { min: f64, max: f64 },
+    OutOfRange { min: f64, max: f64 },
+    
+    #[cfg(feature = "extended-alarms")]
+    RateOfChange { max_change_per_second: f64 },
+    
+    #[cfg(feature = "extended-alarms")]
+    Deviation { reference_signal: String, max_deviation: f64 },
+    
+    #[cfg(feature = "extended-alarms")]
+    Expression { expression: String },
+    
+    #[cfg(feature = "extended-alarms")]
+    Stale { timeout_seconds: u32 },
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum AlarmSeverity {
-    Info = 1,
-    Warning = 2,
-    Critical = 3,
-    Emergency = 4,
+    Info,
+    Warning,
+    Critical,
+    #[cfg(feature = "extended-alarms")]
+    Emergency,
+    #[cfg(feature = "extended-alarms")]
+    Diagnostic,
 }
 
+#[cfg(feature = "alarm-actions")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Contact {
-    pub id: String,
-    pub name: String,
-    pub email: Option<String>,
-    pub phone: Option<String>,
-    pub preferred_method: ContactMethod,
-    pub priority: u32,
-    pub escalation_delay_seconds: u32,
-    pub work_hours_only: bool,
-    pub work_hours: WorkHours,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContactMethod {
-    Email,
-    Sms,
-    Call,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkHours {
-    pub start_hour: u8,
-    pub end_hour: u8,
-    pub days: Vec<chrono::Weekday>,
-    pub timezone: String,
+#[serde(tag = "type")]
+pub enum AlarmAction {
+    Email { 
+        recipients: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        template: Option<String>,
+    },
+    Sms { 
+        recipients: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        template: Option<String>,
+    },
+    Signal { 
+        name: String, 
+        value: Value 
+    },
+    Command { 
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+    },
+    #[cfg(feature = "web")]
+    Webhook {
+        url: String,
+        method: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        headers: Option<HashMap<String, String>>,
+    },
 }
 
 #[derive(Debug, Clone)]
-struct ActiveAlarm {
-    alarm: AlarmDefinition,
-    triggered_at: DateTime<Utc>,
-    last_notification: Option<DateTime<Utc>>,
-    escalation_level: usize,
+pub struct Alarm {
+    config: AlarmConfig,
+    state: AlarmState,
+    last_transition: DateTime<Utc>,
+    
+    #[cfg(feature = "alarm-acknowledgment")]
     acknowledged: bool,
+    
+    #[cfg(feature = "alarm-acknowledgment")]
     acknowledged_by: Option<String>,
-    notification_count: u32,
+    
+    #[cfg(feature = "alarm-acknowledgment")]
+    acknowledged_at: Option<DateTime<Utc>>,
+    
+    #[cfg(feature = "alarm-shelving")]
+    shelved_until: Option<DateTime<Utc>>,
+    
+    #[cfg(feature = "alarm-history")]
+    activation_count: u64,
+    
+    #[cfg(feature = "alarm-delay")]
+    delay_start: Option<DateTime<Utc>>,
+    
+    #[cfg(feature = "extended-alarms")]
+    last_value: Option<Value>,
+    
+    #[cfg(feature = "extended-alarms")]
+    last_update: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlarmState {
+    Normal,
+    Active,
+    #[cfg(feature = "alarm-acknowledgment")]
+    Unacknowledged,
+    #[cfg(feature = "alarm-shelving")]
+    Shelved,
 }
 
 pub struct AlarmManager {
-    config: AlarmConfig,
+    alarms: Vec<Alarm>,
     bus: SignalBus,
-    active_alarms: Arc<RwLock<HashMap<String, ActiveAlarm>>>,
-    alarm_history: Arc<RwLock<Vec<AlarmEvent>>>,
-    email_sender: Option<Arc<dyn EmailSender>>,
-    sms_sender: Option<Arc<dyn SmsSender>>,
-    call_sender: Option<Arc<dyn CallSender>>,
-    running: Arc<RwLock<bool>>,
+    tx: mpsc::Sender<AlarmEvent>,
+    rx: mpsc::Receiver<AlarmEvent>,
+    
+    #[cfg(feature = "alarm-history")]
+    history: AlarmHistory,
+    
+    #[cfg(feature = "alarm-statistics")]
+    statistics: AlarmStatistics,
+    
+    #[cfg(feature = "alarm-groups")]
+    groups: HashMap<String, AlarmGroup>,
+    
+    #[cfg(feature = "alarm-persistence")]
+    persistence_path: Option<PathBuf>,
+    
+    #[cfg(feature = "alarm-actions")]
+    action_executor: ActionExecutor,
 }
 
+#[derive(Debug, Clone)]
+pub enum AlarmEvent {
+    Activated { name: String, severity: AlarmSeverity },
+    Deactivated { name: String },
+    
+    #[cfg(feature = "alarm-acknowledgment")]
+    Acknowledged { name: String, by: String },
+    
+    #[cfg(feature = "alarm-shelving")]
+    Shelved { name: String, until: DateTime<Utc> },
+    
+    #[cfg(feature = "alarm-shelving")]
+    Unshelved { name: String },
+}
+
+#[cfg(feature = "alarm-history")]
+struct AlarmHistory {
+    events: Vec<AlarmHistoryEntry>,
+    max_entries: usize,
+}
+
+#[cfg(feature = "alarm-history")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AlarmEvent {
-    pub alarm_id: String,
-    pub timestamp: DateTime<Utc>,
-    pub event_type: AlarmEventType,
-    pub severity: AlarmSeverity,
-    pub value: f64,
-    pub message: String,
-    pub acknowledged_by: Option<String>,
+struct AlarmHistoryEntry {
+    timestamp: DateTime<Utc>,
+    alarm_name: String,
+    event: String,
+    severity: AlarmSeverity,
+    value: Option<Value>,
+    user: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AlarmEventType {
-    Triggered,
-    Cleared,
-    Acknowledged,
-    Escalated,
-    NotificationSent,
+#[cfg(feature = "alarm-statistics")]
+#[derive(Default)]
+struct AlarmStatistics {
+    total_activations: u64,
+    active_count: u32,
+    activations_by_severity: HashMap<AlarmSeverity, u64>,
+    mean_time_to_acknowledge: Option<std::time::Duration>,
+    mean_time_to_clear: Option<std::time::Duration>,
 }
 
-#[async_trait::async_trait]
-pub trait EmailSender: Send + Sync {
-    async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<()>;
-}
-
-#[async_trait::async_trait]
-pub trait SmsSender: Send + Sync {
-    async fn send_sms(&self, to: &str, message: &str) -> Result<()>;
-}
-
-#[async_trait::async_trait]
-pub trait CallSender: Send + Sync {
-    async fn make_call(&self, to: &str, message: &str) -> Result<()>;
+#[cfg(feature = "alarm-groups")]
+struct AlarmGroup {
+    name: String,
+    enabled: bool,
+    #[cfg(feature = "alarm-group-actions")]
+    actions: Vec<AlarmAction>,
 }
 
 impl AlarmManager {
-    pub fn new(config: AlarmConfig, bus: SignalBus) -> Self {
-        Self {
-            config,
-            bus,
-            active_alarms: Arc::new(RwLock::new(HashMap::new())),
-            alarm_history: Arc::new(RwLock::new(Vec::with_capacity(10000))),
-            email_sender: None,
-            sms_sender: None,
-            call_sender: None,
-            running: Arc::new(RwLock::new(false)),
-        }
-    }
-
-    pub fn set_email_sender(&mut self, sender: Arc<dyn EmailSender>) {
-        self.email_sender = Some(sender);
-    }
-
-    pub fn set_sms_sender(&mut self, sender: Arc<dyn SmsSender>) {
-        self.sms_sender = Some(sender);
-    }
-
-    pub fn set_call_sender(&mut self, sender: Arc<dyn CallSender>) {
-        self.call_sender = Some(sender);
-    }
-
-    pub async fn run(&self) -> Result<()> {
-        *self.running.write() = true;
-        info!("Alarm manager started with {} alarms", self.config.alarms.len());
-
-        let mut check_interval = interval(Duration::from_secs(1));
-        let mut notification_interval = interval(Duration::from_secs(10));
-
-        while *self.running.read() {
-            tokio::select! {
-                _ = check_interval.tick() => {
-                    self.check_alarms().await;
-                }
-                _ = notification_interval.tick() => {
-                    self.process_notifications().await;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn check_alarms(&self) {
-        for alarm_def in &self.config.alarms {
-            if let Err(e) = self.check_single_alarm(alarm_def).await {
-                error!("Error checking alarm {}: {}", alarm_def.id, e);
-            }
-        }
-    }
-
-    async fn check_single_alarm(&self, alarm_def: &AlarmDefinition) -> Result<()> {
-        // Get current signal value
-        let value = self.bus.get_float(&alarm_def.signal)?;
+    pub fn new(configs: Vec<AlarmConfig>, bus: SignalBus) -> Result<Self> {
+        let (tx, rx) = mpsc::channel(100);
         
-        // Check condition
-        let condition_met = match &alarm_def.condition {
-            AlarmCondition::Above => value > alarm_def.setpoint,
-            AlarmCondition::Below => value < alarm_def.setpoint,
-            AlarmCondition::Equals => (value - alarm_def.setpoint).abs() < f64::EPSILON,
-            AlarmCondition::NotEquals => (value - alarm_def.setpoint).abs() >= f64::EPSILON,
-            AlarmCondition::Deadband { low, high } => value < *low || value > *high,
-        };
-
-        let mut active_alarms = self.active_alarms.write();
-        let now = Utc::now();
-
-        if condition_met {
-            // Check if alarm already active
-            if let Some(active) = active_alarms.get_mut(&alarm_def.id) {
-                // Update value
-                active.alarm = alarm_def.clone();
-            } else {
-                // Check delay
-                // TODO: Implement delay logic with state tracking
-                
-                // Create new active alarm
-                let active = ActiveAlarm {
-                    alarm: alarm_def.clone(),
-                    triggered_at: now,
-                    last_notification: None,
-                    escalation_level: 0,
-                    acknowledged: false,
-                    acknowledged_by: None,
-                    notification_count: 0,
-                };
-
-                active_alarms.insert(alarm_def.id.clone(), active);
-
-                // Log event
-                self.log_event(AlarmEvent {
-                    alarm_id: alarm_def.id.clone(),
-                    timestamp: now,
-                    event_type: AlarmEventType::Triggered,
-                    severity: alarm_def.severity,
-                    value,
-                    message: self.format_message(alarm_def, value),
-                    acknowledged_by: None,
-                });
-
-                info!("Alarm triggered: {} (value: {})", alarm_def.name, value);
-            }
-        } else {
-            // Condition not met - check if we should clear
-            if let Some(active) = active_alarms.remove(&alarm_def.id) {
-                if alarm_def.auto_reset || active.acknowledged {
-                    self.log_event(AlarmEvent {
-                        alarm_id: alarm_def.id.clone(),
-                        timestamp: now,
-                        event_type: AlarmEventType::Cleared,
-                        severity: alarm_def.severity,
-                        value,
-                        message: format!("Alarm cleared: {}", alarm_def.name),
-                        acknowledged_by: active.acknowledged_by,
-                    });
-
-                    info!("Alarm cleared: {}", alarm_def.name);
-                } else {
-                    // Put it back - requires acknowledgment
-                    active_alarms.insert(alarm_def.id.clone(), active);
+        let alarms = configs.into_iter()
+            .map(|config| Alarm {
+                state: AlarmState::Normal,
+                last_transition: Utc::now(),
+                #[cfg(feature = "alarm-acknowledgment")]
+                acknowledged: false,
+                #[cfg(feature = "alarm-acknowledgment")]
+                acknowledged_by: None,
+                #[cfg(feature = "alarm-acknowledgment")]
+                acknowledged_at: None,
+                #[cfg(feature = "alarm-shelving")]
+                shelved_until: None,
+                #[cfg(feature = "alarm-history")]
+                activation_count: 0,
+                #[cfg(feature = "alarm-delay")]
+                delay_start: None,
+                #[cfg(feature = "extended-alarms")]
+                last_value: None,
+                #[cfg(feature = "extended-alarms")]
+                last_update: Utc::now(),
+                config,
+            })
+            .collect();
+        
+        Ok(Self {
+            alarms,
+            bus,
+            tx,
+            rx,
+            #[cfg(feature = "alarm-history")]
+            history: AlarmHistory {
+                events: Vec::new(),
+                max_entries: 10000,
+            },
+            #[cfg(feature = "alarm-statistics")]
+            statistics: AlarmStatistics::default(),
+            #[cfg(feature = "alarm-groups")]
+            groups: HashMap::new(),
+            #[cfg(feature = "alarm-persistence")]
+            persistence_path: None,
+            #[cfg(feature = "alarm-actions")]
+            action_executor: ActionExecutor::new(),
+        })
+    }
+    
+    pub async fn run(mut self) -> Result<()> {
+        info!("Starting alarm manager with {} alarms", self.alarms.len());
+        
+        #[cfg(feature = "alarm-persistence")]
+        self.load_state()?;
+        
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+        
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    self.check_alarms().await?;
+                }
+                Some(event) = self.rx.recv() => {
+                    self.handle_event(event).await?;
                 }
             }
         }
-
-        Ok(())
     }
-
-    async fn process_notifications(&self) {
-        let now = Utc::now();
-        let mut alarms_to_notify = Vec::new();
-
-        {
-            let mut active_alarms = self.active_alarms.write();
-            for (id, active) in active_alarms.iter_mut() {
-                if active.acknowledged && !active.alarm.require_acknowledgment {
+    
+    async fn check_alarms(&mut self) -> Result<()> {
+        for alarm in &mut self.alarms {
+            if !alarm.config.enabled {
+                continue;
+            }
+            
+            #[cfg(feature = "alarm-shelving")]
+            if let Some(until) = alarm.shelved_until {
+                if Utc::now() > until {
+                    alarm.shelved_until = None;
+                    alarm.state = AlarmState::Normal;
+                    let _ = self.tx.send(AlarmEvent::Unshelved {
+                        name: alarm.config.name.clone()
+                    }).await;
+                } else {
+                    continue; // Skip shelved alarms
+                }
+            }
+            
+            let signal_value = match self.bus.get(&alarm.config.signal) {
+                Some(value) => value,
+                None => {
+                    warn!("Signal '{}' not found for alarm '{}'", 
+                          alarm.config.signal, alarm.config.name);
                     continue;
                 }
-
-                let should_notify = active.last_notification
-                    .map(|last| {
-                        let elapsed = now.signed_duration_since(last).num_seconds() as u32;
-                        elapsed >= active.alarm.repeat_interval_seconds
-                    })
-                    .unwrap_or(true);
-
-                if should_notify {
-                    active.last_notification = Some(now);
-                    active.notification_count += 1;
-                    alarms_to_notify.push((id.clone(), active.clone()));
-                }
+            };
+            
+            #[cfg(feature = "extended-alarms")]
+            {
+                alarm.last_value = Some(signal_value.clone());
+                alarm.last_update = Utc::now();
             }
-        }
-
-        // Send notifications
-        for (id, active) in alarms_to_notify {
-            if let Some(contacts) = self.config.escalation_chains.get(&id) {
-                let contact_id = contacts.get(active.escalation_level)
-                    .or_else(|| contacts.last())
-                    .cloned();
-
-                if let Some(contact_id) = contact_id {
-                    if let Some(contact) = self.config.contacts.iter().find(|c| c.id == contact_id) {
-                        if self.should_contact_now(contact) {
-                            if let Err(e) = self.notify_contact(contact, &active).await {
-                                error!("Failed to notify {}: {}", contact.name, e);
-                            } else {
-                                self.log_notification_event(&active);
-                                
-                                // Check escalation
-                                self.check_escalation(&id, active.escalation_level).await;
+            
+            let should_activate = self.evaluate_condition(&alarm.config.condition, &signal_value)?;
+            
+            #[cfg(feature = "alarm-hysteresis")]
+            let should_activate = if let Some(hysteresis) = alarm.config.hysteresis {
+                self.apply_hysteresis(alarm, should_activate, &signal_value, hysteresis)
+            } else {
+                should_activate
+            };
+            
+            match (alarm.state, should_activate) {
+                (AlarmState::Normal, true) => {
+                    #[cfg(feature = "alarm-delay")]
+                    if let Some(delay_ms) = alarm.config.on_delay_ms {
+                        if let Some(start) = alarm.delay_start {
+                            if start.elapsed().as_millis() < delay_ms as u128 {
+                                continue; // Still in delay period
                             }
+                        } else {
+                            alarm.delay_start = Some(Utc::now());
+                            continue;
                         }
+                    }
+                    
+                    self.activate_alarm(alarm).await?;
+                }
+                (AlarmState::Active, false) => {
+                    #[cfg(feature = "alarm-delay")]
+                    if let Some(delay_ms) = alarm.config.off_delay_ms {
+                        if let Some(start) = alarm.delay_start {
+                            if start.elapsed().as_millis() < delay_ms as u128 {
+                                continue; // Still in delay period
+                            }
+                        } else {
+                            alarm.delay_start = Some(Utc::now());
+                            continue;
+                        }
+                    }
+                    
+                    self.deactivate_alarm(alarm).await?;
+                }
+                _ => {
+                    #[cfg(feature = "alarm-delay")]
+                    {
+                        alarm.delay_start = None; // Reset delay if no transition
                     }
                 }
             }
         }
+        
+        Ok(())
     }
-
-    fn should_contact_now(&self, contact: &Contact) -> bool {
-        if !contact.work_hours_only {
-            return true;
-       }
-
-       // Check work hours
-       let now = Local::now();
-       let weekday = now.weekday();
-       let hour = now.hour() as u8;
-
-       contact.work_hours.days.contains(&weekday) && 
-           hour >= contact.work_hours.start_hour && 
-           hour < contact.work_hours.end_hour
-   }
-
-   async fn notify_contact(&self, contact: &Contact, alarm: &ActiveAlarm) -> Result<()> {
-       let message = self.format_message(&alarm.alarm, 0.0); // TODO: Get actual value
-
-       match contact.preferred_method {
-           ContactMethod::Email => {
-               if let (Some(email), Some(sender)) = (&contact.email, &self.email_sender) {
-                   sender.send_email(
-                       email,
-                       &format!("ALARM: {}", alarm.alarm.name),
-                       &message
-                   ).await?;
-               }
-           }
-           ContactMethod::Sms => {
-               if let (Some(phone), Some(sender)) = (&contact.phone, &self.sms_sender) {
-                   sender.send_sms(phone, &message).await?;
-               }
-           }
-           ContactMethod::Call => {
-               if let (Some(phone), Some(sender)) = (&contact.phone, &self.call_sender) {
-                   sender.make_call(phone, &message).await?;
-               }
-           }
-       }
-
-       Ok(())
-   }
-
-   async fn check_escalation(&self, alarm_id: &str, current_level: usize) {
-       if let Some(contacts) = self.config.escalation_chains.get(alarm_id) {
-           if current_level < contacts.len() - 1 {
-               // Schedule escalation
-               let escalation_delay = self.config.contacts
-                   .iter()
-                   .find(|c| c.id == contacts[current_level])
-                   .map(|c| c.escalation_delay_seconds)
-                   .unwrap_or(300);
-
-               let alarm_id = alarm_id.to_string();
-               let active_alarms = Arc::clone(&self.active_alarms);
-               
-               tokio::spawn(async move {
-                   tokio::time::sleep(Duration::from_secs(escalation_delay as u64)).await;
-                   
-                   let mut alarms = active_alarms.write();
-                   if let Some(alarm) = alarms.get_mut(&alarm_id) {
-                       if !alarm.acknowledged {
-                           alarm.escalation_level += 1;
-                           info!("Escalating alarm {} to level {}", alarm_id, alarm.escalation_level + 1);
-                       }
-                   }
-               });
-           }
-       }
-   }
-
-   fn format_message(&self, alarm: &AlarmDefinition, value: f64) -> String {
-       alarm.message_template
-           .replace("{name}", &alarm.name)
-           .replace("{value}", &format!("{:.2}", value))
-           .replace("{setpoint}", &format!("{:.2}", alarm.setpoint))
-           .replace("{signal}", &alarm.signal)
-   }
-
-   fn log_event(&self, event: AlarmEvent) {
-       let mut history = self.alarm_history.write();
-       history.push(event);
-       
-       // Keep only last 10000 events
-       if history.len() > 10000 {
-           history.drain(0..1000);
-       }
-   }
-
-   fn log_notification_event(&self, alarm: &ActiveAlarm) {
-       self.log_event(AlarmEvent {
-           alarm_id: alarm.alarm.id.clone(),
-           timestamp: Utc::now(),
-           event_type: AlarmEventType::NotificationSent,
-           severity: alarm.alarm.severity,
-           value: 0.0, // TODO: Get actual value
-           message: format!("Notification #{} sent", alarm.notification_count),
-           acknowledged_by: None,
-       });
-   }
-
-   pub fn acknowledge_alarm(&self, alarm_id: &str, acknowledged_by: &str) -> Result<()> {
-       let mut active_alarms = self.active_alarms.write();
-       
-       if let Some(alarm) = active_alarms.get_mut(alarm_id) {
-           alarm.acknowledged = true;
-           alarm.acknowledged_by = Some(acknowledged_by.to_string());
-           
-           self.log_event(AlarmEvent {
-               alarm_id: alarm_id.to_string(),
-               timestamp: Utc::now(),
-               event_type: AlarmEventType::Acknowledged,
-               severity: alarm.alarm.severity,
-               value: 0.0,
-               message: format!("Acknowledged by {}", acknowledged_by),
-               acknowledged_by: Some(acknowledged_by.to_string()),
-           });
-           
-           Ok(())
-       } else {
-           Err(PlcError::Config(format!("Alarm {} not active", alarm_id)))
-       }
-   }
-
-   pub fn get_active_alarms(&self) -> Vec<AlarmInfo> {
-       self.active_alarms.read()
-           .values()
-           .map(|a| AlarmInfo {
-               id: a.alarm.id.clone(),
-               name: a.alarm.name.clone(),
-               severity: a.alarm.severity,
-               triggered_at: a.triggered_at,
-               acknowledged: a.acknowledged,
-               notification_count: a.notification_count,
-               escalation_level: a.escalation_level,
-           })
-           .collect()
-   }
-
-   pub fn get_alarm_history(&self, limit: usize) -> Vec<AlarmEvent> {
-       let history = self.alarm_history.read();
-       let start = history.len().saturating_sub(limit);
-       history[start..].to_vec()
-   }
+    
+    fn evaluate_condition(&self, condition: &AlarmCondition, value: &Value) -> Result<bool> {
+        Ok(match condition {
+            AlarmCondition::High { threshold } => {
+                value.as_float().unwrap_or(0.0) > *threshold
+            }
+            AlarmCondition::Low { threshold } => {
+                value.as_float().unwrap_or(0.0) < *threshold
+            }
+            AlarmCondition::Equal { value: ref_value } => {
+                value == ref_value
+            }
+            AlarmCondition::NotEqual { value: ref_value } => {
+                value != ref_value
+            }
+            AlarmCondition::InRange { min, max } => {
+                let v = value.as_float().unwrap_or(0.0);
+                v >= *min && v <= *max
+            }
+            AlarmCondition::OutOfRange { min, max } => {
+                let v = value.as_float().unwrap_or(0.0);
+                v < *min || v > *max
+            }
+            #[cfg(feature = "extended-alarms")]
+            AlarmCondition::RateOfChange { max_change_per_second } => {
+                // Would need to track previous values
+                false // Placeholder
+            }
+            #[cfg(feature = "extended-alarms")]
+            AlarmCondition::Deviation { reference_signal, max_deviation } => {
+                if let Some(ref_value) = self.bus.get(reference_signal) {
+                    let v = value.as_float().unwrap_or(0.0);
+                    let ref_v = ref_value.as_float().unwrap_or(0.0);
+                    (v - ref_v).abs() > *max_deviation
+                } else {
+                    false
+                }
+            }
+            #[cfg(feature = "extended-alarms")]
+            AlarmCondition::Expression { expression } => {
+                // Would need expression evaluator
+                false // Placeholder
+            }
+            #[cfg(feature = "extended-alarms")]
+            AlarmCondition::Stale { timeout_seconds } => {
+                // Would need to track last update time
+                false // Placeholder
+            }
+        })
+    }
+    
+    #[cfg(feature = "alarm-hysteresis")]
+    fn apply_hysteresis(&self, alarm: &Alarm, should_activate: bool, value: &Value, hysteresis: f64) -> bool {
+        match (&alarm.config.condition, alarm.state) {
+            (AlarmCondition::High { threshold }, AlarmState::Active) => {
+                // Deactivate only if value drops below threshold - hysteresis
+                value.as_float().unwrap_or(0.0) > (*threshold - hysteresis)
+            }
+            (AlarmCondition::Low { threshold }, AlarmState::Active) => {
+                // Deactivate only if value rises above threshold + hysteresis
+                value.as_float().unwrap_or(0.0) < (*threshold + hysteresis)
+            }
+            _ => should_activate
+        }
+    }
+    
+    async fn activate_alarm(&mut self, alarm: &mut Alarm) -> Result<()> {
+        alarm.state = AlarmState::Active;
+        alarm.last_transition = Utc::now();
+        
+        #[cfg(feature = "alarm-history")]
+        {
+            alarm.activation_count += 1;
+        }
+        
+        #[cfg(feature = "alarm-acknowledgment")]
+        {
+            alarm.acknowledged = false;
+            alarm.acknowledged_by = None;
+            alarm.acknowledged_at = None;
+        }
+        
+        info!("Alarm '{}' activated - severity: {:?}", 
+              alarm.config.name, alarm.config.severity);
+        
+        let _ = self.tx.send(AlarmEvent::Activated {
+            name: alarm.config.name.clone(),
+            severity: alarm.config.severity,
+        }).await;
+        
+        #[cfg(feature = "alarm-actions")]
+        for action in &alarm.config.actions {
+            self.action_executor.execute(action, &alarm.config).await?;
+        }
+        
+        #[cfg(feature = "alarm-history")]
+        self.add_history_entry(AlarmHistoryEntry {
+            timestamp: Utc::now(),
+            alarm_name: alarm.config.name.clone(),
+            event: "Activated".to_string(),
+            severity: alarm.config.severity,
+            value: alarm.last_value.clone(),
+            user: None,
+        });
+        
+        #[cfg(feature = "alarm-statistics")]
+        {
+            self.statistics.total_activations += 1;
+            self.statistics.active_count += 1;
+            *self.statistics.activations_by_severity
+                .entry(alarm.config.severity)
+                .or_insert(0) += 1;
+        }
+        
+        Ok(())
+    }
+    
+    async fn deactivate_alarm(&mut self, alarm: &mut Alarm) -> Result<()> {
+        alarm.state = AlarmState::Normal;
+        alarm.last_transition = Utc::now();
+        
+        info!("Alarm '{}' deactivated", alarm.config.name);
+        
+        let _ = self.tx.send(AlarmEvent::Deactivated {
+            name: alarm.config.name.clone(),
+        }).await;
+        
+        #[cfg(feature = "alarm-history")]
+        self.add_history_entry(AlarmHistoryEntry {
+            timestamp: Utc::now(),
+            alarm_name: alarm.config.name.clone(),
+            event: "Deactivated".to_string(),
+            severity: alarm.config.severity,
+            value: alarm.last_value.clone(),
+            user: None,
+        });
+        
+        #[cfg(feature = "alarm-statistics")]
+        {
+            self.statistics.active_count = self.statistics.active_count.saturating_sub(1);
+        }
+        
+        Ok(())
+    }
+    
+    async fn handle_event(&mut self, event: AlarmEvent) -> Result<()> {
+        match event {
+            #[cfg(feature = "alarm-acknowledgment")]
+            AlarmEvent::Acknowledged { name, by } => {
+                if let Some(alarm) = self.alarms.iter_mut().find(|a| a.config.name == name) {
+                    alarm.acknowledged = true;
+                    alarm.acknowledged_by = Some(by.clone());
+                    alarm.acknowledged_at = Some(Utc::now());
+                    
+                    #[cfg(feature = "alarm-history")]
+                    self.add_history_entry(AlarmHistoryEntry {
+                        timestamp: Utc::now(),
+                        alarm_name: name,
+                        event: "Acknowledged".to_string(),
+                        severity: alarm.config.severity,
+                        value: None,
+                        user: Some(by),
+                    });
+                }
+            }
+            
+            #[cfg(feature = "alarm-shelving")]
+            AlarmEvent::Shelved { name, until } => {
+                if let Some(alarm) = self.alarms.iter_mut().find(|a| a.config.name == name) {
+                    if alarm.config.can_shelve {
+                        alarm.shelved_until = Some(until);
+                        alarm.state = AlarmState::Shelved;
+                        
+                        #[cfg(feature = "alarm-history")]
+                        self.add_history_entry(AlarmHistoryEntry {
+                            timestamp: Utc::now(),
+                            alarm_name: name,
+                            event: format!("Shelved until {}", until),
+                            severity: alarm.config.severity,
+                            value: None,
+                            user: None,
+                        });
+                    }
+                }
+            }
+            
+            _ => {}
+        }
+        
+        Ok(())
+    }
+    
+    #[cfg(feature = "alarm-history")]
+    fn add_history_entry(&mut self, entry: AlarmHistoryEntry) {
+        self.history.events.push(entry);
+        if self.history.events.len() > self.history.max_entries {
+            self.history.events.remove(0);
+        }
+    }
+    
+    #[cfg(feature = "alarm-persistence")]
+    fn load_state(&mut self) -> Result<()> {
+        if let Some(path) = &self.persistence_path {
+            // Load alarm states from disk
+            // Implementation depends on storage format
+        }
+        Ok(())
+    }
+    
+    #[cfg(feature = "alarm-persistence")]
+    fn save_state(&self) -> Result<()> {
+        if let Some(path) = &self.persistence_path {
+            // Save alarm states to disk
+            // Implementation depends on storage format
+        }
+        Ok(())
+    }
+    
+    // Public API methods
+    pub fn get_active_alarms(&self) -> Vec<&Alarm> {
+        self.alarms.iter()
+            .filter(|a| a.state == AlarmState::Active)
+            .collect()
+    }
+    
+    #[cfg(feature = "alarm-acknowledgment")]
+    pub async fn acknowledge_alarm(&mut self, name: &str, user: &str) -> Result<()> {
+        self.tx.send(AlarmEvent::Acknowledged {
+            name: name.to_string(),
+            by: user.to_string(),
+        }).await
+            .map_err(|e| PlcError::Runtime(format!("Failed to send acknowledge event: {}", e)))
+    }
+    
+    #[cfg(feature = "alarm-shelving")]
+    pub async fn shelve_alarm(&mut self, name: &str, duration_minutes: u32) -> Result<()> {
+        let until = Utc::now() + chrono::Duration::minutes(duration_minutes as i64);
+        self.tx.send(AlarmEvent::Shelved {
+            name: name.to_string(),
+            until,
+        }).await
+            .map_err(|e| PlcError::Runtime(format!("Failed to send shelve event: {}", e)))
+    }
+    
+    #[cfg(feature = "alarm-history")]
+    pub fn get_history(&self, limit: Option<usize>) -> &[AlarmHistoryEntry] {
+        let len = self.history.events.len();
+        match limit {
+            Some(n) if n < len => &self.history.events[len - n..],
+            _ => &self.history.events,
+        }
+    }
+    
+    #[cfg(feature = "alarm-statistics")]
+    pub fn get_statistics(&self) -> AlarmStatisticsReport {
+        AlarmStatisticsReport {
+            total_activations: self.statistics.total_activations,
+            currently_active: self.statistics.active_count,
+            by_severity: self.statistics.activations_by_severity.clone(),
+        }
+    }
 }
 
+#[cfg(feature = "alarm-actions")]
+struct ActionExecutor {
+    #[cfg(feature = "email")]
+    email_client: Option<lettre::AsyncSmtpTransport<lettre::Tokio1Executor>>,
+    
+    #[cfg(feature = "web")]
+    http_client: reqwest::Client,
+}
+
+#[cfg(feature = "alarm-actions")]
+impl ActionExecutor {
+    fn new() -> Self {
+        Self {
+            #[cfg(feature = "email")]
+            email_client: None,
+            
+            #[cfg(feature = "web")]
+            http_client: reqwest::Client::new(),
+        }
+    }
+    
+    async fn execute(&self, action: &AlarmAction, alarm: &AlarmConfig) -> Result<()> {
+        match action {
+            #[cfg(feature = "email")]
+            AlarmAction::Email { recipients, template } => {
+                // Send email implementation
+            }
+            
+            AlarmAction::Signal { name, value } => {
+                // Set signal value
+            }
+            
+            AlarmAction::Command { command, args } => {
+                // Execute command
+            }
+            
+            #[cfg(feature = "web")]
+            AlarmAction::Webhook { url, method, headers } => {
+                // Send webhook
+            }
+            
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "alarm-statistics")]
 #[derive(Debug, Clone, Serialize)]
-pub struct AlarmInfo {
-   pub id: String,
-   pub name: String,
-   pub severity: AlarmSeverity,
-   pub triggered_at: DateTime<Utc>,
-   pub acknowledged: bool,
-   pub notification_count: u32,
-   pub escalation_level: usize,
+pub struct AlarmStatisticsReport {
+    pub total_activations: u64,
+    pub currently_active: u32,
+    pub by_severity: HashMap<AlarmSeverity, u64>,
 }
 
-// Email implementation using SMTP
-pub struct SmtpEmailSender {
-   smtp_host: String,
-   smtp_port: u16,
-   smtp_user: String,
-   smtp_pass: String,
-   from_email: String,
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_alarm_condition_evaluation() {
+        let manager = AlarmManager::new(vec![], SignalBus::new()).unwrap();
+        
+        let high_condition = AlarmCondition::High { threshold: 50.0 };
+        assert!(manager.evaluate_condition(&high_condition, &Value::Float(60.0)).unwrap());
+        assert!(!manager.evaluate_condition(&high_condition, &Value::Float(40.0)).unwrap());
+        
+        let range_condition = AlarmCondition::InRange { min: 10.0, max: 20.0 };
+        assert!(manager.evaluate_condition(&range_condition, &Value::Float(15.0)).unwrap());
+        assert!(!manager.evaluate_condition(&range_condition, &Value::Float(25.0)).unwrap());
+    }
 }
-
-#[async_trait::async_trait]
-impl EmailSender for SmtpEmailSender {
-   async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<()> {
-       // Use lettre crate for SMTP
-       // This is a placeholder - you'd implement actual SMTP sending
-       info!("Sending email to {}: {}", to, subject);
-       Ok(())
-   }
-}
-
-// SMS implementation using Twilio (reuse existing)
-#[cfg(feature = "web")]
-pub struct TwilioSmsSender {
-   client: reqwest::Client,
-   account_sid: String,
-   auth_token: String,
-   from_number: String,
-}
-
-#[cfg(feature = "web")]
-#[async_trait::async_trait]
-impl SmsSender for TwilioSmsSender {
-   async fn send_sms(&self, to: &str, message: &str) -> Result<()> {
-       // Reuse existing Twilio implementation
-       info!("Sending SMS to {}: {}", to, message);
-       Ok(())
-   }
-}
-
-// Implement similar for calls
