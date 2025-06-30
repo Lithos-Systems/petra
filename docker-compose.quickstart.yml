@@ -1,0 +1,25 @@
+# docker-compose.quickstart.yml
+version: '3.8'
+services:
+  petra:
+    image: ghcr.io/your-org/petra:latest
+    environment:
+      - PETRA_AUTO_INIT=true
+    ports:
+      - "1883:1883"  # MQTT
+      - "9090:9090"  # Metrics
+      - "8080:8080"  # Designer UI
+    volumes:
+      - ./configs:/configs
+      - petra-data:/data
+    
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    
+  petra-designer:
+    image: ghcr.io/your-org/petra-designer:latest
+    ports:
+      - "3000:3000"
