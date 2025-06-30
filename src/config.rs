@@ -21,6 +21,7 @@ pub struct Config {
     
     pub scan_time_ms: u64,
     
+    #[cfg(feature = "mqtt")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mqtt: Option<MqttConfig>,
     
@@ -36,6 +37,7 @@ pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opcua: Option<OpcUaConfig>,
     
+    #[cfg(feature = "alarms")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alarms: Option<Vec<AlarmConfig>>,
     
@@ -178,13 +180,15 @@ impl Config {
     
     /// Save configuration to a YAML file
     pub fn to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let yaml = serde_yaml::to_string(self)?;
+        let yaml = serde_yaml::to_string(self)
+            .map_err(|e| PlcError::Config(format!("YAML serialization error: {}", e)))?;
         
         #[cfg(feature = "security")]
         if let Some(sig) = &self.signature {
             let signed = format!(
                 "---BEGIN SIGNATURE---\n{}\n---BEGIN CONFIG---\n{}\n---END CONFIG---",
-                serde_yaml::to_string(sig)?,
+                serde_yaml::to_string(sig)
+                    .map_err(|e| PlcError::Config(format!("YAML serialization error: {}", e)))?,
                 yaml
             );
             std::fs::write(path, signed)?;
@@ -239,6 +243,7 @@ impl Config {
         }
         
         // Validate MQTT config if present
+        #[cfg(feature = "mqtt")]
         if let Some(mqtt) = &self.mqtt {
             if mqtt.broker_host.is_empty() {
                 return Err(PlcError::Config("MQTT broker host cannot be empty".into()));
@@ -285,11 +290,11 @@ impl Config {
     }
 }
 
-// Re-export common config types
-pub use self::{
-    MqttConfig,
-    AlarmConfig,
-};
+// Re-export common config types from their respective modules
+#[cfg(feature = "mqtt")]
+pub use crate::mqtt::MqttConfig;
+#[cfg(feature = "alarms")]
+pub use crate::alarms::AlarmConfig;
 
 #[cfg(feature = "s7-support")]
 pub use self::S7Config;
@@ -323,6 +328,7 @@ mod tests {
             ],
             blocks: vec![],
             scan_time_ms: 100,
+            #[cfg(feature = "mqtt")]
             mqtt: None,
             #[cfg(feature = "s7-support")]
             s7: None,
@@ -330,6 +336,7 @@ mod tests {
             modbus: None,
             #[cfg(feature = "opcua-support")]
             opcua: None,
+            #[cfg(feature = "alarms")]
             alarms: None,
             #[cfg(feature = "history")]
             history: None,
@@ -357,6 +364,7 @@ mod tests {
             signals: vec![],
             blocks: vec![],
             scan_time_ms: 0, // Invalid
+            #[cfg(feature = "mqtt")]
             mqtt: None,
             #[cfg(feature = "s7-support")]
             s7: None,
@@ -364,6 +372,7 @@ mod tests {
             modbus: None,
             #[cfg(feature = "opcua-support")]
             opcua: None,
+            #[cfg(feature = "alarms")]
             alarms: None,
             #[cfg(feature = "history")]
             history: None,

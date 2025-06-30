@@ -1,4 +1,5 @@
 use petra::*;
+use serde_yaml;
 
 #[tokio::test]
 async fn test_basic_logic() {
@@ -25,10 +26,10 @@ blocks:
 scan_time_ms: 100
 "#;
 
-    let config = Config::from_yaml(yaml).unwrap();
+    let config: Config = serde_yaml::from_str(yaml).unwrap();
     let engine = Engine::new(config).unwrap();
 
-    let bus = engine.bus();
+    let bus = engine.get_bus();
     bus.set("a", Value::Bool(true)).unwrap();
     bus.set("b", Value::Bool(false)).unwrap();
 

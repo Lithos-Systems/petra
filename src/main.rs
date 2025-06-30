@@ -41,7 +41,7 @@ struct Args {
     config: PathBuf,
 
     /// Log level (trace, debug, info, warn, error)
-    #[arg(short, long, default_value = "info", env = "PETRA_LOG_LEVEL")]
+    #[arg(short, long, default_value = "info")]
     log_level: String,
 
     /// Enable verbose output
