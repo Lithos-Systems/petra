@@ -1,479 +1,488 @@
+// src/mqtt.rs
 use crate::{error::*, signal::SignalBus, value::Value};
-use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS, Transport, TlsConfiguration};
+use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, QoS, Packet};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
-use tokio::sync::mpsc;
-use tracing::{info, warn, debug, error};
 use std::collections::HashMap;
-#[cfg(feature = "security")]
-use rustls::{ClientConfig, RootCertStore, Certificate, PrivateKey};
-#[cfg(feature = "security")]
 use std::sync::Arc;
+use tokio::sync::RwLock;
+use tracing::{info, warn, error, debug};
+
+#[cfg(feature = "mqtt-persistence")]
+use std::path::PathBuf;
+
+#[cfg(feature = "mqtt-tls")]
+use rumqttc::{TlsConfiguration, Transport};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MqttConfig {
     pub broker_host: String,
     pub broker_port: u16,
     pub client_id: String,
-    pub topic_prefix: String,
-    #[serde(default = "default_qos")]
-    pub qos: u8,
-    #[serde(default = "default_publish_on_change")]
-    pub publish_on_change: bool,
-    // Optional fields - will use env vars if not provided
-    pub username: Option<String>,
-    pub password: Option<String>,
-    // TLS Configuration
+    
     #[serde(default)]
-    pub use_tls: bool,
-    pub ca_cert: Option<String>,
-    pub client_cert: Option<String>,
-    pub client_key: Option<String>,
-    // New: subscriptions for reading values from MQTT
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+    
+    #[serde(default = "default_keep_alive")]
+    pub keep_alive_secs: u64,
+    
+    #[serde(default = "default_clean_session")]
+    pub clean_session: bool,
+    
     #[serde(default)]
     pub subscriptions: Vec<MqttSubscription>,
+    
+    #[serde(default)]
+    pub publications: Vec<MqttPublication>,
+    
+    #[cfg(feature = "mqtt-persistence")]
+    #[serde(default)]
+    pub persistence_path: Option<PathBuf>,
+    
+    #[cfg(feature = "mqtt-tls")]
+    #[serde(default)]
+    pub tls: Option<TlsConfig>,
+    
+    #[cfg(feature = "mqtt-5")]
+    #[serde(default)]
+    pub mqtt5_properties: Option<Mqtt5Properties>,
+    
+    #[cfg(feature = "mqtt-bridge")]
+    #[serde(default)]
+    pub bridge_config: Option<BridgeConfig>,
 }
 
-/// Configuration for MQTT signal subscriptions
+fn default_keep_alive() -> u64 { 60 }
+fn default_clean_session() -> bool { true }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MqttSubscription {
-    /// Topic to subscribe to (can include wildcards)
     pub topic: String,
-    /// Signal name to update with received value
     pub signal: String,
-    /// Optional value path for JSON payloads (e.g., "sensor.value")
-    pub value_path: Option<String>,
-    /// Data type to convert to
-    pub data_type: String,
+    #[serde(default = "default_qos")]
+    pub qos: u8,
+    #[cfg(feature = "mqtt-transforms")]
+    pub transform: Option<TransformConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MqttPublication {
+    pub signal: String,
+    pub topic: String,
+    #[serde(default = "default_qos")]
+    pub qos: u8,
+    #[serde(default)]
+    pub retain: bool,
+    #[cfg(feature = "mqtt-transforms")]
+    pub transform: Option<TransformConfig>,
 }
 
 fn default_qos() -> u8 { 1 }
-fn default_publish_on_change() -> bool { true }
 
-impl Default for MqttConfig {
-    fn default() -> Self {
-        Self {
-            broker_host: "localhost".to_string(),
-            broker_port: 1883,
-            client_id: "petra-plc".to_string(),
-            topic_prefix: "petra/plc".to_string(),
-            qos: 1,
-            publish_on_change: true,
-            username: None,
-            password: None,
-            use_tls: false,
-            ca_cert: None,
-            client_cert: None,
-            client_key: None,
-            subscriptions: Vec::new(),
-        }
-    }
-}
-
-/// Message types exchanged over MQTT
+#[cfg(feature = "mqtt-tls")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum MqttMessage {
-    /// Set a signal to a new value
-    SetSignal { name: String, value: Value },
-    /// Request the current value of a signal
-    GetSignal { name: String },
-    /// Request a snapshot of all signals
-    GetAllSignals,
-    /// Request engine statistics
-    GetStats,
+pub struct TlsConfig {
+    pub ca_cert: Option<PathBuf>,
+    pub client_cert: Option<PathBuf>,
+    pub client_key: Option<PathBuf>,
+    pub alpn_protocols: Option<Vec<String>>,
 }
 
-/// Handles MQTT connectivity and message processing
-pub struct MqttHandler {
-    pub(crate) client: AsyncClient,
-    pub(crate) eventloop: EventLoop,
-    pub(crate) bus: SignalBus,
-    pub(crate) config: MqttConfig,
-    pub(crate) signal_change_rx: Option<mpsc::Receiver<(String, Value)>>,
-    // Map topic patterns to subscriptions
-    subscription_map: HashMap<String, MqttSubscription>,
+#[cfg(feature = "mqtt-5")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mqtt5Properties {
+    pub session_expiry_interval: Option<u32>,
+    pub receive_maximum: Option<u16>,
+    pub maximum_packet_size: Option<u32>,
+    pub topic_alias_maximum: Option<u16>,
+    pub user_properties: HashMap<String, String>,
 }
 
-impl MqttHandler {
-    pub fn new(bus: SignalBus, config: MqttConfig) -> Result<Self> {
-        let mut mqttoptions = MqttOptions::new(
+#[cfg(feature = "mqtt-transforms")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransformConfig {
+    pub transform_type: TransformType,
+    pub parameters: HashMap<String, serde_json::Value>,
+}
+
+#[cfg(feature = "mqtt-transforms")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TransformType {
+    Scale { factor: f64, offset: f64 },
+    JsonPath { path: String },
+    JavaScript { script: String },
+    Template { template: String },
+}
+
+pub struct MqttClient {
+    client: AsyncClient,
+    eventloop: EventLoop,
+    bus: SignalBus,
+    config: MqttConfig,
+    
+    #[cfg(feature = "mqtt-persistence")]
+    persistence: Option<MqttPersistence>,
+    
+    #[cfg(feature = "mqtt-statistics")]
+    statistics: Arc<RwLock<MqttStatistics>>,
+    
+    #[cfg(feature = "mqtt-reconnect")]
+    reconnect_strategy: ReconnectStrategy,
+}
+
+#[cfg(feature = "mqtt-statistics")]
+#[derive(Default)]
+struct MqttStatistics {
+    messages_sent: u64,
+    messages_received: u64,
+    bytes_sent: u64,
+    bytes_received: u64,
+    connect_count: u64,
+    disconnect_count: u64,
+    last_error: Option<String>,
+}
+
+#[cfg(feature = "mqtt-persistence")]
+struct MqttPersistence {
+    path: PathBuf,
+    max_size: usize,
+}
+
+#[cfg(feature = "mqtt-reconnect")]
+#[derive(Clone)]
+struct ReconnectStrategy {
+    initial_delay_ms: u64,
+    max_delay_ms: u64,
+    exponential_backoff: bool,
+    max_attempts: Option<u32>,
+}
+
+impl MqttClient {
+    pub fn new(config: MqttConfig, bus: SignalBus) -> Result<Self> {
+        let mut mqtt_options = MqttOptions::new(
             &config.client_id,
             &config.broker_host,
             config.broker_port,
         );
-        mqttoptions.set_keep_alive(Duration::from_secs(30));
         
-        // Configure authentication
-        let username = config
-            .username
-            .clone()
-            .or_else(|| std::env::var("MQTT_USERNAME").ok());
-        let password = config
-            .password
-            .clone()
-            .or_else(|| std::env::var("MQTT_PASSWORD").ok());
+        mqtt_options.set_keep_alive(std::time::Duration::from_secs(config.keep_alive_secs));
+        mqtt_options.set_clean_session(config.clean_session);
         
-        if let (Some(user), Some(pass)) = (&username, &password) {
-            mqttoptions.set_credentials(user, pass);
-            info!("MQTT authentication configured for user: {}", user);
+        // Authentication
+        if let (Some(username), Some(password)) = (&config.username, &config.password) {
+            mqtt_options.set_credentials(username, password);
         }
-
-        // Configure TLS if enabled
-        if config.use_tls {
-            let transport = Self::build_tls_config(&config)?;
-            mqttoptions.set_transport(transport);
-            info!("MQTT TLS enabled with client certificates");
-        }
-
-        let (client, eventloop) = AsyncClient::new(mqttoptions, 100);
         
-        // Build subscription map
-        let mut subscription_map = HashMap::new();
-        for sub in &config.subscriptions {
-            subscription_map.insert(sub.topic.clone(), sub.clone());
+        // TLS configuration
+        #[cfg(feature = "mqtt-tls")]
+        if let Some(tls_config) = &config.tls {
+            let tls = create_tls_config(tls_config)?;
+            mqtt_options.set_transport(Transport::tls_with_config(tls));
         }
-
+        
+        // MQTT 5 properties
+        #[cfg(feature = "mqtt-5")]
+        if let Some(props) = &config.mqtt5_properties {
+            // Apply MQTT 5 specific options
+            if let Some(interval) = props.session_expiry_interval {
+                mqtt_options.set_session_expiry_interval(Some(interval));
+            }
+        }
+        
+        let (client, eventloop) = AsyncClient::new(mqtt_options, 100);
+        
         Ok(Self {
             client,
             eventloop,
             bus,
             config,
-            signal_change_rx: None,
-            subscription_map,
-        })
-    }
-
-    #[cfg(feature = "security")]
-    fn build_tls_config(config: &MqttConfig) -> Result<Transport> {
-        use std::io::BufReader;
-        use std::fs;
-
-        // Load CA certificate
-        let ca_cert_path = config.ca_cert.as_ref()
-            .or_else(|| std::env::var("MQTT_CA_CERT").ok().as_ref())
-            .ok_or_else(|| PlcError::Config("TLS enabled but no CA certificate specified".to_string()))?;
-        
-        let ca_cert_pem = fs::read_to_string(ca_cert_path)
-            .map_err(|e| PlcError::Config(format!("Failed to read CA certificate: {}", e)))?;
-        
-        let ca_cert = rustls_pemfile::certs(&mut BufReader::new(ca_cert_pem.as_bytes()))
-            .map_err(|e| PlcError::Config(format!("Failed to parse CA certificate: {}", e)))?
-            .into_iter()
-            .map(Certificate)
-            .collect::<Vec<_>>();
-
-        // Create root certificate store
-        let mut root_store = RootCertStore::empty();
-        for cert in ca_cert {
-            root_store.add(&cert)
-                .map_err(|e| PlcError::Config(format!("Failed to add CA certificate: {}", e)))?;
-        }
-
-        // Create client config
-        let mut client_config = ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-
-        // Load client certificate and key if provided
-        if let (Some(cert_path), Some(key_path)) = (
-            config.client_cert.as_ref().or_else(|| std::env::var("MQTT_CLIENT_CERT").ok().as_ref()),
-            config.client_key.as_ref().or_else(|| std::env::var("MQTT_CLIENT_KEY").ok().as_ref())
-        ) {
-            let cert_pem = fs::read_to_string(cert_path)
-                .map_err(|e| PlcError::Config(format!("Failed to read client certificate: {}", e)))?;
-            let key_pem = fs::read_to_string(key_path)
-                .map_err(|e| PlcError::Config(format!("Failed to read client key: {}", e)))?;
-
-            let certs = rustls_pemfile::certs(&mut BufReader::new(cert_pem.as_bytes()))
-                .map_err(|e| PlcError::Config(format!("Failed to parse client certificate: {}", e)))?
-                .into_iter()
-                .map(Certificate)
-                .collect::<Vec<_>>();
-
-            let key = rustls_pemfile::pkcs8_private_keys(&mut BufReader::new(key_pem.as_bytes()))
-                .map_err(|e| PlcError::Config(format!("Failed to parse client key: {}", e)))?
-                .into_iter()
-                .next()
-                .ok_or_else(|| PlcError::Config("No private key found in client key file".to_string()))?;
-
-            client_config = ClientConfig::builder()
-                .with_safe_defaults()
-                .with_root_certificates(root_store)
-                .with_client_auth_cert(certs, PrivateKey(key))
-                .map_err(|e| PlcError::Config(format!("Failed to configure client auth: {}", e)))?;
-        }
-
-        let tls_config = TlsConfiguration::Rustls(Arc::new(client_config));
-        Ok(Transport::tls_with_config(tls_config))
-    }
-
-    #[cfg(not(feature = "security"))]
-    fn build_tls_config(_config: &MqttConfig) -> Result<Transport> {
-        Err(PlcError::Config("TLS support not enabled".to_string()))
-    }
-
-    /// Provide a channel receiving signal change notifications
-    pub fn set_signal_change_channel(&mut self, rx: mpsc::Receiver<(String, Value)>) {
-        self.signal_change_rx = Some(rx);
-    }
-
-    pub async fn start(&mut self) -> Result<()> {
-        // Subscribe to command topic
-        let cmd_topic = format!("{}/cmd", self.config.topic_prefix);
-        self.client
-            .subscribe(&cmd_topic, QoS::AtLeastOnce)
-            .await
-            .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-
-        // Subscribe to configured value topics
-        for sub in &self.config.subscriptions {
-            self.client
-                .subscribe(&sub.topic, QoS::AtLeastOnce)
-                .await
-                .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-            info!("Subscribed to {} -> signal {}", sub.topic, sub.signal);
-        }
-
-        let transport_type = if self.config.use_tls { "TLS" } else { "TCP" };
-        info!("MQTT connected to {}:{} ({})", self.config.broker_host, self.config.broker_port, transport_type);
-        info!("Subscribed to {} and {} value topics", cmd_topic, self.config.subscriptions.len());
-
-        self.publish_status("online").await?;
-        Ok(())
-    }
-
-    pub async fn run(&mut self) -> Result<()> {
-        loop {
-            tokio::select! {
-                event = self.eventloop.poll() => {
-                    match event {
-                        Ok(Event::Incoming(Packet::Publish(p))) => {
-                            self.handle_incoming_message(p.topic, p.payload.to_vec()).await;
-                        }
-                        Ok(Event::Incoming(Packet::ConnAck(_))) => {
-                            info!("MQTT reconnected");
-                            self.start().await?;
-                        }
-                        Err(e) => {
-                            warn!("MQTT error: {}", e);
-                            tokio::time::sleep(Duration::from_secs(5)).await;
-                        }
-                        _ => {}
-                    }
-                }
-                Some((name, value)) = async {
-                    if let Some(rx) = &mut self.signal_change_rx {
-                        rx.recv().await
-                    } else {
-                        None
-                    }
-                } => {
-                    if self.config.publish_on_change {
-                        self.publish_signal(&name, &value).await;
-                    }
-                }
-            }
-        }
-    }
-
-    async fn handle_incoming_message(&mut self, topic: String, payload: Vec<u8>) {
-        let payload_str = match String::from_utf8(payload) {
-            Ok(s) => s,
-            Err(e) => {
-                warn!("Invalid UTF-8 in MQTT message: {}", e);
-                return;
-            }
-        };
-
-        debug!("MQTT received on {}: {}", topic, payload_str);
-
-        // Check if this is a subscribed value topic
-        if let Some(subscription) = self.find_subscription(&topic) {
-            self.handle_value_update(subscription, &payload_str).await;
-            return;
-        }
-
-        // Otherwise, try to parse as command
-        match serde_json::from_str::<MqttMessage>(&payload_str) {
-            Ok(msg) => match msg {
-                MqttMessage::SetSignal { name, value } => {
-                    match self.bus.set(&name, value.clone()) {
-                        Ok(()) => {
-                            info!("MQTT set {} = {}", name, value);
-                        }
-                        Err(e) => warn!("Failed to set signal: {}", e),
-                    }
-                }
-                MqttMessage::GetSignal { name } => {
-                    match self.bus.get(&name) {
-                        Ok(value) => self.publish_signal(&name, &value).await,
-                        Err(e) => warn!("Signal not found: {}", e),
-                    }
-                }
-                MqttMessage::GetAllSignals => {
-                    self.publish_all_signals().await;
-                }
-                MqttMessage::GetStats => {
-                    self.publish_stats().await;
-                }
+            #[cfg(feature = "mqtt-persistence")]
+            persistence: None,
+            #[cfg(feature = "mqtt-statistics")]
+            statistics: Arc::new(RwLock::new(MqttStatistics::default())),
+            #[cfg(feature = "mqtt-reconnect")]
+            reconnect_strategy: ReconnectStrategy {
+                initial_delay_ms: 1000,
+                max_delay_ms: 60000,
+                exponential_backoff: true,
+                max_attempts: None,
             },
-            Err(_) => {
-                // Not a command, might be raw value for subscription
-                debug!("Received non-command message on {}", topic);
-            }
-        }
+        })
     }
-
-    fn find_subscription(&self, topic: &str) -> Option<MqttSubscription> {
-        // First try exact match
-        if let Some(sub) = self.subscription_map.get(topic) {
-            return Some(sub.clone());
+    
+    pub async fn run(mut self) -> Result<()> {
+        // Subscribe to configured topics
+        for sub in &self.config.subscriptions {
+            let qos = match sub.qos {
+                0 => QoS::AtMostOnce,
+                1 => QoS::AtLeastOnce,
+                2 => QoS::ExactlyOnce,
+                _ => QoS::AtLeastOnce,
+            };
+            
+            self.client.subscribe(&sub.topic, qos).await
+                .map_err(|e| PlcError::Mqtt(format!("Subscribe failed: {}", e)))?;
+            
+            info!("Subscribed to MQTT topic '{}' with QoS {}", sub.topic, sub.qos);
         }
         
-        // Then try wildcard matches
-        for (pattern, sub) in &self.subscription_map {
-            if mqtt_matches(topic, pattern) {
-                return Some(sub.clone());
+        // Start publication handler
+        let publish_handle = self.start_publisher();
+        
+        // Main event loop
+        #[cfg(feature = "mqtt-reconnect")]
+        let mut reconnect_delay = self.reconnect_strategy.initial_delay_ms;
+        
+        loop {
+            match self.eventloop.poll().await {
+                Ok(Event::Incoming(packet)) => {
+                    if let Err(e) = self.handle_incoming(packet).await {
+                        error!("Error handling MQTT packet: {}", e);
+                    }
+                    
+                    #[cfg(feature = "mqtt-reconnect")]
+                    {
+                        reconnect_delay = self.reconnect_strategy.initial_delay_ms;
+                    }
+                }
+                
+                Ok(Event::Outgoing(_)) => {
+                    // Outgoing event handled
+                }
+                
+                Err(e) => {
+                    error!("MQTT connection error: {}", e);
+                    
+                    #[cfg(feature = "mqtt-statistics")]
+                    {
+                        let mut stats = self.statistics.write().await;
+                        stats.disconnect_count += 1;
+                        stats.last_error = Some(e.to_string());
+                    }
+                    
+                    #[cfg(feature = "mqtt-reconnect")]
+                    {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(reconnect_delay)).await;
+                        
+                        if self.reconnect_strategy.exponential_backoff {
+                            reconnect_delay = (reconnect_delay * 2).min(self.reconnect_strategy.max_delay_ms);
+                        }
+                        
+                        info!("Attempting MQTT reconnection...");
+                        continue;
+                    }
+                    
+                    #[cfg(not(feature = "mqtt-reconnect"))]
+                    return Err(PlcError::Mqtt(format!("Connection lost: {}", e)));
+                }
             }
+        }
+    }
+    
+    async fn handle_incoming(&self, packet: Packet) -> Result<()> {
+        match packet {
+            Packet::Publish(publish) => {
+                debug!("Received message on topic '{}': {:?}", publish.topic, publish.payload);
+                
+                #[cfg(feature = "mqtt-statistics")]
+                {
+                    let mut stats = self.statistics.write().await;
+                    stats.messages_received += 1;
+                    stats.bytes_received += publish.payload.len() as u64;
+                }
+                
+                // Find matching subscription
+                for sub in &self.config.subscriptions {
+                    if topic_matches(&sub.topic, &publish.topic) {
+                        let value = self.parse_payload(&publish.payload, &sub)?;
+                        self.bus.set(&sub.signal, value)?;
+                        break;
+                    }
+                }
+            }
+            
+            Packet::ConnAck(connack) => {
+                info!("Connected to MQTT broker: {:?}", connack);
+                
+                #[cfg(feature = "mqtt-statistics")]
+                {
+                    let mut stats = self.statistics.write().await;
+                    stats.connect_count += 1;
+                }
+            }
+            
+            _ => {}
         }
         
-        None
-    }
-
-    async fn handle_value_update(&mut self, subscription: MqttSubscription, payload: &str) {
-        // Try to parse the value based on configured data type
-        let value = match subscription.data_type.as_str() {
-            "bool" => {
-                // Handle various boolean representations
-                match payload.trim().to_lowercase().as_str() {
-                    "true" | "1" | "on" | "yes" => Some(Value::Bool(true)),
-                    "false" | "0" | "off" | "no" => Some(Value::Bool(false)),
-                    _ => None,
-                }
-            }
-            "int" => {
-                payload.trim().parse::<i32>().ok().map(Value::Int)
-            }
-            "float" => {
-                payload.trim().parse::<f64>().ok().map(Value::Float)
-            }
-            _ => {
-                // Try JSON parsing if value_path is specified
-                if let Some(path) = &subscription.value_path {
-                    extract_json_value(payload, path, &subscription.data_type)
-                } else {
-                    None
-                }
-            }
-        };
-
-        match value {
-            Some(v) => {
-                match self.bus.set(&subscription.signal, v.clone()) {
-                    Ok(()) => {
-                        info!("MQTT updated {} = {} from topic {}", subscription.signal, v, subscription.topic);
-                    }
-                    Err(e) => {
-                        error!("Failed to update signal {} from MQTT: {}", subscription.signal, e);
-                    }
-                }
-            }
-            None => {
-                warn!("Failed to parse value '{}' as {} for signal {}", 
-                    payload, subscription.data_type, subscription.signal);
-            }
-        }
-    }
-
-    async fn publish_signal(&mut self, name: &str, value: &Value) {
-        let topic = format!("{}/signals/{}", self.config.topic_prefix, name);
-        let payload = serde_json::json!({
-            "name": name,
-            "value": value,
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })
-        .to_string();
-
-        debug!("Publishing {} = {} to {}", name, value, topic);
-
-        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
-            warn!("Failed to publish signal: {}", e);
-        }
-    }
-
-    async fn publish_all_signals(&mut self) {
-        let topic = format!("{}/signals", self.config.topic_prefix);
-        let signals = self.bus.snapshot();
-        let payload = serde_json::json!({
-            "signals": signals.into_iter().map(|(k, v)| {
-                serde_json::json!({ "name": k, "value": v })
-            }).collect::<Vec<_>>(),
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })
-        .to_string();
-
-        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
-            warn!("Failed to publish signals: {}", e);
-        }
-    }
-
-    async fn publish_stats(&mut self) {
-        let topic = format!("{}/stats", self.config.topic_prefix);
-        let payload = serde_json::json!({
-            "status": "running",
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })
-        .to_string();
-
-        if let Err(e) = self.client.publish(&topic, QoS::AtLeastOnce, false, payload).await {
-            warn!("Failed to publish stats: {}", e);
-        }
-    }
-
-    async fn publish_status(&mut self, status: &str) -> Result<()> {
-        let topic = format!("{}/status", self.config.topic_prefix);
-        self.client
-            .publish(&topic, QoS::AtLeastOnce, true, status)
-            .await
-            .map_err(|e| PlcError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
         Ok(())
     }
-}
-
-impl Drop for MqttHandler {
-    fn drop(&mut self) {
-        let topic = format!("{}/status", self.config.topic_prefix);
-        let client = self.client.clone();
-        tokio::spawn(async move {
-            let _ = client.publish(&topic, QoS::AtLeastOnce, true, "offline").await;
-            let _ = client.disconnect().await;
-        });
-    }
-}
-
-// Helper function to match MQTT topics with wildcards
-fn mqtt_matches(topic: &str, pattern: &str) -> bool {
-    let topic_parts: Vec<&str> = topic.split('/').collect();
-    let pattern_parts: Vec<&str> = pattern.split('/').collect();
     
-    if pattern_parts.contains(&"#") {
-        // # matches everything after
-        let hash_pos = pattern_parts.iter().position(|&p| p == "#").unwrap();
-        if hash_pos != pattern_parts.len() - 1 {
-            return false; // # must be last
+    fn parse_payload(&self, payload: &[u8], sub: &MqttSubscription) -> Result<Value> {
+        let text = std::str::from_utf8(payload)
+            .map_err(|e| PlcError::Mqtt(format!("Invalid UTF-8 in payload: {}", e)))?;
+        
+        #[cfg(feature = "mqtt-transforms")]
+        if let Some(transform) = &sub.transform {
+            return self.apply_transform(text, transform);
         }
-        return topic_parts.len() >= hash_pos && 
-               topic_parts[..hash_pos] == pattern_parts[..hash_pos];
+        
+        // Try to parse as different types
+        if let Ok(b) = text.parse::<bool>() {
+            Ok(Value::Bool(b))
+        } else if let Ok(i) = text.parse::<i32>() {
+            Ok(Value::Int(i))
+        } else if let Ok(f) = text.parse::<f64>() {
+            Ok(Value::Float(f))
+        } else {
+            #[cfg(feature = "extended-types")]
+            {
+                Ok(Value::String(text.to_string()))
+            }
+            #[cfg(not(feature = "extended-types"))]
+            {
+                Err(PlcError::Mqtt(format!("Cannot parse payload: {}", text)))
+            }
+        }
     }
     
-    if topic_parts.len() != pattern_parts.len() {
+    #[cfg(feature = "mqtt-transforms")]
+    fn apply_transform(&self, text: &str, transform: &TransformConfig) -> Result<Value> {
+        match &transform.transform_type {
+            TransformType::Scale { factor, offset } => {
+                let value = text.parse::<f64>()
+                    .map_err(|e| PlcError::Mqtt(format!("Scale transform parse error: {}", e)))?;
+                Ok(Value::Float(value * factor + offset))
+            }
+            
+            TransformType::JsonPath { path } => {
+                let json: serde_json::Value = serde_json::from_str(text)
+                    .map_err(|e| PlcError::Mqtt(format!("JSON parse error: {}", e)))?;
+                
+                // Apply JSONPath query
+                // Implementation would use a JSONPath library
+                todo!("JSONPath transform not yet implemented")
+            }
+            
+            _ => todo!("Transform type not yet implemented"),
+        }
+    }
+    
+    fn start_publisher(&self) -> tokio::task::JoinHandle<()> {
+        let client = self.client.clone();
+        let bus = self.bus.clone();
+        let publications = self.config.publications.clone();
+        
+        #[cfg(feature = "mqtt-statistics")]
+        let stats = self.statistics.clone();
+        
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+            
+            loop {
+                interval.tick().await;
+                
+                for pub_config in &publications {
+                    if let Some(value) = bus.get(&pub_config.signal) {
+                        let payload = format_value(&value);
+                        
+                        let qos = match pub_config.qos {
+                            0 => QoS::AtMostOnce,
+                            1 => QoS::AtLeastOnce,
+                            2 => QoS::ExactlyOnce,
+                            _ => QoS::AtLeastOnce,
+                        };
+                        
+                        if let Err(e) = client.publish(
+                            &pub_config.topic,
+                            qos,
+                            pub_config.retain,
+                            payload.as_bytes(),
+                        ).await {
+                            error!("Failed to publish to '{}': {}", pub_config.topic, e);
+                        } else {
+                            #[cfg(feature = "mqtt-statistics")]
+                            {
+                                let mut s = stats.write().await;
+                                s.messages_sent += 1;
+                                s.bytes_sent += payload.len() as u64;
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
+    
+    #[cfg(feature = "mqtt-statistics")]
+    pub async fn get_statistics(&self) -> MqttStatistics {
+        self.statistics.read().await.clone()
+    }
+}
+
+// MQTT Bridge for connecting multiple brokers
+#[cfg(feature = "mqtt-bridge")]
+pub struct MqttBridge {
+    local_client: MqttClient,
+    remote_clients: Vec<MqttClient>,
+    bridge_rules: Vec<BridgeRule>,
+}
+
+#[cfg(feature = "mqtt-bridge")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeConfig {
+    pub remote_brokers: Vec<RemoteBrokerConfig>,
+    pub rules: Vec<BridgeRule>,
+}
+
+#[cfg(feature = "mqtt-bridge")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteBrokerConfig {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub client_id: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+#[cfg(feature = "mqtt-bridge")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeRule {
+    pub direction: BridgeDirection,
+    pub local_topic: String,
+    pub remote_topic: String,
+    pub remote_broker: String,
+    pub qos: u8,
+}
+
+#[cfg(feature = "mqtt-bridge")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum BridgeDirection {
+    LocalToRemote,
+    RemoteToLocal,
+    Bidirectional,
+}
+
+// Helper functions
+fn topic_matches(pattern: &str, topic: &str) -> bool {
+    // Simple topic matching with wildcards
+    if pattern == topic {
+        return true;
+    }
+    
+    let pattern_parts: Vec<&str> = pattern.split('/').collect();
+    let topic_parts: Vec<&str> = topic.split('/').collect();
+    
+    if pattern_parts.len() != topic_parts.len() && !pattern.contains('#') {
         return false;
     }
     
-    for (t, p) in topic_parts.iter().zip(pattern_parts.iter()) {
-        if p != &"+" && t != p {
+    for (i, (p, t)) in pattern_parts.iter().zip(topic_parts.iter()).enumerate() {
+        if *p == "#" {
+            return true;
+        }
+        if *p != "+" && *p != *t {
             return false;
         }
     }
@@ -481,20 +490,59 @@ fn mqtt_matches(topic: &str, pattern: &str) -> bool {
     true
 }
 
-// Helper function to extract value from JSON payload
-fn extract_json_value(payload: &str, path: &str, data_type: &str) -> Option<Value> {
-    let json: serde_json::Value = serde_json::from_str(payload).ok()?;
-    let parts: Vec<&str> = path.split('.').collect();
+fn format_value(value: &Value) -> String {
+    match value {
+        Value::Bool(b) => b.to_string(),
+        Value::Int(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        #[cfg(feature = "extended-types")]
+        Value::String(s) => s.clone(),
+        #[cfg(feature = "extended-types")]
+        _ => serde_json::to_string(value).unwrap_or_default(),
+        #[cfg(not(feature = "extended-types"))]
+        _ => value.to_string(),
+    }
+}
+
+#[cfg(feature = "mqtt-tls")]
+fn create_tls_config(config: &TlsConfig) -> Result<TlsConfiguration> {
+    use std::io::BufReader;
+    use std::fs::File;
     
-    let mut current = &json;
-    for part in parts {
-        current = current.get(part)?;
+    let mut tls_config = TlsConfiguration::default();
+    
+    if let Some(ca_path) = &config.ca_cert {
+        let ca_file = File::open(ca_path)?;
+        let mut ca_reader = BufReader::new(ca_file);
+        // Load CA certificate
+        // Implementation would parse and add CA cert
     }
     
-    match data_type {
-        "bool" => current.as_bool().map(Value::Bool),
-        "int" => current.as_i64().map(|i| Value::Int(i as i32)),
-        "float" => current.as_f64().map(Value::Float),
-        _ => None,
+    if let (Some(cert_path), Some(key_path)) = (&config.client_cert, &config.client_key) {
+        // Load client certificate and key
+        // Implementation would parse and add client cert/key
+    }
+    
+    Ok(tls_config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_topic_matching() {
+        assert!(topic_matches("test/topic", "test/topic"));
+        assert!(topic_matches("test/+", "test/topic"));
+        assert!(topic_matches("test/#", "test/topic/sub"));
+        assert!(!topic_matches("test/topic", "test/other"));
+        assert!(!topic_matches("test/+", "test/topic/sub"));
+    }
+    
+    #[test]
+    fn test_format_value() {
+        assert_eq!(format_value(&Value::Bool(true)), "true");
+        assert_eq!(format_value(&Value::Int(42)), "42");
+        assert_eq!(format_value(&Value::Float(3.14)), "3.14");
     }
 }
