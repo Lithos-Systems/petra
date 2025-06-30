@@ -53,8 +53,8 @@ metrics = { version = "0.23", default-features = false, optional = true }
 metrics-exporter-prometheus = { version = "0.15", default-features = false, optional = true }
 
 # Storage - all optional for production flexibility
-arrow = { version = "55.1", default-features = false, optional = true }
-parquet = { version = "55.1", default-features = false, optional = true }
+arrow = { version = "55.2", default-features = false, optional = true }
+parquet = { version = "55.2", default-features = false, optional = true }
 rocksdb = { version = "0.21", default-features = false, optional = true }
 clickhouse = { version = "0.12", default-features = false, features = ["lz4"], optional = true }
 
