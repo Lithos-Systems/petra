@@ -100,6 +100,8 @@ default = ["standard-monitoring"]
 standard-monitoring = []
 enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer"]
 full = ["enhanced-monitoring", "advanced-storage", "metrics"]
+production = ["standard-monitoring", "advanced-storage"]
+dev = ["enhanced-monitoring", "metrics", "web"]
 # Optional heavy features
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
 metrics = ["dep:metrics", "metrics-exporter-prometheus"]
