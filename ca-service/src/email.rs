@@ -22,12 +22,12 @@ pub async fn send_certificate_email(
 
     // Create email template
     let mut handlebars = Handlebars::new();
-    handlebars.register_template_str("certificate_email", EMAIL_TEMPLATE)?;
+    handlebars.register_template_string("certificate_email", EMAIL_TEMPLATE)?;
 
     let email_data = json!({
         "common_name": cert.common_name,
         "certificate_id": cert.id,
-        "expires_at": cert.expires_at.format("%Y-%m-%d"),
+        "expires_at": cert.expires_at.format("%Y-%m-%d").to_string(),
         "portal_url": std::env::var("PORTAL_URL").unwrap_or_else(|_| "https://portal.petra.systems".to_string()),
     });
 

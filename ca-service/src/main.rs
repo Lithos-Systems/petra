@@ -8,7 +8,7 @@ use axum::{
 };
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use tracing::{info, warn};
+use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod ca;
@@ -99,7 +99,8 @@ async fn get_certificate(
     Path(id): Path<uuid::Uuid>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let cert = state.db.get_certificate(id).await?;
-    Ok(Json(serde_json::to_value(cert)?))
+    let value = serde_json::to_value(cert).map_err(anyhow::Error::from)?;
+    Ok(Json(value))
 }
 
 async fn download_certificate_bundle(

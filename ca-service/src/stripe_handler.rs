@@ -1,15 +1,10 @@
 use anyhow::Result;
 use axum::{
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     response::{IntoResponse, Json},
 };
-use serde_json::Value;
-use async_stripe::{
-    webhook::Webhook,
-    Event, EventObject, EventType,
-    CheckoutSession,
-};
+use stripe::{Webhook, Event, EventObject, EventType};
 use tracing::{error, info, warn};
 
 use crate::{AppState, error::ApiError, email::send_certificate_email};
@@ -32,10 +27,10 @@ pub async fn handle_stripe_webhook(
             ApiError::BadRequest("Invalid webhook signature".to_string())
         })?;
 
-    info!("Received Stripe event: {} ({})", event.event_type, event.id);
+    info!("Received Stripe event: {} ({})", event.type_, event.id);
 
     // Handle different event types
-    match &event.event_type {
+    match &event.type_ {
         EventType::CheckoutSessionCompleted => {
             handle_checkout_completed(&state, event).await?;
         }
@@ -46,7 +41,7 @@ pub async fn handle_stripe_webhook(
             handle_subscription_updated(&state, event).await?;
         }
         _ => {
-            info!("Unhandled event type: {}", event.event_type);
+            info!("Unhandled event type: {}", event.type_);
         }
     }
 
@@ -63,11 +58,17 @@ async fn handle_checkout_completed(state: &AppState, event: Event) -> Result<()>
     };
 
     // Extract required fields
-    let customer_id = session.customer.as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No customer ID in session"))?;
-    
-    let subscription_id = session.subscription.as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No subscription ID in session"))?;
+    let customer_id = session
+        .customer
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No customer ID in session"))?
+        .id();
+
+    let subscription_id = session
+        .subscription
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No subscription ID in session"))?
+        .id();
     
     let customer_email = session.customer_email.as_ref()
         .or(session.customer_details.as_ref().and_then(|d| d.email.as_ref()))
@@ -75,19 +76,29 @@ async fn handle_checkout_completed(state: &AppState, event: Event) -> Result<()>
 
     info!(
         "Processing new subscription: customer={}, subscription={}, email={}",
-        customer_id, subscription_id, customer_email
+        customer_id,
+        subscription_id,
+        customer_email
     );
 
     // Check if certificate already exists for this subscription
-    if let Some(existing) = state.db.get_certificate_by_stripe_subscription(subscription_id).await? {
-        info!("Certificate already exists for subscription {}: {}", subscription_id, existing.id);
+    if let Some(existing) = state
+        .db
+        .get_certificate_by_stripe_subscription(subscription_id.as_str())
+        .await?
+    {
+        info!(
+            "Certificate already exists for subscription {}: {}",
+            subscription_id,
+            existing.id
+        );
         return Ok(());
     }
 
     // Issue new certificate
     let (bundle, cert_record) = state.ca.issue_client_certificate(
-        customer_id,
-        subscription_id,
+        customer_id.as_str(),
+        subscription_id.as_str(),
         customer_email,
         365, // 1 year validity
     ).await?;
@@ -97,7 +108,9 @@ async fn handle_checkout_completed(state: &AppState, event: Event) -> Result<()>
 
     info!(
         "Issued certificate {} for customer {} ({})",
-        cert_record.id, customer_id, customer_email
+        cert_record.id,
+        customer_id,
+        customer_email
     );
 
     // Send email with certificate
@@ -118,11 +131,15 @@ async fn handle_subscription_deleted(state: &AppState, event: Event) -> Result<(
         }
     };
 
-    let subscription_id = &subscription.id;
+    let subscription_id = subscription.id.as_str();
     info!("Processing subscription deletion: {}", subscription_id);
 
     // Find and revoke all certificates for this subscription
-    if let Some(cert) = state.db.get_certificate_by_stripe_subscription(subscription_id).await? {
+    if let Some(cert) = state
+        .db
+        .get_certificate_by_stripe_subscription(subscription_id)
+        .await?
+    {
         info!("Revoking certificate {} for deleted subscription", cert.id);
         state.db.revoke_certificate(cert.id).await?;
         state.ca.add_to_revocation_list(cert.id).await?;
