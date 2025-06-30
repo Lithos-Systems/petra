@@ -290,6 +290,17 @@ impl Engine {
         Ok(())
     }
 
+    /// Execute a single scan cycle synchronously. Primarily for benchmarks.
+    pub fn execute_scan_cycle(&mut self) {
+        for block in &mut self.blocks {
+            if let Err(e) = block.execute(&self.bus) {
+                self.error_count.fetch_add(1, Ordering::Relaxed);
+                warn!("Block '{}' error: {}", block.name(), e);
+            }
+        }
+        self.scan_count.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn stop(&self) {
         info!("Stopping engine...");
         self.running.store(false, Ordering::Relaxed);
