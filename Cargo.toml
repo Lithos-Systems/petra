@@ -32,7 +32,7 @@ rumqttc = { version = "0.24", default-features = false, features = ["use-rustls"
 clap = { version = "4.5", features = ["std", "derive"] }
 
 # Time handling
-chrono = { version = "0.4.38", features = ["serde"], default-features = false, optional = true }
+chrono = { version = "0.4.39", features = ["serde"], default-features = false, optional = true }
 
 # Core utilities
 bytes = "1.5"
