@@ -96,22 +96,10 @@ tokio-test = "0.4"
 
 [features]
 # Minimal default for fast builds
-default = ["s7-support"]
-
-# Core features
-s7-support = ["rust-snap7"]
-history = ["arrow", "parquet", "csv"]
-mqtt = []
-#GUI
-gui = ["eframe", "egui_plot"]
-examples = ["rand"]
-
-# Update dev and full features
-dev = ["metrics", "web", "json-schema", "history", "gui", "examples"]
-full = ["advanced-storage", "security", "opcua-support", "modbus-support", "history", "metrics", "web", "enhanced", "gui", "examples"]
-# Enhanced features for production optimization
-enhanced = []
-
+default = ["standard-monitoring"]
+standard-monitoring = []
+enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer"]
+full = ["enhanced-monitoring", "advanced-storage", "metrics"]
 # Optional heavy features
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config", "zstd", "lz4"]
 metrics = ["dep:metrics", "metrics-exporter-prometheus"]
