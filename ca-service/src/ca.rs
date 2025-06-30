@@ -1,10 +1,11 @@
-use anyhow::{Context, Result};
-use chrono::{DateTime, Duration, Utc};
+use anyhow::Result;
+use chrono::{Duration, Utc};
+use time::{Duration as TimeDuration, OffsetDateTime};
 use rcgen::{
     Certificate, CertificateParams, DistinguishedName, DnType, IsCa, KeyUsagePurpose,
-    ExtendedKeyUsagePurpose, SanType, KeyPair,
+    ExtendedKeyUsagePurpose, SanType, KeyPair, SerialNumber,
 };
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs;
 use uuid::Uuid;
 
@@ -12,6 +13,7 @@ use crate::db::IssuedCertificate;
 
 pub struct CertificateAuthority {
     root_cert: Certificate,
+    root_key_pair: KeyPair,
     root_cert_pem: String,
     root_path: PathBuf,
 }
@@ -31,23 +33,23 @@ impl CertificateAuthority {
         let cert_path = root_path.join("ca.crt");
         let key_path = root_path.join("ca.key");
 
-        let (root_cert, root_cert_pem) = if cert_path.exists() && key_path.exists() {
+        let (root_cert, root_key_pair, root_cert_pem) = if cert_path.exists() && key_path.exists() {
             // Load existing CA
             info!("Loading existing CA from {:?}", root_path);
             let cert_pem = fs::read_to_string(&cert_path).await?;
             let key_pem = fs::read_to_string(&key_path).await?;
             
             let key_pair = KeyPair::from_pem(&key_pem)?;
-            let params = CertificateParams::from_ca_cert_pem(&cert_pem, key_pair)?;
-            let cert = CertificateBuilder::from_params(params)?.build()?;
-            
-            (cert, cert_pem)
+            let params = CertificateParams::from_ca_cert_pem(&cert_pem)?;
+            let cert = params.self_signed(&key_pair)?;
+
+            (cert, key_pair, cert_pem)
         } else {
             // Create new CA
             info!("Creating new CA at {:?}", root_path);
-            let cert = Self::generate_root_ca().await?;
+            let (cert, key_pair) = Self::generate_root_ca()?;
             let cert_pem = cert.pem();
-            let key_pem = cert.key_pair.serialize_pem();
+            let key_pem = key_pair.serialize_pem();
             
             // Save to disk
             fs::write(&cert_path, &cert_pem).await?;
@@ -63,21 +65,23 @@ impl CertificateAuthority {
                 fs::set_permissions(&key_path, permissions).await?;
             }
             
-            (cert, cert_pem)
+            (cert, key_pair, cert_pem)
         };
 
         Ok(Self {
             root_cert,
+            root_key_pair,
             root_cert_pem,
             root_path,
         })
     }
 
-    async fn generate_root_ca() -> Result<Certificate> {
+    fn generate_root_ca() -> Result<(Certificate, KeyPair)> {
         let mut params = CertificateParams::default();
-        params.not_before = chrono::Utc::now();
-        params.not_after = chrono::Utc::now() + Duration::days(3650); // 10 years
-        params.serial_number = Some(1);
+        let now = OffsetDateTime::now_utc();
+        params.not_before = now;
+        params.not_after = now + TimeDuration::days(3650);
+        params.serial_number = Some(SerialNumber::from(1u64));
         params.subject_alt_names = vec![];
         
         let mut distinguished_name = DistinguishedName::new();
@@ -95,7 +99,9 @@ impl CertificateAuthority {
             KeyUsagePurpose::CrlSign,
         ];
 
-        Ok(Certificate::from_params(params)?)
+        let key_pair = KeyPair::generate()?;
+        let cert = params.self_signed(&key_pair)?;
+        Ok((cert, key_pair))
     }
 
     pub async fn issue_client_certificate(
@@ -109,9 +115,10 @@ impl CertificateAuthority {
         let common_name = format!("petra-{}", customer_id);
         
         let mut params = CertificateParams::default();
-        params.not_before = chrono::Utc::now();
-        params.not_after = chrono::Utc::now() + Duration::days(validity_days);
-        params.serial_number = Some(serial_number);
+        let now = OffsetDateTime::now_utc();
+        params.not_before = now;
+        params.not_after = now + TimeDuration::days(validity_days);
+        params.serial_number = Some(SerialNumber::from(serial_number));
         
         // Subject
         let mut distinguished_name = DistinguishedName::new();
@@ -131,13 +138,14 @@ impl CertificateAuthority {
 
         // Add email as SAN
         params.subject_alt_names = vec![
-            SanType::Rfc822Name(email.to_string()),
+            SanType::Rfc822Name(email.try_into()?),
         ];
 
         // Sign with our CA
-        let cert = Certificate::from_params(params)?;
-        let cert_pem = cert.serialize_pem_with_signer(&self.root_cert)?;
-        let key_pem = cert.serialize_private_key_pem();
+        let key_pair = KeyPair::generate()?;
+        let cert = params.signed_by(&key_pair, &self.root_cert, &self.root_key_pair)?;
+        let cert_pem = cert.pem();
+        let key_pem = key_pair.serialize_pem();
 
         let bundle = ClientCertBundle {
             certificate: cert_pem.clone(),
@@ -205,8 +213,9 @@ impl CertificateAuthority {
 
     fn calculate_fingerprint(&self, cert_pem: &str) -> Result<String> {
         use ring::digest;
-        let cert_der = pem::parse(cert_pem)?.contents();
-        let hash = digest::digest(&digest::SHA256, &cert_der);
+        let pem_data = pem::parse(cert_pem)?;
+        let cert_der = pem_data.contents();
+        let hash = digest::digest(&digest::SHA256, cert_der);
         Ok(hex::encode(hash.as_ref()))
     }
 }
