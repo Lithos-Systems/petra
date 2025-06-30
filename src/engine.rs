@@ -8,7 +8,7 @@ use tracing::{info, warn, debug, error};
 use std::collections::VecDeque;
 use std::sync::Mutex;
 use serde::Serialize;
-use parking_lot::RwLock;
+use std::sync::RwLock;
 
 #[cfg(feature = "metrics")]
 use metrics::{histogram, counter, gauge};
@@ -279,7 +279,9 @@ impl Engine {
                 if let Some(start) = block_start {
                     if self.enable_enhanced_monitoring {
                         let duration = start.elapsed();
-                        self.block_execution_times.write()
+                        self.block_execution_times
+                            .write()
+                            .unwrap()
                             .insert(block.name().to_string(), duration);
                         
                         #[cfg(feature = "metrics")]
@@ -310,7 +312,7 @@ impl Engine {
             #[cfg(feature = "enhanced-monitoring")]
             if self.enable_enhanced_monitoring {
                 // Record scan time
-                self.scan_times.write().push(scan_duration);
+                self.scan_times.write().unwrap().push(scan_duration);
                 
                 // Detect signal changes and send notifications
                 if let Some(pre_scan) = pre_scan_signals {
@@ -368,12 +370,17 @@ impl Engine {
         self.running.store(false, Ordering::Relaxed);
     }
 
+    /// Get a clone of the internal running flag for external control
+    pub fn get_running_flag(&self) -> Arc<AtomicBool> {
+        self.running.clone()
+    }
+
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
     }
 
     pub fn get_stats(&self) -> EngineStats {
-        self.stats_handle.read().clone()
+        self.stats_handle.read().unwrap().clone()
     }
 
     pub fn get_bus(&self) -> &SignalBus {
@@ -403,7 +410,7 @@ impl Engine {
     }
 
     fn update_stats(&self) {
-        let mut stats = self.stats_handle.write();
+        let mut stats = self.stats_handle.write().unwrap();
         stats.running = self.running.load(Ordering::Relaxed);
         stats.scan_count = self.scan_count.load(Ordering::Relaxed);
         stats.error_count = self.error_count.load(Ordering::Relaxed);
@@ -412,7 +419,7 @@ impl Engine {
         #[cfg(feature = "enhanced-monitoring")]
         if self.enable_enhanced_monitoring {
             // Calculate average and max scan times
-            let scan_times = self.scan_times.read();
+            let scan_times = self.scan_times.read().unwrap();
             if !scan_times.is_empty() {
                 let times: Vec<f64> = scan_times.iter()
                     .map(|d| d.as_micros() as f64)
@@ -423,7 +430,7 @@ impl Engine {
             }
             
             // Copy block execution times
-            let block_times = self.block_execution_times.read();
+            let block_times = self.block_execution_times.read().unwrap();
             if !block_times.is_empty() {
                 let mut times_us = HashMap::new();
                 for (name, duration) in block_times.iter() {
@@ -440,8 +447,8 @@ impl Engine {
             return None;
         }
 
-        let scan_times = self.scan_times.read();
-        let block_times = self.block_execution_times.read();
+        let scan_times = self.scan_times.read().unwrap();
+        let block_times = self.block_execution_times.read().unwrap();
         
         Some(DetailedStats {
             scan_time_history: scan_times.iter().map(|d| d.as_micros() as u64).collect(),
@@ -498,9 +505,13 @@ mod tests {
             ],
             blocks: vec![],
             scan_time_ms: 100,
+            #[cfg(feature = "mqtt")]
             mqtt: None,
+            #[cfg(feature = "s7-support")]
             s7: None,
+            #[cfg(feature = "alarms")]
             alarms: None,
+            #[cfg(feature = "history")]
             history: None,
             engine_config: None,
         };
@@ -518,9 +529,13 @@ mod tests {
             signals: vec![],
             blocks: vec![],
             scan_time_ms: 100,
+            #[cfg(feature = "mqtt")]
             mqtt: None,
+            #[cfg(feature = "s7-support")]
             s7: None,
+            #[cfg(feature = "alarms")]
             alarms: None,
+            #[cfg(feature = "history")]
             history: None,
             engine_config: Some(serde_yaml::Value::Mapping({
                 let mut map = serde_yaml::Mapping::new();

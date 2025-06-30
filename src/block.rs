@@ -33,6 +33,204 @@ pub trait Block: Send + Sync {
     }
 }
 
+pub struct Or {
+    name: String,
+    inputs: Vec<String>,
+    output: String,
+    #[cfg(feature = "enhanced-monitoring")]
+    last_execution: Option<Duration>,
+}
+
+impl Block for Or {
+    fn execute(&mut self, bus: &SignalBus) -> Result<()> {
+        #[cfg(feature = "enhanced-monitoring")]
+        let start = Instant::now();
+
+        let mut result = false;
+        for input in &self.inputs {
+            result = result || bus.get_bool(input)?;
+            if result {
+                break;
+            }
+        }
+        bus.set(&self.output, Value::Bool(result))?;
+
+        #[cfg(feature = "enhanced-monitoring")]
+        {
+            self.last_execution = Some(start.elapsed());
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> &str { &self.name }
+    fn block_type(&self) -> &str { "OR" }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn last_execution_time(&self) -> Option<Duration> {
+        self.last_execution
+    }
+}
+
+pub struct Not {
+    name: String,
+    input: String,
+    output: String,
+    #[cfg(feature = "enhanced-monitoring")]
+    last_execution: Option<Duration>,
+}
+
+impl Block for Not {
+    fn execute(&mut self, bus: &SignalBus) -> Result<()> {
+        #[cfg(feature = "enhanced-monitoring")]
+        let start = Instant::now();
+
+        let value = !bus.get_bool(&self.input)?;
+        bus.set(&self.output, Value::Bool(value))?;
+
+        #[cfg(feature = "enhanced-monitoring")]
+        {
+            self.last_execution = Some(start.elapsed());
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> &str { &self.name }
+    fn block_type(&self) -> &str { "NOT" }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn last_execution_time(&self) -> Option<Duration> {
+        self.last_execution
+    }
+}
+
+pub struct TimerOn {
+    name: String,
+    input: String,
+    output: String,
+    preset_ms: u64,
+    start_time: Option<Instant>,
+    #[cfg(feature = "enhanced-monitoring")]
+    last_execution: Option<Duration>,
+}
+
+impl Block for TimerOn {
+    fn execute(&mut self, bus: &SignalBus) -> Result<()> {
+        #[cfg(feature = "enhanced-monitoring")]
+        let start = Instant::now();
+
+        let active = bus.get_bool(&self.input)?;
+        let mut output = false;
+        if active {
+            if self.start_time.is_none() {
+                self.start_time = Some(Instant::now());
+            }
+            if self.start_time.unwrap().elapsed() >= Duration::from_millis(self.preset_ms) {
+                output = true;
+            }
+        } else {
+            self.start_time = None;
+        }
+
+        bus.set(&self.output, Value::Bool(output))?;
+
+        #[cfg(feature = "enhanced-monitoring")]
+        {
+            self.last_execution = Some(start.elapsed());
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> &str { &self.name }
+    fn block_type(&self) -> &str { "TON" }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn last_execution_time(&self) -> Option<Duration> {
+        self.last_execution
+    }
+}
+
+pub struct RisingEdge {
+    name: String,
+    input: String,
+    output: String,
+    last_state: bool,
+    #[cfg(feature = "enhanced-monitoring")]
+    last_execution: Option<Duration>,
+}
+
+impl Block for RisingEdge {
+    fn execute(&mut self, bus: &SignalBus) -> Result<()> {
+        #[cfg(feature = "enhanced-monitoring")]
+        let start = Instant::now();
+
+        let current = bus.get_bool(&self.input)?;
+        let output = current && !self.last_state;
+        self.last_state = current;
+        bus.set(&self.output, Value::Bool(output))?;
+
+        #[cfg(feature = "enhanced-monitoring")]
+        {
+            self.last_execution = Some(start.elapsed());
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> &str { &self.name }
+    fn block_type(&self) -> &str { "R_TRIG" }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn last_execution_time(&self) -> Option<Duration> {
+        self.last_execution
+    }
+}
+
+pub struct SrLatch {
+    name: String,
+    set_input: String,
+    reset_input: String,
+    output: String,
+    state: bool,
+    #[cfg(feature = "enhanced-monitoring")]
+    last_execution: Option<Duration>,
+}
+
+impl Block for SrLatch {
+    fn execute(&mut self, bus: &SignalBus) -> Result<()> {
+        #[cfg(feature = "enhanced-monitoring")]
+        let start = Instant::now();
+
+        let set = bus.get_bool(&self.set_input)?;
+        let reset = bus.get_bool(&self.reset_input)?;
+
+        if reset {
+            self.state = false;
+        } else if set {
+            self.state = true;
+        }
+
+        bus.set(&self.output, Value::Bool(self.state))?;
+
+        #[cfg(feature = "enhanced-monitoring")]
+        {
+            self.last_execution = Some(start.elapsed());
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> &str { &self.name }
+    fn block_type(&self) -> &str { "SR_LATCH" }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn last_execution_time(&self) -> Option<Duration> {
+        self.last_execution
+    }
+}
+
 #[cfg(feature = "async-blocks")]
 #[async_trait]
 pub trait AsyncBlock: Send + Sync {
@@ -351,6 +549,93 @@ fn create_and_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
         name: config.name.clone(),
         inputs,
         output: output.clone(),
+        #[cfg(feature = "enhanced-monitoring")]
+        last_execution: None,
+    }))
+}
+
+fn create_or_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    let inputs: Vec<String> = config.inputs.values().cloned().collect();
+    if inputs.is_empty() {
+        return Err(PlcError::Config("OR block requires at least one input".into()));
+    }
+    let output = config.outputs.get("out")
+        .ok_or_else(|| PlcError::Config("OR block requires 'out' output".into()))?;
+
+    Ok(Box::new(Or {
+        name: config.name.clone(),
+        inputs,
+        output: output.clone(),
+        #[cfg(feature = "enhanced-monitoring")]
+        last_execution: None,
+    }))
+}
+
+fn create_not_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    let input = config.inputs.get("in")
+        .ok_or_else(|| PlcError::Config("NOT block requires 'in' input".into()))?;
+    let output = config.outputs.get("out")
+        .ok_or_else(|| PlcError::Config("NOT block requires 'out' output".into()))?;
+
+    Ok(Box::new(Not {
+        name: config.name.clone(),
+        input: input.clone(),
+        output: output.clone(),
+        #[cfg(feature = "enhanced-monitoring")]
+        last_execution: None,
+    }))
+}
+
+fn create_timer_on_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    let input = config.inputs.get("in")
+        .ok_or_else(|| PlcError::Config("TON block requires 'in' input".into()))?;
+    let output = config.outputs.get("out")
+        .ok_or_else(|| PlcError::Config("TON block requires 'out' output".into()))?;
+    let preset_ms = config.params.get("preset_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1000);
+
+    Ok(Box::new(TimerOn {
+        name: config.name.clone(),
+        input: input.clone(),
+        output: output.clone(),
+        preset_ms,
+        start_time: None,
+        #[cfg(feature = "enhanced-monitoring")]
+        last_execution: None,
+    }))
+}
+
+fn create_rising_edge_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    let input = config.inputs.get("in")
+        .ok_or_else(|| PlcError::Config("R_TRIG block requires 'in' input".into()))?;
+    let output = config.outputs.get("out")
+        .ok_or_else(|| PlcError::Config("R_TRIG block requires 'out' output".into()))?;
+
+    Ok(Box::new(RisingEdge {
+        name: config.name.clone(),
+        input: input.clone(),
+        output: output.clone(),
+        last_state: false,
+        #[cfg(feature = "enhanced-monitoring")]
+        last_execution: None,
+    }))
+}
+
+fn create_sr_latch_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    let set_input = config.inputs.get("set")
+        .ok_or_else(|| PlcError::Config("SR_LATCH block requires 'set' input".into()))?;
+    let reset_input = config.inputs.get("reset")
+        .ok_or_else(|| PlcError::Config("SR_LATCH block requires 'reset' input".into()))?;
+    let output = config.outputs.get("out")
+        .ok_or_else(|| PlcError::Config("SR_LATCH block requires 'out' output".into()))?;
+
+    Ok(Box::new(SrLatch {
+        name: config.name.clone(),
+        set_input: set_input.clone(),
+        reset_input: reset_input.clone(),
+        output: output.clone(),
+        state: false,
         #[cfg(feature = "enhanced-monitoring")]
         last_execution: None,
     }))
