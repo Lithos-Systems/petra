@@ -30,6 +30,22 @@ case "$LEVEL" in
         echo "📊 Running benchmarks"
         cargo bench --bench engine_performance
         ;;
+
+    "security")
+        echo "🔒 Security tests"
+        ./scripts/security-review.sh
+        cargo test --test security_tests
+        ;;
+
+    "stress")
+        echo "💪 Stress testing"
+        cargo test --test stress_tests -- --test-threads=1
+        ;;
+
+    "coverage")
+        echo "📊 Coverage analysis"
+        cargo tarpaulin --out Html --all-features
+        ;;
 esac
 
 echo "✅ Tests passed!"
