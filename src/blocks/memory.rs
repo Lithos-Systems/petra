@@ -1,6 +1,8 @@
 // src/blocks/memory.rs - Memory blocks module
 use super::Block;
 use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
+
+#[cfg(feature = "enhanced-monitoring")]
 use std::time::{Duration, Instant};
 
 // SR Latch Block
