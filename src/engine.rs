@@ -1,4 +1,4 @@
-// src/engine.rs
+use serde::Serialize;// src/engine.rs
 use crate::{
     error::*,
     signal::SignalBus,
@@ -15,7 +15,7 @@ use tracing::{info, warn, debug, error};
 use std::collections::VecDeque;
 use std::sync::Mutex;
 use serde::Serialize;
-use std::sync::RwLock;
+use tokio::sync::RwLock;
 
 #[cfg(feature = "metrics")]
 use metrics::{histogram, counter, gauge};
@@ -262,7 +262,7 @@ impl Engine {
         #[cfg(feature = "metrics")]
         gauge!("petra_engine_running").set(1.0);
 
-        let mut stats = self.stats_handle.write().unwrap();
+        let mut stats = self.stats_handle.write().await;
         stats.running = true;
         drop(stats);
 
@@ -435,7 +435,10 @@ impl Engine {
     }
 
     pub fn stats(&self) -> EngineStats {
-        self.stats_handle.read().unwrap().clone()
+        // Use blocking read in tokio context - this is acceptable for stats
+        futures::executor::block_on(async {
+            self.stats_handle.read().await.clone()
+        })
     }
 
     #[cfg(feature = "enhanced-monitoring")]
@@ -444,9 +447,18 @@ impl Engine {
             return None;
         }
 
-        let basic = self.stats();
-        let scan_times = self.scan_times.read().unwrap().to_vec();
-        let block_execution_times = self.block_execution_times.read().unwrap().clone();
+        // Use blocking operations for sync interface
+        let basic = futures::executor::block_on(async {
+            self.stats_handle.read().await.clone()
+        });
+        
+        let scan_times = futures::executor::block_on(async {
+            self.scan_times.read().await.to_vec()
+        });
+        
+        let block_execution_times = futures::executor::block_on(async {
+            self.block_execution_times.read().await.clone()
+        });
         
         let jitter_stats = if let Ok(jitter_buffer) = self.scan_jitter_buffer.try_lock() {
             if jitter_buffer.len() > 1 {
