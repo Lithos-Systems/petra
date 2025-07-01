@@ -9,19 +9,11 @@ use schemars::JsonSchema;
 
 // Conditionally import security types
 #[cfg(feature = "security")]
-use crate::security::{SecurityConfig as SecurityConfigType, SignatureConfig};
+use crate::security::{SecurityConfig, SignatureConfig, verify_signature, sign_config};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Config {
-    pub signals: Vec<SignalConfig>,
-    pub blocks: Vec<BlockConfig>,
-    pub scan_time_ms: u64,
-    
-    #[cfg(feature = "security")]
-    pub security: Option<SecurityConfigType>,
-    
-    pub engine_config: Option<serde_yaml::Value>,
     #[serde(default)]
     pub signals: Vec<SignalConfig>,
     
@@ -122,24 +114,7 @@ pub struct ValidationConfig {
     pub required: Option<bool>,
 }
 
-#[cfg(feature = "security")]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct SecurityConfig {
-    pub encryption: Option<EncryptionConfig>,
-    pub authentication: Option<AuthConfig>,
-    pub audit_log: Option<AuditConfig>,
-}
-
 impl Config {
-    pub fn save(&self, path: &Path) -> Result<()> {
-        // Convert to YAML string first, then to bytes
-        let yaml_str = serde_yaml::to_string(self)?;
-        let config_bytes = yaml_str.into_bytes();
-        
-        fs::write(path, config_bytes)?;
-        Ok(())
-    }
     /// Load configuration from a YAML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let contents = std::fs::read_to_string(&path)?;
@@ -219,6 +194,11 @@ impl Config {
         Ok(())
     }
     
+    /// Save configuration (alternative method)
+    pub fn save(&self, path: &Path) -> Result<()> {
+        self.to_file(path)
+    }
+    
     /// Validate the configuration
     pub fn validate(&self) -> Result<()> {
         // Check scan time
@@ -290,39 +270,94 @@ impl Config {
     #[cfg(feature = "security")]
     /// Sign the configuration with a private key
     pub fn sign(&mut self, key_path: &Path) -> Result<()> {
-        use crate::security::sign_config;
-        
-        let config_bytes = serde_yaml::to_vec(self)?;
+        let yaml_str = serde_yaml::to_string(self)?;
+        let config_bytes = yaml_str.into_bytes();
         let signature = sign_config(&config_bytes, key_path)?;
         
-        self.signature = Some(SignatureConfig {
-            algorithm: "ed25519".to_string(),
-            public_key: signature.public_key,
-            signature: signature.signature,
-            timestamp: chrono::Utc::now(),
-            verify_enabled: true,
-        });
+        self.signature = Some(signature);
         
         Ok(())
     }
 }
 
-// Re-export common config types from their respective modules
+// Feature-specific config types that should be defined in their respective modules
 #[cfg(feature = "mqtt")]
-pub use crate::mqtt::MqttConfig;
-#[cfg(feature = "alarms")]
-pub use crate::alarms::AlarmConfig;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct MqttConfig {
+    pub broker_host: String,
+    pub broker_port: u16,
+    pub client_id: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub keep_alive_secs: Option<u64>,
+    pub clean_session: Option<bool>,
+    pub qos: Option<u8>,
+}
 
 #[cfg(feature = "s7-support")]
-pub use self::S7Config;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct S7Config {
+    pub plc_address: String,
+    pub rack: u16,
+    pub slot: u16,
+    pub connection_type: Option<String>,
+    pub timeout_ms: Option<u32>,
+}
+
+#[cfg(feature = "s7-support")]
+impl S7Config {
+    pub fn validate(&self) -> Result<()> {
+        if self.plc_address.is_empty() {
+            return Err(PlcError::Config("S7 PLC address cannot be empty".into()));
+        }
+        Ok(())
+    }
+}
 
 #[cfg(feature = "modbus-support")]
-pub use self::ModbusConfig;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct ModbusConfig {
+    pub server_address: String,
+    pub port: u16,
+    pub slave_id: u8,
+    pub timeout_ms: Option<u32>,
+    pub retry_count: Option<u32>,
+}
+
+#[cfg(feature = "opcua-support")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct OpcUaConfig {
+    pub endpoint_url: String,
+    pub security_mode: Option<String>,
+    pub security_policy: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+#[cfg(feature = "alarms")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct AlarmConfig {
+    pub name: String,
+    pub condition: String,
+    pub severity: String,
+    pub message: String,
+    pub auto_acknowledge: Option<bool>,
+}
 
 #[cfg(feature = "history")]
-pub use self::HistoryConfig;
-
-// ... (include the rest of the config structures)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct HistoryConfig {
+    pub storage_path: std::path::PathBuf,
+    pub retention_days: Option<u32>,
+    pub compression: Option<bool>,
+    pub batch_size: Option<usize>,
+}
 
 #[cfg(test)]
 mod tests {
