@@ -1,6 +1,5 @@
 // src/blocks/mod.rs - Main blocks module
-use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
-use std::time::Duration;
+use crate::{error::*, signal::SignalBus, config::BlockConfig};
 
 #[cfg(feature = "async-blocks")]
 use async_trait::async_trait;
