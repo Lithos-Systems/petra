@@ -29,7 +29,7 @@ parquet      = { version = "55.2", optional = true }
 arrow        = { version = "55.2", optional = true }
 arrow-array  = { version = "55.2", optional = true }
 arrow-schema = { version = "55.2", optional = true }
-datafusion   = { version = "48", optional = true }
+datafusion   = { version = "48", optional = true, default-features = false, features = ["parquet", "compression"] }
 
 ## Advanced storage (removed rocksdb)
 clickhouse  = { version = "0.13", optional = true }
@@ -176,6 +176,65 @@ production-full = ["production", "advanced-storage", "compression", "mqtt", "his
 edge = ["mqtt", "standard-monitoring", "compression"]
 scada = ["s7-support", "modbus-support", "opcua-support", "production"]
 
+# Validation features
+basic-validation = ["validation"]
+regex-validation = ["validation", "regex", "once_cell"]
+schema-validation = ["validation", "jsonschema"]
+custom-validation = ["validation"]
+composite-validation = ["validation"]
+cross-field-validation = ["composite-validation"]
+validation-presets = ["validation"]
+validation-warnings = ["validation"]
+stateful-validation = ["validation"]
+async-validation = ["validation"]
+
+# Security features
+basic-auth = ["security"]
+jwt-auth = ["security", "jsonwebtoken"]
+rbac = ["security"]
+audit = ["security"]
+audit-db = ["audit"]
+audit-file = ["audit"]
+
+# Health features
+detailed-health = ["health"]
+health-metrics = ["health", "sysinfo"]
+health-history = ["health"]
+custom-endpoints = ["health"]
+
+# Realtime features
+memory-locking = ["realtime"]
+cgroups = ["realtime"]
+realtime-monitor = ["realtime", "parking_lot"]
+deadline-monitor = ["realtime"]
+
+# Block features
+async-blocks = []
+circuit-breaker = ["parking_lot"]
+block-metadata = []
+advanced-blocks = []
+pid-limits = ["advanced-blocks"]
+pid-antiwindup = ["advanced-blocks"]
+statistics = []
+ml-blocks = []
+email = ["lettre"]
+rate-limiting = []
+
+# Error features
+enhanced-errors = []
+error-recovery = []
+
+# Signal features
+enhanced = ["enhanced-monitoring"]
+history = ["parquet", "arrow", "arrow-array", "arrow-schema"]
+
+# Value features
+extended-types = []
+engineering-types = []
+quality-codes = []
+value-arithmetic = []
+unit-conversion = []
+
 # Binary configurations
 [[bin]]
 name = "petra"
@@ -236,72 +295,6 @@ strip = false
 
 [profile.bench]
 debug = true
-
-# Additional feature definitions for clarity
-[dependencies.datafusion]
-version = "48"
-optional = true
-default-features = false
-features = ["parquet", "compression"]
-
-# Validation features
-basic-validation = ["validation"]
-regex-validation = ["validation", "regex", "once_cell"]
-schema-validation = ["validation", "jsonschema"]
-custom-validation = ["validation"]
-composite-validation = ["validation"]
-cross-field-validation = ["composite-validation"]
-validation-presets = ["validation"]
-validation-warnings = ["validation"]
-stateful-validation = ["validation"]
-async-validation = ["validation"]
-
-# Security features
-basic-auth = ["security"]
-jwt-auth = ["security", "jsonwebtoken"]
-rbac = ["security"]
-audit = ["security"]
-audit-db = ["audit"]
-audit-file = ["audit"]
-
-# Health features
-detailed-health = ["health"]
-health-metrics = ["health", "sysinfo"]
-health-history = ["health"]
-custom-endpoints = ["health"]
-
-# Realtime features
-memory-locking = ["realtime"]
-cgroups = ["realtime"]
-realtime-monitor = ["realtime", "parking_lot"]
-deadline-monitor = ["realtime"]
-
-# Block features
-async-blocks = []
-circuit-breaker = ["parking_lot"]
-block-metadata = []
-advanced-blocks = []
-pid-limits = ["advanced-blocks"]
-pid-antiwindup = ["advanced-blocks"]
-statistics = []
-ml-blocks = []
-email = ["lettre"]
-rate-limiting = []
-
-# Error features
-enhanced-errors = []
-error-recovery = []
-
-# Signal features
-enhanced = ["enhanced-monitoring"]
-history = ["parquet", "arrow", "arrow-array", "arrow-schema"]
-
-# Value features
-extended-types = []
-engineering-types = []
-quality-codes = []
-value-arithmetic = []
-unit-conversion = []
 
 # Package metadata
 [package.metadata.docs.rs]
