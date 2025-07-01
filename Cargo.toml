@@ -11,14 +11,14 @@ categories = ["embedded", "hardware-support"]
 
 [dependencies]
 # Core dependencies (always included)
-tokio = { version = "1.40", features = ["full"] }
+tokio = { version = "1.43", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1.0"
-dashmap = "6.0"
+dashmap = "6.1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
@@ -29,68 +29,71 @@ parquet      = { version = "55.2", optional = true }
 arrow        = { version = "55.2", optional = true }
 arrow-array  = { version = "55.2", optional = true }
 arrow-schema = { version = "55.2", optional = true }
-datafusion = { version = "48", optional = true }
+# NOTE: DataFusion 49+ required for Arrow 55 – keep 48 for now
+datafusion   = { version = "48", optional = true }
+
 ## Advanced storage
-rocksdb = { version = "0.22", optional = true }
-clickhouse = { version = "0.11", optional = true }
+rocksdb     = { version = "0.23", optional = true }
+clickhouse  = { version = "0.13", optional = true }
 object_store = { version = "0.12", features = ["aws", "gcp", "azure"], optional = true }
-aws-config = { version = "1.5", optional = true }
-aws-sdk-s3 = { version = "1.38", optional = true }
+aws-config  = { version = "1.8", optional = true }
+aws-sdk-s3  = { version = "1.94", optional = true }
 
 ## Compression
 zstd = { version = "0.13", optional = true }
-lz4 = { version = "1.24", optional = true }
+lz4  = { version = "1.24", optional = true }
 
 ## Communication protocols
-rust-snap7 = { version = "1.142.2", optional = true }
+rust-snap7   = { version = "1.142.2", optional = true }
 tokio-modbus = { version = "0.13", optional = true }
-opcua = { version = "0.12", optional = true }
-rumqttc = { version = "0.24", optional = true }
+opcua        = { version = "0.12", optional = true }
+rumqttc      = { version = "0.24", optional = true }
 
 ## Web and networking
-reqwest = { version = "0.12", features = ["json"], optional = true }
-tokio-tungstenite = { version = "0.23", optional = true }
-axum = { version = "0.7", optional = true }
-tower = { version = "0.4", optional = true }
-tower-http = { version = "0.5", features = ["cors", "trace"], optional = true }
+reqwest            = { version = "0.12", features = ["json"], optional = true }
+tokio-tungstenite  = { version = "0.23", optional = true }
+axum               = { version = "0.7", optional = true }
+tower              = { version = "0.4", optional = true }
+tower-http         = { version = "0.6.6", features = ["cors", "tracing"], optional = true }
 
 ## Security
-ring = { version = "0.17", optional = true }
-rustls = { version = "0.23", optional = true }
-rustls-pemfile = { version = "2.1", optional = true }
-ed25519-dalek = { version = "2.1", optional = true }
-jsonwebtoken = { version = "9.3", optional = true }
+ring            = { version = "0.17", optional = true }
+rustls          = { version = "0.23", optional = true }
+rustls-pemfile  = { version = "2.1", optional = true }
+ed25519-dalek   = { version = "2.1", optional = true }
+jsonwebtoken    = { version = "9.3", optional = true }
 
 ## Monitoring and metrics
-metrics = { version = "0.23", optional = true }
+metrics                   = { version = "0.23", optional = true }
 metrics-exporter-prometheus = { version = "0.15", optional = true }
 
 ## System and realtime
-libc = { version = "0.2", optional = true }
-nix = { version = "0.29", features = ["sched", "resource", "process"], optional = true }
+libc      = { version = "0.2", optional = true }
+nix       = { version = "0.30", features = ["sched", "resource", "process"], optional = true }
 parking_lot = { version = "0.12", optional = true }
-sysinfo = { version = "0.30", optional = true }
+sysinfo     = { version = "0.30", optional = true }
 
 ## Validation and schemas
-regex = { version = "1.10", optional = true }
-once_cell = { version = "1.19", optional = true }
+regex      = { version = "1.10", optional = true }
+once_cell  = { version = "1.19", optional = true }
 jsonschema = { version = "0.18", optional = true }
-schemars = { version = "0.8", optional = true }
-validator = { version = "0.18", optional = true }
+schemars   = { version = "0.8", optional = true }
+validator  = { version = "0.18", optional = true }
 
 ## Email and notifications
 lettre = { version = "0.11", optional = true }
 
 ## GUI
-eframe = { version = "0.28", optional = true }
-egui = { version = "0.28", optional = true }
-egui-phosphor = { version = "0.6", optional = true }
-egui_plot = { version = "0.28", optional = true }
+eframe        = { version = "0.31", optional = true }
+egui          = { version = "0.31", optional = true }
+egui-phosphor = { version = "0.9", optional = true }
+egui_plot     = { version = "0.31", optional = true }
 
 ## Utilities
 ringbuffer = { version = "0.15", optional = true }
-tempfile = { version = "3.10", optional = true }
-fs2 = { version = "0.4", optional = true }
+# tempfile duplicated for dev-deps already, keep here for optional runtime use
+tempfile   = { version = "3.10", optional = true }
+fs2        = { version = "0.4", optional = true }
 
 ## Windows-specific
 [target.'cfg(windows)'.dependencies]
@@ -98,10 +101,10 @@ windows = { version = "0.57", features = ["Win32_System_Threading", "Win32_Found
 
 ## Development dependencies
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-proptest = "1.4"
+criterion  = { version = "0.5", features = ["html_reports"] }
+proptest   = "1.4"
 tokio-test = "0.4"
-tempfile = "3.10"
+tempfile   = "3.10"
 
 [features]
 default = ["standard-monitoring"]
