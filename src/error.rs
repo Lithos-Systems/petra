@@ -3,24 +3,47 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PlcError {
-    // Core errors (always available)
+    /// Configuration error
     #[error("Configuration error: {0}")]
     Config(String),
     
+    /// Signal not found
     #[error("Signal not found: {0}")]
     SignalNotFound(String),
 
+    /// Generic not found error
     #[error("Not found: {0}")]
     NotFound(String),
     
+    /// Type mismatch error
     #[error("Type mismatch: {0}")]
     TypeMismatch(String),
     
+    /// Runtime error
     #[error("Runtime error: {0}")]
     Runtime(String),
     
-    #[error("IO error: {0}")]
+    /// IO error
+    #[error("IO error")]
     Io(#[from] std::io::Error),
+
+    /// Security error
+    #[error("Security error: {0}")]
+    Security(String),
+    
+    /// Validation error
+    #[error("Validation error: {0}")]
+    Validation(String),
+    
+    /// Metrics error (for Prometheus)
+    #[cfg(feature = "metrics")]
+    #[error("Metrics error")]
+    Metrics(#[from] metrics_exporter_prometheus::BuildError),
+    
+    /// Axum server error
+    #[cfg(feature = "metrics")]
+    #[error("Server error")]
+    Server(#[from] std::io::Error),
     
     // Feature-specific errors
     #[cfg(feature = "s7-support")]
