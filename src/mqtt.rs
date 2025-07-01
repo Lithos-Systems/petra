@@ -115,6 +115,30 @@ pub enum TransformType {
     Template { template: String },
 }
 
+impl From<crate::config::MqttConfig> for MqttConfig {
+    fn from(cfg: crate::config::MqttConfig) -> Self {
+        Self {
+            broker_host: cfg.broker_host,
+            broker_port: cfg.broker_port,
+            client_id: cfg.client_id.unwrap_or_else(|| "petra".to_string()),
+            username: cfg.username,
+            password: cfg.password,
+            keep_alive_secs: cfg.keep_alive_secs.unwrap_or_else(default_keep_alive),
+            clean_session: cfg.clean_session.unwrap_or_else(default_clean_session),
+            subscriptions: Vec::new(),
+            publications: Vec::new(),
+            #[cfg(feature = "mqtt-persistence")]
+            persistence_path: None,
+            #[cfg(feature = "mqtt-tls")]
+            tls: None,
+            #[cfg(feature = "mqtt-5")]
+            mqtt5_properties: None,
+            #[cfg(feature = "mqtt-bridge")]
+            bridge_config: None,
+        }
+    }
+}
+
 pub struct MqttClient {
     client: AsyncClient,
     eventloop: EventLoop,
@@ -130,6 +154,12 @@ pub struct MqttClient {
     #[cfg(feature = "mqtt-reconnect")]
     reconnect_strategy: ReconnectStrategy,
 }
+
+// rumqttc's EventLoop is not `Sync`, which prevents the auto-derivation of `Send`
+// for `MqttClient`. The client is used within a dedicated Tokio task and does
+// not share references across threads, so it's safe to mark it as `Send`.
+unsafe impl Send for MqttClient {}
+unsafe impl Sync for MqttClient {}
 
 #[cfg(feature = "mqtt-statistics")]
 #[derive(Default)]

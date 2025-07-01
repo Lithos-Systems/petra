@@ -10,7 +10,7 @@ use petra::{
 };
 
 #[cfg(feature = "mqtt")]
-use petra::mqtt::MqttClient;
+use petra::mqtt::{MqttClient, MqttConfig as PetraMqttConfig};
 
 #[cfg(feature = "s7-support")]
 use petra::s7::S7Driver;
@@ -190,7 +190,8 @@ async fn main() -> Result<()> {
     let mqtt_handle = if let Some(mqtt_config) = &config.mqtt {
         info!("Connecting to MQTT broker at {}:{}", mqtt_config.broker_host, mqtt_config.broker_port);
         
-        let mqtt_client = MqttClient::new(mqtt_config.clone(), engine.get_bus().clone())?;
+        let mqtt_cfg: PetraMqttConfig = mqtt_config.clone().into();
+        let mqtt_client = MqttClient::new(mqtt_cfg, engine.signal_bus().clone())?;
         Some(tokio::spawn(async move {
             if let Err(e) = mqtt_client.run().await {
                 error!("MQTT client error: {}", e);
@@ -205,7 +206,7 @@ async fn main() -> Result<()> {
     let s7_handle = if let Some(s7_config) = &config.s7 {
         info!("Connecting to S7 PLC at {}", s7_config.plc_address);
         
-        let s7_driver = S7Driver::new(s7_config.clone(), engine.get_bus().clone())?;
+        let s7_driver = S7Driver::new(s7_config.clone(), engine.signal_bus().clone())?;
         Some(tokio::spawn(async move {
             if let Err(e) = s7_driver.run().await {
                 error!("S7 driver error: {}", e);
@@ -222,7 +223,7 @@ async fn main() -> Result<()> {
         
         let history_manager = HistoryManager::new(
             history_config.clone(),
-            engine.get_bus().clone()
+            engine.signal_bus().clone()
         ).await?;
         
         Some(tokio::spawn(async move {
@@ -241,7 +242,7 @@ async fn main() -> Result<()> {
         
         let alarm_manager = AlarmManager::new(
             alarm_config.clone(),
-            engine.get_bus().clone()
+            engine.signal_bus().clone()
         )?;
         
         Some(tokio::spawn(async move {
