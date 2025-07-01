@@ -1,16 +1,16 @@
 // src/security.rs
 use crate::error::{Result, PlcError};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
-use parking_lot::RwLock;
-use tracing::{info, warn};
 
 #[cfg(feature = "basic-auth")]
 pub mod auth {
     use super::*;
     use ring::pbkdf2;
     use std::num::NonZeroU32;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use parking_lot::RwLock;
+    use tracing::info;
     
     static PBKDF2_ALG: pbkdf2::Algorithm = pbkdf2::PBKDF2_HMAC_SHA256;
     const CREDENTIAL_LEN: usize = 32;
@@ -92,6 +92,7 @@ pub mod jwt {
     use super::*;
     use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
     use chrono::{Utc, Duration};
+    use std::collections::HashMap;
     
     #[derive(Debug, Serialize, Deserialize)]
     pub struct Claims {
@@ -157,6 +158,10 @@ pub mod jwt {
 #[cfg(feature = "rbac")]
 pub mod rbac {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use parking_lot::RwLock;
+    use tracing::info;
     
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Role {
@@ -279,7 +284,7 @@ pub struct AuditLogger {
     #[cfg(feature = "audit-file")]
     file_logger: Option<FileAuditLogger>,
     
-    buffer: Arc<RwLock<Vec<AuditEntry>>>,
+    buffer: std::sync::Arc<parking_lot::RwLock<Vec<AuditEntry>>>,
     max_buffer_size: usize,
 }
 
@@ -311,7 +316,7 @@ impl AuditLogger {
             database: None,
             #[cfg(feature = "audit-file")]
             file_logger: None,
-            buffer: Arc::new(RwLock::new(Vec::new())),
+            buffer: std::sync::Arc::new(parking_lot::RwLock::new(Vec::new())),
             max_buffer_size: 1000,
         }
     }
@@ -427,22 +432,22 @@ pub struct SecurityManager {
 }
 
 impl SecurityManager {
-    pub fn new(config: SecurityConfig) -> Result<Self> {
+    pub fn new(_config: SecurityConfig) -> Result<Self> {
         Ok(Self {
             #[cfg(feature = "basic-auth")]
-            basic_auth: config.basic_auth.map(|_| auth::BasicAuthenticator::new()),
+            basic_auth: _config.basic_auth.map(|_| auth::BasicAuthenticator::new()),
             
             #[cfg(feature = "jwt-auth")]
-            jwt_auth: config.jwt.map(|cfg| {
+            jwt_auth: _config.jwt.map(|cfg| {
                 jwt::JwtAuthenticator::new(cfg.secret_key.as_bytes())
                     .with_duration(chrono::Duration::hours(cfg.token_duration_hours as i64))
             }),
             
             #[cfg(feature = "rbac")]
-            rbac: config.rbac.map(|_| rbac::RoleBasedAccessControl::new()),
+            rbac: _config.rbac.map(|_| rbac::RoleBasedAccessControl::new()),
             
             #[cfg(feature = "audit")]
-            audit: config.audit.map(|_| AuditLogger::new()),
+            audit: _config.audit.map(|_| AuditLogger::new()),
         })
     }
 }
@@ -489,8 +494,8 @@ pub enum FileRotation {
     Size { max_mb: u64 },
 }
 
-// Helper functions
-pub fn hash_password(password: &str) -> Result<String> {
+// Helper functions - fixed to use underscores for unused parameters
+pub fn hash_password(_password: &str) -> Result<String> {
     #[cfg(feature = "basic-auth")]
     {
         use ring::rand::{SecureRandom, SystemRandom};
@@ -509,12 +514,12 @@ pub fn hash_password(password: &str) -> Result<String> {
     }
 }
 
-pub fn verify_signature(data: &[u8], signature: &SignatureConfig) -> Result<()> {
+pub fn verify_signature(_data: &[u8], _signature: &SignatureConfig) -> Result<()> {
     // Signature verification implementation
     Ok(())
 }
 
-pub fn sign_config(data: &[u8], key_path: &std::path::Path) -> Result<SignatureConfig> {
+pub fn sign_config(_data: &[u8], _key_path: &std::path::Path) -> Result<SignatureConfig> {
     // Config signing implementation
     Ok(SignatureConfig {
         algorithm: "ed25519".to_string(),
