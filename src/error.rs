@@ -27,6 +27,10 @@ pub enum PlcError {
     #[error("IO error")]
     Io(#[from] std::io::Error),
 
+    /// Serde YAML error
+    #[error("YAML error")]
+    Yaml(#[from] serde_yaml::Error),
+
     /// Security error
     #[error("Security error: {0}")]
     Security(String),
@@ -39,11 +43,6 @@ pub enum PlcError {
     #[cfg(feature = "metrics")]
     #[error("Metrics error")]
     Metrics(#[from] metrics_exporter_prometheus::BuildError),
-    
-    /// Axum server error
-    #[cfg(feature = "metrics")]
-    #[error("Server error")]
-    Server(#[from] std::io::Error),
     
     // Feature-specific errors
     #[cfg(feature = "s7-support")]
@@ -69,10 +68,6 @@ pub enum PlcError {
     #[cfg(feature = "circuit-breaker")]
     #[error("Circuit breaker open")]
     CircuitOpen,
-    
-    #[cfg(feature = "security")]
-    #[error("Security error: {0}")]
-    Security(String),
     
     #[cfg(feature = "security")]
     #[error("Authentication failed")]
