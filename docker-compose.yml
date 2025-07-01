@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  petra:
+    build: .
+    container_name: petra-engine
+    ports:
+      - "9090:9090"  # Metrics
+      - "8080:8080"  # Health checks
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./logs:/app/logs
+    environment:
+      - RUST_LOG=petra=info
+      - PETRA_METRICS_ADDR=0.0.0.0:9090
+      - PETRA_HEALTH_ADDR=0.0.0.0:8080
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - grafana
+    networks:
+      - petra-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: petra-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - petra-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: petra-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    networks:
+      - petra-network
+
+  # Optional: MQTT Broker for testing
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: petra-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    restart: unless-stopped
+    networks:
+      - petra-network
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  mosquitto_data:
+  mosquitto_logs:
+
+networks:
+  petra-network:
+    driver: bridge
