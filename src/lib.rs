@@ -10,7 +10,7 @@
 pub mod error;
 pub mod value;
 pub mod signal;
-pub mod block;
+pub mod blocks;  // Changed from 'block' to 'blocks'
 pub mod config;
 pub mod engine;
 
@@ -84,13 +84,14 @@ pub use value::Value;
 pub use signal::SignalBus;
 pub use engine::Engine;
 pub use config::Config;
+pub use blocks::{Block, create_block};  // Updated re-export
 
 // Feature-specific re-exports
 #[cfg(feature = "enhanced-monitoring")]
 pub use engine::DetailedStats;
 
 #[cfg(feature = "circuit-breaker")]
-pub use block::BlockExecutor;
+pub use blocks::BlockExecutor;  // Updated re-export
 
 // Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
