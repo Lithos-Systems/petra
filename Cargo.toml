@@ -112,7 +112,6 @@ enhanced-monitoring = ["standard-monitoring", "ringbuffer", "chrono"]
 optimized = ["parking_lot"]
 
 # Storage features
-history = ["parquet", "arrow", "arrow-array", "arrow-schema"]
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config"]
 compression = ["zstd", "lz4"]
 wal = ["advanced-storage"]
