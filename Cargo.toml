@@ -1,174 +1,238 @@
 [package]
 name = "petra"
-version = "2.1.0"
+version = "0.1.0"
 edition = "2021"
+authors = ["Lithos Systems"]
 license = "AGPL-3.0-or-later"
 description = "Programmable Engine for Telemetry, Runtime, and Automation"
+repository = "https://github.com/Lithos-Systems/petra"
+keywords = ["plc", "automation", "scada", "industrial", "iot"]
+categories = ["embedded", "hardware-support"]
 
 [dependencies]
-# Core runtime - minimal features only
-tokio = { version = "1.40", features = ["rt-multi-thread", "time", "signal", "macros", "sync"] }
+# Core dependencies (always included)
+tokio = { version = "1.40", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
-
-# Essential concurrency
-dashmap = "6.0"
-crossbeam = "0.8"
-parking_lot = { version = "0.12", optional = true }
-
-# Error handling
-thiserror = "1.0"
-anyhow = "1.0"
-
-# Logging - minimal
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], default-features = false }
-
-# MQTT - production ready
-rumqttc = { version = "0.24", default-features = false, features = ["use-rustls"] }
-
-# CLI
-clap = { version = "4.5", features = ["std", "derive"] }
-
-# Time handling
-chrono = { version = "0.4.39", features = ["serde"], default-features = false, optional = true }
-
-# Core utilities
-bytes = "1.5"
-ringbuffer = { version = "0.15", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+dashmap = "6.0"
 async-trait = "0.1"
-regex = { version = "1.10", optional = true }
-base64 = "0.22"
-htmlescape = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 
-# S7 communication (only if needed)
-rust-snap7 = { version = "1.142.2", optional = true }
+# Optional dependencies
+## Storage and history
+parquet = { version = "52.0", optional = true }
+arrow = { version = "52.0", optional = true }
+arrow-array = { version = "52.0", optional = true }
+arrow-schema = { version = "52.0", optional = true }
+datafusion = { version = "40.0", optional = true }
 
-# HTTP client - minimal features
-reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false, optional = true }
+## Advanced storage
+rocksdb = { version = "0.22", optional = true }
+clickhouse = { version = "0.11", optional = true }
+object_store = { version = "0.10", features = ["aws", "gcp", "azure"], optional = true }
+aws-config = { version = "1.5", optional = true }
+aws-sdk-s3 = { version = "1.38", optional = true }
 
-# Metrics - lightweight
-metrics = { version = "0.23", default-features = false, optional = true }
-metrics-exporter-prometheus = { version = "0.15", default-features = false, optional = true }
+## Compression
+zstd = { version = "0.13", optional = true }
+lz4 = { version = "1.24", optional = true }
 
-# Storage - all optional for production flexibility
-arrow = { version = "55.2", default-features = false, optional = true }
-parquet = { version = "55.2", default-features = false, optional = true }
-rocksdb = { version = "0.21", default-features = false, optional = true }
-clickhouse = { version = "0.12", default-features = false, features = ["lz4"], optional = true }
+## Communication protocols
+snap7 = { version = "1.0", optional = true }
+tokio-modbus = { version = "0.13", optional = true }
+opcua = { version = "0.12", optional = true }
+rumqttc = { version = "0.24", optional = true }
 
-# Cloud storage (optional)
-object_store = { version = "0.7", default-features = false, optional = true }
-aws-sdk-s3 = { version = "0.31", default-features = false, optional = true }
-aws-config = { version = "0.56", default-features = false, optional = true }
-
-# Compression (optional)
-zstd = { version = "0.12", default-features = false, optional = true }
-lz4 = { version = "1.24", default-features = false, optional = true }
-
-# Security (optional)
-ring = { version = "0.17", default-features = false, optional = true }
-rustls = { version = "0.23", default-features = false, optional = true }
-rustls-pemfile = { version = "2", default-features = false, optional = true }
-
-# Protocol support (optional)
-opcua = { version = "0.12", default-features = false, optional = true }
-tokio-modbus = { version = "0.7", default-features = false, optional = true }
-
-# Development/debugging (optional)
-csv = { version = "1.3", optional = true }
-schemars = { version = "0.8", default-features = false, optional = true }
-jsonschema = { version = "0.18", default-features = false, optional = true }
-
-# Communication / web (optional)
-tokio-tungstenite = { version = "0.21", optional = true }
-lettre = { version = "0.11", features = ["tokio1-rustls", "builder", "smtp-transport", "ring", "rustls-native-certs"], default-features = false, optional = true }
-
-# Validation helpers (optional)
-validator = { version = "0.16", optional = true }
-
-# Extended storage / analytics (optional)
-datafusion = { version = "36", default-features = false, optional = true }
-
-# System integration (optional)
-libc = { version = "0.2", optional = true }
-nix = { version = "0.27", optional = true }
-
-# Web services (optional)
-axum = { version = "0.7", features = ["macros", "json"], optional = true }
+## Web and networking
+reqwest = { version = "0.12", features = ["json"], optional = true }
+tokio-tungstenite = { version = "0.23", optional = true }
+axum = { version = "0.7", optional = true }
 tower = { version = "0.4", optional = true }
 tower-http = { version = "0.5", features = ["cors", "trace"], optional = true }
 
-# Security utilities (optional)
-ed25519-dalek = { version = "1", optional = true }
+## Security
+ring = { version = "0.17", optional = true }
+rustls = { version = "0.23", optional = true }
+rustls-pemfile = { version = "2.1", optional = true }
+ed25519-dalek = { version = "2.1", optional = true }
+jsonwebtoken = { version = "9.3", optional = true }
 
-# Profiling (optional)
-pprof = { version = "0.13", optional = true }
+## Monitoring and metrics
+metrics = { version = "0.23", optional = true }
+metrics-exporter-prometheus = { version = "0.15", optional = true }
 
-# GUI tooling (optional)
-egui = { version = "0.30", optional = true }
-egui-phosphor = { version = "0.3", optional = true }
+## System and realtime
+libc = { version = "0.2", optional = true }
+nix = { version = "0.29", features = ["sched", "resource", "process"], optional = true }
+parking_lot = { version = "0.12", optional = true }
+sysinfo = { version = "0.30", optional = true }
 
-# GUI dependencies (optional, for dashboard)
-eframe = { version = "0.30", optional = true }
-egui_plot = { version = "0.30", optional = true }
+## Validation and schemas
+regex = { version = "1.10", optional = true }
+once_cell = { version = "1.19", optional = true }
+jsonschema = { version = "0.18", optional = true }
+schemars = { version = "0.8", optional = true }
+validator = { version = "0.18", optional = true }
 
-# Utilities
-rand = { version = "0.8", optional = true }
+## Email and notifications
+lettre = { version = "0.11", optional = true }
 
+## GUI
+eframe = { version = "0.28", optional = true }
+egui = { version = "0.28", optional = true }
+egui-phosphor = { version = "0.6", optional = true }
+egui_plot = { version = "0.28", optional = true }
+
+## Utilities
+ringbuffer = { version = "0.15", optional = true }
+tempfile = { version = "3.10", optional = true }
+fs2 = { version = "0.4", optional = true }
+
+## Windows-specific
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.57", features = ["Win32_System_Threading", "Win32_Foundation"], optional = true }
+
+## Development dependencies
 [dev-dependencies]
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1.4"
 tokio-test = "0.4"
-tempfile = "3"
-
+tempfile = "3.10"
 
 [features]
 default = ["standard-monitoring"]
 
 # Core feature sets
 standard-monitoring = []
-enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer", "chrono"]
+enhanced-monitoring = ["standard-monitoring", "ringbuffer", "chrono"]
 optimized = ["parking_lot"]
 
 # Storage features
+history = ["parquet", "arrow", "arrow-array", "arrow-schema"]
 advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config"]
 compression = ["zstd", "lz4"]
 wal = ["advanced-storage"]
 
+# History backends
+parquet-history = ["history", "parquet"]
+csv-history = ["history"]
+influxdb-history = ["history", "reqwest"]
+clickhouse-history = ["history", "clickhouse"]
+s3-history = ["history", "object_store", "aws-sdk-s3", "aws-config"]
+remote-history = ["history"]
+history-compression = ["history", "compression"]
+history-filtering = ["history"]
+history-replay = ["history"]
+history-indexing = ["history"]
+history-statistics = ["history"]
+history-metadata = ["history"]
+history-compaction = ["history"]
+remote-retry = ["remote-history"]
+
 # Protocol support
-s7-support = ["dep:rust-snap7", "libc"]
+s7-support = ["snap7", "libc"]
 modbus-support = ["tokio-modbus"]
 opcua-support = ["opcua"]
+mqtt = ["rumqttc"]
+
+# MQTT features
+mqtt-persistence = ["mqtt"]
+mqtt-tls = ["mqtt", "rustls"]
+mqtt-websocket = ["mqtt", "tokio-tungstenite"]
+mqtt-5 = ["mqtt"]
+mqtt-bridge = ["mqtt"]
+mqtt-transforms = ["mqtt", "serde_json"]
+mqtt-statistics = ["mqtt"]
+mqtt-reconnect = ["mqtt"]
 
 # Additional features
 metrics = ["dep:metrics", "metrics-exporter-prometheus"]
 web = ["reqwest", "tokio-tungstenite"]
-security = ["ring", "rustls", "rustls-pemfile", "ed25519-dalek"]
+security = ["ring", "rustls", "rustls-pemfile"]
 json-schema = ["schemars", "jsonschema"]
-validation = ["regex", "validator"]
-history = ["parquet", "arrow", "datafusion"]
-email = ["dep:lettre"]
-twilio = ["reqwest"]
-alarms = ["email", "twilio"]
-realtime = ["libc", "nix"]
-health = ["axum", "tower", "tower-http"]
-profiling = ["pprof"]
+validation = ["regex", "validator", "once_cell"]
+alarms = ["lettre"]
+realtime = ["libc", "nix", "sysinfo"]
+health = ["axum", "tower", "tower-http", "sysinfo"]
+profiling = []
+
+# Validation features
+basic-validation = ["validation"]
+regex-validation = ["validation", "regex", "once_cell"]
+schema-validation = ["validation", "jsonschema"]
+custom-validation = ["validation"]
+composite-validation = ["validation"]
+cross-field-validation = ["composite-validation"]
+validation-presets = ["validation"]
+validation-warnings = ["validation"]
+stateful-validation = ["validation"]
+async-validation = ["validation", "async-trait"]
+
+# Security features
+basic-auth = ["security"]
+jwt-auth = ["security", "jsonwebtoken"]
+rbac = ["security"]
+audit = ["security"]
+audit-db = ["audit"]
+audit-file = ["audit"]
+
+# Health features
+detailed-health = ["health", "async-trait"]
+health-metrics = ["health", "sysinfo"]
+health-history = ["health"]
+custom-endpoints = ["health"]
+
+# Realtime features
+memory-locking = ["realtime"]
+cgroups = ["realtime"]
+realtime-monitor = ["realtime", "parking_lot"]
+deadline-monitor = ["realtime"]
+
+# Block features
+async-blocks = ["async-trait"]
+circuit-breaker = ["parking_lot"]
+block-metadata = []
+advanced-blocks = []
+pid-limits = ["advanced-blocks"]
+pid-antiwindup = ["advanced-blocks"]
+statistics = []
+ml-blocks = []
+email = ["lettre"]
+rate-limiting = []
+
+# Error features
+enhanced-errors = []
+error-recovery = []
+
+# Signal features
+enhanced = ["enhanced-monitoring"]
+history = ["parquet", "arrow", "arrow-array", "arrow-schema"]
+
+# Value features
+extended-types = ["chrono"]
+engineering-types = []
+quality-codes = ["chrono"]
+value-arithmetic = []
+unit-conversion = ["engineering-types"]
+
+# GUI features
+gui = ["eframe", "egui", "egui-phosphor", "egui_plot"]
 
 # Development features
-gui = ["eframe", "egui", "egui-phosphor", "egui_plot"]
 examples = []
 
 # Feature bundles
-enhanced = ["enhanced-monitoring", "optimized", "validation"]
-full = ["enhanced", "advanced-storage", "compression", "wal", "metrics", "web", "security", "json-schema", "history", "alarms", "health"]
+enhanced-all = ["enhanced-monitoring", "optimized", "validation", "enhanced-errors"]
+full = ["enhanced-all", "advanced-storage", "compression", "wal", "metrics", "web", "security", "json-schema", "history", "alarms", "health", "mqtt", "s7-support", "detailed-health", "health-metrics", "mqtt-persistence", "mqtt-statistics"]
 dev = ["full", "gui", "examples", "profiling"]
-
-# Production bundle (lean but with essential features)
 production = ["optimized", "standard-monitoring", "metrics", "security", "wal"]
 
-# Development features
+# Binary configurations
 [[bin]]
 name = "petra"
 path = "src/main.rs"
@@ -181,7 +245,7 @@ required-features = ["s7-support"]
 [[bin]]
 name = "mqtt_publisher"
 path = "src/bin/mqtt_publisher.rs"
-required-features = ["examples"]
+required-features = ["examples", "mqtt"]
 
 [[bin]]
 name = "petra_dashboard"
@@ -196,7 +260,7 @@ required-features = ["history"]
 [[bin]]
 name = "storage_test"
 path = "src/bin/storage_test.rs"
-required-features = ["history"]
+required-features = ["history", "advanced-storage"]
 
 [[bin]]
 name = "twilio_test"
@@ -213,9 +277,20 @@ name = "generate_schema"
 path = "src/bin/generate_schema.rs"
 required-features = ["json-schema"]
 
+[[bin]]
+name = "petra_init"
+path = "src/bin/petra_init.rs"
+
 [profile.release]
-# Balanced for production: reasonable build time + performance
-lto = "thin"          # Faster than "fat", still optimized
-codegen-units = 4     # Faster than 1, still well optimized
+lto = "thin"
+codegen-units = 4
 panic = "abort"
-strip = true          # Remove debug symbols
+strip = true
+
+[profile.bench]
+debug = true
+
+# Package metadata
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
