@@ -29,8 +29,7 @@ parquet = { version = "52.0", optional = true }
 arrow = { version = "52.0", optional = true }
 arrow-array = { version = "52.0", optional = true }
 arrow-schema = { version = "52.0", optional = true }
-datafusion = { version = "40.0", optional = true }
-
+datafusion = { version = "48", optional = true }
 ## Advanced storage
 rocksdb = { version = "0.22", optional = true }
 clickhouse = { version = "0.11", optional = true }
