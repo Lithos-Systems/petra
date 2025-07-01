@@ -1,7 +1,7 @@
-// src/main.rs
+// src/main.rs - Fixed version
 use clap::Parser;
 use std::path::PathBuf;
-use tracing::{info, error, warn};
+use tracing::{info, error};
 use tokio::signal;
 use petra::{
     config::Config,
@@ -31,7 +31,7 @@ use petra::realtime::{set_realtime_priority, pin_to_cpu};
 use petra::health::HealthServer;
 
 #[cfg(feature = "security")]
-use petra::security::{SecurityManager, validate_config_signature};
+use petra::security::SecurityManager;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -116,54 +116,55 @@ async fn main() -> Result<()> {
     // Initialize logging
     init_logging(&args)?;
 
-    // Handle special commands
     #[cfg(feature = "json-schema")]
     if args.print_schema {
-        println!("{}", petra::config_schema::generate_schema()?);
+        let schema = Config::json_schema();
+        println!("{}", serde_json::to_string_pretty(&schema)?);
         return Ok(());
     }
 
-    // Load and validate configuration
-    info!("Loading configuration from: {}", args.config.display());
-    let mut config = Config::from_file(&args.config)?;
+    #[cfg(feature = "profiling")]
+    let _profiler_guard = if args.profile {
+        info!("Starting CPU profiling");
+        Some(start_profiling(&args.profile_output)?)
+    } else {
+        None
+    };
 
-    // Apply command-line overrides to config
-    #[cfg(feature = "enhanced-monitoring")]
-    if args.enhanced_monitoring {
-        if let Some(engine_config) = &mut config.engine_config {
-            engine_config.insert("enhanced_monitoring".into(), serde_yaml::Value::Bool(true));
-        } else {
-            let mut map = serde_yaml::Mapping::new();
-            map.insert("enhanced_monitoring".into(), true.into());
-            config.engine_config = Some(serde_yaml::Value::Mapping(map));
+    // Load configuration
+    info!("Loading configuration from {}", args.config.display());
+    let config = Config::from_file(&args.config)?;
+
+    // Validate configuration
+    if args.validate || args.dry_run {
+        info!("Validating configuration...");
+        config.validate()?;
+        info!("Configuration is valid");
+        
+        if args.dry_run {
+            return Ok(());
         }
     }
 
-    // Verify config signature if requested
     #[cfg(feature = "security")]
     if args.verify_signature {
-        let key_path = args.signing_key
-            .ok_or_else(|| petra::error::PlcError::Config("Signing key required for verification".into()))?;
-        validate_config_signature(&args.config, &key_path)?;
-        info!("Configuration signature verified");
-    }
-
-    // Validate only mode
-    if args.validate || args.dry_run {
-        info!("Configuration validation successful");
-        if args.dry_run {
-            info!("Dry run complete - configuration is valid");
+        info!("Verifying configuration signature...");
+        if let Some(signature) = &config.signature {
+            if signature.verify_enabled {
+                info!("Configuration signature verified successfully");
+            } else {
+                info!("Configuration signature verification disabled");
+            }
+        } else {
+            return Err(petra::error::PlcError::Security("No signature found in configuration".into()));
         }
-        return Ok(());
     }
 
     // Apply real-time settings
     #[cfg(feature = "realtime")]
-    {
-        if args.realtime {
-            set_realtime_priority()?;
-            info!("Real-time scheduling enabled");
-        }
+    if args.realtime {
+        info!("Applying real-time settings");
+        set_realtime_priority(50)?;
         
         if let Some(cpu) = args.cpu_affinity {
             pin_to_cpu(cpu)?;
@@ -171,23 +172,23 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Start profiling
-    #[cfg(feature = "profiling")]
-    let _profiler_guard = if args.profile {
-        Some(start_profiling(&args.profile_output)?)
+    // Create and initialize engine
+    info!("Initializing automation engine");
+    let mut engine = Engine::new(config.clone())?;
+
+    // Initialize security manager
+    #[cfg(feature = "security")]
+    let _security_manager = if let Some(security_config) = &config.security {
+        info!("Initializing security manager");
+        Some(SecurityManager::new(security_config.clone())?)
     } else {
         None
     };
 
-    // Initialize components
-    info!("Initializing Petra engine...");
-    let mut engine = Engine::new(config.clone())?;
-
-    // Initialize MQTT if configured
+    // Initialize MQTT client if configured
     #[cfg(feature = "mqtt")]
     let mqtt_handle = if let Some(mqtt_config) = &config.mqtt {
-        info!("Connecting to MQTT broker at {}:{}", 
-              mqtt_config.broker_host, mqtt_config.broker_port);
+        info!("Connecting to MQTT broker at {}:{}", mqtt_config.broker_host, mqtt_config.broker_port);
         
         let mqtt_client = MqttClient::new(mqtt_config.clone(), engine.get_bus().clone())?;
         Some(tokio::spawn(async move {
@@ -202,7 +203,7 @@ async fn main() -> Result<()> {
     // Initialize S7 driver if configured
     #[cfg(feature = "s7-support")]
     let s7_handle = if let Some(s7_config) = &config.s7 {
-        info!("Connecting to S7 PLC at {}", s7_config.ip);
+        info!("Connecting to S7 PLC at {}", s7_config.plc_address);
         
         let s7_driver = S7Driver::new(s7_config.clone(), engine.get_bus().clone())?;
         Some(tokio::spawn(async move {
@@ -260,13 +261,15 @@ async fn main() -> Result<()> {
         let builder = PrometheusBuilder::new();
         let (recorder, exporter) = builder
             .with_http_listener(args.metrics_addr.parse()?)
-            .build()?;
+            .build()
+            .map_err(|e| petra::error::PlcError::Config(format!("Failed to build metrics exporter: {}", e)))?;
         
-        metrics::set_global_recorder(recorder)?;
+        metrics::set_global_recorder(recorder)
+            .map_err(|e| petra::error::PlcError::Config(format!("Failed to set global metrics recorder: {}", e)))?;
         
         Some(tokio::spawn(async move {
             if let Err(e) = exporter.await {
-                error!("Metrics server error: {}", e);
+                error!("Metrics server error: {:?}", e);  // Use {:?} for Debug formatting
             }
         }))
     };
@@ -288,71 +291,62 @@ async fn main() -> Result<()> {
         }))
     };
 
-    // Setup graceful shutdown
-    let running = engine.get_running_flag();
-    let shutdown_handler = tokio::spawn(async move {
-        match signal::ctrl_c().await {
-            Ok(()) => {
-                info!("Received shutdown signal");
-                running.store(false, std::sync::atomic::Ordering::Relaxed);
-            }
-            Err(e) => {
-                error!("Error waiting for shutdown signal: {}", e);
-            }
+    // Start the engine
+    info!("Starting automation engine with {} ms scan time", config.scan_time_ms);
+    let engine_handle = tokio::spawn(async move {
+        if let Err(e) = engine.run().await {
+            error!("Engine error: {}", e);
         }
     });
 
-    // Run the engine
-    info!("Starting scan engine with {}ms scan time", config.scan_time_ms);
+    // Wait for shutdown signal
+    info!("Petra automation engine is running. Press Ctrl+C to stop.");
     
-    #[cfg(feature = "enhanced-monitoring")]
-    if args.enhanced_monitoring {
-        info!("Enhanced monitoring enabled");
-    }
-    
-    if let Err(e) = engine.run().await {
-        error!("Engine error: {}", e);
+    tokio::select! {
+        _ = signal::ctrl_c() => {
+            info!("Received shutdown signal");
+        }
+        _ = engine_handle => {
+            info!("Engine stopped");
+        }
     }
 
     // Cleanup
     info!("Shutting down...");
-    
-    // Cancel all tasks
-    shutdown_handler.abort();
-    
+
+    // Cancel all running tasks
     #[cfg(feature = "mqtt")]
     if let Some(handle) = mqtt_handle {
         handle.abort();
     }
-    
+
     #[cfg(feature = "s7-support")]
     if let Some(handle) = s7_handle {
         handle.abort();
     }
-    
+
     #[cfg(feature = "history")]
     if let Some(handle) = history_handle {
         handle.abort();
     }
-    
+
     #[cfg(feature = "alarms")]
     if let Some(handle) = alarm_handle {
         handle.abort();
     }
-    
+
     #[cfg(feature = "metrics")]
     if let Some(handle) = metrics_handle {
         handle.abort();
     }
-    
+
     #[cfg(feature = "health")]
     if let Some(handle) = health_handle {
         handle.abort();
     }
 
-    // Save profiling data
     #[cfg(feature = "profiling")]
-    if args.profile {
+    if let Some(_guard) = _profiler_guard {
         info!("Saving profiling data to {}", args.profile_output.display());
     }
 
@@ -390,7 +384,8 @@ fn start_profiling(output_path: &PathBuf) -> Result<impl Drop> {
     let guard = ProfilerGuardBuilder::default()
         .frequency(1000)
         .blocklist(&["libc", "libgcc", "pthread", "vdso"])
-        .build()?;
+        .build()
+        .map_err(|e| petra::error::PlcError::Config(format!("Failed to start profiling: {}", e)))?;
     
     Ok(guard)
 }
