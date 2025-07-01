@@ -556,7 +556,59 @@ fn create_and_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
         last_execution: None,
     }))
 }
+fn create_less_than_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    let input_a = config.inputs.get("a")
+        .ok_or_else(|| PlcError::Config("LT block requires 'a' input".into()))?;
+    let input_b = config.inputs.get("b")
+        .ok_or_else(|| PlcError::Config("LT block requires 'b' input".into()))?;
+    let output = config.outputs.get("out")
+        .ok_or_else(|| PlcError::Config("LT block requires 'out' output".into()))?;
 
+    Ok(Box::new(LessThan {
+        name: config.name.clone(),
+        input_a: input_a.clone(),
+        input_b: input_b.clone(),
+        output: output.clone(),
+        #[cfg(feature = "enhanced-monitoring")]
+        last_execution: None,
+    }))
+}
+
+fn create_greater_than_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    let input_a = config.inputs.get("a")
+        .ok_or_else(|| PlcError::Config("GT block requires 'a' input".into()))?;
+    let input_b = config.inputs.get("b")
+        .ok_or_else(|| PlcError::Config("GT block requires 'b' input".into()))?;
+    let output = config.outputs.get("out")
+        .ok_or_else(|| PlcError::Config("GT block requires 'out' output".into()))?;
+
+    Ok(Box::new(GreaterThan {
+        name: config.name.clone(),
+        input_a: input_a.clone(),
+        input_b: input_b.clone(),
+        output: output.clone(),
+        #[cfg(feature = "enhanced-monitoring")]
+        last_execution: None,
+    }))
+}
+
+fn create_equal_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    let input_a = config.inputs.get("a")
+        .ok_or_else(|| PlcError::Config("EQ block requires 'a' input".into()))?;
+    let input_b = config.inputs.get("b")
+        .ok_or_else(|| PlcError::Config("EQ block requires 'b' input".into()))?;
+    let output = config.outputs.get("out")
+        .ok_or_else(|| PlcError::Config("EQ block requires 'out' output".into()))?;
+
+    Ok(Box::new(Equal {
+        name: config.name.clone(),
+        input_a: input_a.clone(),
+        input_b: input_b.clone(),
+        output: output.clone(),
+        #[cfg(feature = "enhanced-monitoring")]
+        last_execution: None,
+    }))
+}
 fn create_or_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
     let inputs: Vec<String> = config.inputs.values().cloned().collect();
     if inputs.is_empty() {
