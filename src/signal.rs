@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 
 #[cfg(feature = "metrics")]
-use metrics::{counter, gauge};
+use metrics::{counter, gauge, histogram};  // Added histogram here
 
 #[cfg(feature = "optimized")]
 use parking_lot::RwLock;
@@ -349,7 +349,7 @@ impl SignalBus {
         #[cfg(all(feature = "enhanced", feature = "metrics"))]
         let start = Instant::now();
         
-        let mut _count = 0;
+        let mut count = 0;  // Fixed: changed from _count to count
         for (name, value) in updates {
             signals.insert(name.clone(), value.clone());
             
