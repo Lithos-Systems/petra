@@ -123,7 +123,7 @@ impl Engine {
             start_time: Instant::now(),
             signal_change_tx: None,
             scan_jitter_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
-            target_scan_time: Duration::from_millis(config.scan_time_ms),
+            target_scan_time: Duration::from_millis(config.scan_time_ms.into()),
             stats_handle: Arc::new(RwLock::new(EngineStats {
                 running: false,
                 scan_count: 0,
@@ -199,7 +199,7 @@ impl Engine {
             start_time: Instant::now(),
             signal_change_tx: None,
             scan_jitter_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
-            target_scan_time: Duration::from_millis(config.scan_time_ms),
+            target_scan_time: Duration::from_millis(config.scan_time_ms.into()),
             stats_handle: Arc::new(RwLock::new(EngineStats {
                 running: false,
                 scan_count: 0,
@@ -239,8 +239,7 @@ impl Engine {
         if self.enable_enhanced_monitoring {
             info!("Enhanced monitoring enabled");
         }
-
-        let mut ticker = interval(Duration::from_millis(self.config.scan_time_ms));
+        let mut ticker = interval(Duration::from_millis(self.config.scan_time_ms.into()));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         while self.running.load(Ordering::Relaxed) {
