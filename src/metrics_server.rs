@@ -2,7 +2,7 @@
 use crate::error::*;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tracing::{info, error};
+use tracing::info;
 use serde::{Serialize, Deserialize};
 
 #[cfg(feature = "json-schema")]
