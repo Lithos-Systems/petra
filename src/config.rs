@@ -13,6 +13,10 @@ use crate::security::{SignatureConfig, sign_config, verify_signature};
 // Import MetricsConfig from metrics_server module
 pub use crate::metrics_server::MetricsConfig;
 
+// Import SecurityConfig when security feature is enabled
+#[cfg(feature = "security")]
+pub use crate::security::SecurityConfig;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Config {
@@ -51,6 +55,10 @@ pub struct Config {
     
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics: Option<MetricsConfig>,
+    
+    #[cfg(feature = "security")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security: Option<SecurityConfig>,
     
     #[cfg(feature = "security")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -353,6 +361,8 @@ mod tests {
             history: None,
             metrics: Some(MetricsConfig::default()),
             #[cfg(feature = "security")]
+            security: None,
+            #[cfg(feature = "security")]
             signature: None,
             metadata: HashMap::new(),
         };
@@ -383,6 +393,8 @@ mod tests {
             #[cfg(feature = "history")]
             history: None,
             metrics: None,
+            #[cfg(feature = "security")]
+            security: None,
             #[cfg(feature = "security")]
             signature: None,
             metadata: HashMap::new(),
