@@ -176,13 +176,13 @@ async fn main() -> Result<()> {
     info!("Initializing automation engine");
     let mut engine = Engine::new(config.clone())?;
 
-    // Initialize security manager (if security feature is enabled and config exists)
+    // Initialize security manager
     #[cfg(feature = "security")]
-    let _security_manager = {
-        // Note: Security config would need to be added to the Config struct
-        // For now, create with default/empty config
-        info!("Security feature available but no config field - using defaults");
-        None::<SecurityManager>
+    let _security_manager = if let Some(security_config) = &config.security {
+        info!("Initializing security manager");
+        Some(SecurityManager::new(security_config.clone())?)
+    } else {
+        None
     };
 
     // Initialize MQTT client if configured
@@ -268,8 +268,9 @@ async fn main() -> Result<()> {
             .map_err(|e| petra::error::PlcError::Config(format!("Failed to set global metrics recorder: {}", e)))?;
         
         Some(tokio::spawn(async move {
-            if let Err(e) = exporter.await {
-                error!("Metrics server error: {}", e);  // Use {} - the error should implement Display
+            match exporter.await {
+                Ok(_) => info!("Metrics server stopped normally"),
+                Err(_) => error!("Metrics server encountered an error"),
             }
         }))
     };
