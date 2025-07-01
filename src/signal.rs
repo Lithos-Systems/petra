@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 
 #[cfg(feature = "metrics")]
-use metrics::{counter, gauge, histogram};  // Added histogram here
+use metrics::{counter, gauge};
 
 #[cfg(feature = "optimized")]
 use parking_lot::RwLock;
@@ -145,6 +145,7 @@ impl SignalBus {
             
             #[cfg(feature = "enhanced")]
             if self.enable_tracking {
+                use metrics::histogram;
                 histogram!("petra_signal_update_duration_us")
                     .record(start.elapsed().as_micros() as f64);
             }
@@ -370,6 +371,7 @@ impl SignalBus {
         
         #[cfg(all(feature = "enhanced", feature = "metrics"))]
         {
+            use metrics::histogram;
             histogram!("petra_batch_update_duration_us")
                 .record(start.elapsed().as_micros() as f64);
             counter!("petra_batch_updates_total").increment(count);
