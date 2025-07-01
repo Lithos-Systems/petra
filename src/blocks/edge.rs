@@ -1,6 +1,8 @@
 // src/blocks/edge.rs - Edge detection blocks module
 use super::Block;
 use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
+
+#[cfg(feature = "enhanced-monitoring")]
 use std::time::{Duration, Instant};
 
 // Rising Edge Block
