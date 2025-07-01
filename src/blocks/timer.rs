@@ -1,7 +1,10 @@
 // src/blocks/timer.rs - Timer blocks module
 use super::Block;
 use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
-use std::time::{Duration, Instant};
+use std::time::Instant;
+
+#[cfg(feature = "enhanced-monitoring")]
+use std::time::Duration;
 
 // Timer On Delay Block
 pub struct TimerOn {
