@@ -18,7 +18,7 @@ use serde::Serialize;
 use tokio::sync::RwLock;
 
 #[cfg(feature = "metrics")]
-use metrics::{histogram, counter, gauge};
+use metrics::{counter, gauge, histogram};
 
 #[cfg(feature = "enhanced-monitoring")]
 use ringbuffer::{AllocRingBuffer, RingBuffer};
