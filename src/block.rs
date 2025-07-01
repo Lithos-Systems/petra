@@ -31,7 +31,113 @@ pub trait Block: Send + Sync {
         }
     }
 }
+pub struct LessThan {
+    name: String,
+    input_a: String,
+    input_b: String,
+    output: String,
+    #[cfg(feature = "enhanced-monitoring")]
+    last_execution: Option<Duration>,
+}
 
+impl Block for LessThan {
+    fn execute(&mut self, bus: &SignalBus) -> Result<()> {
+        #[cfg(feature = "enhanced-monitoring")]
+        let start = Instant::now();
+
+        let a = bus.get_f64(&self.input_a)?;
+        let b = bus.get_f64(&self.input_b)?;
+        let result = a < b;
+        bus.set(&self.output, Value::Bool(result))?;
+
+        #[cfg(feature = "enhanced-monitoring")]
+        {
+            self.last_execution = Some(start.elapsed());
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> &str { &self.name }
+    fn block_type(&self) -> &str { "LT" }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn last_execution_time(&self) -> Option<Duration> {
+        self.last_execution
+    }
+}
+
+pub struct GreaterThan {
+    name: String,
+    input_a: String,
+    input_b: String,
+    output: String,
+    #[cfg(feature = "enhanced-monitoring")]
+    last_execution: Option<Duration>,
+}
+
+impl Block for GreaterThan {
+    fn execute(&mut self, bus: &SignalBus) -> Result<()> {
+        #[cfg(feature = "enhanced-monitoring")]
+        let start = Instant::now();
+
+        let a = bus.get_f64(&self.input_a)?;
+        let b = bus.get_f64(&self.input_b)?;
+        let result = a > b;
+        bus.set(&self.output, Value::Bool(result))?;
+
+        #[cfg(feature = "enhanced-monitoring")]
+        {
+            self.last_execution = Some(start.elapsed());
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> &str { &self.name }
+    fn block_type(&self) -> &str { "GT" }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn last_execution_time(&self) -> Option<Duration> {
+        self.last_execution
+    }
+}
+
+pub struct Equal {
+    name: String,
+    input_a: String,
+    input_b: String,
+    output: String,
+    #[cfg(feature = "enhanced-monitoring")]
+    last_execution: Option<Duration>,
+}
+
+impl Block for Equal {
+    fn execute(&mut self, bus: &SignalBus) -> Result<()> {
+        #[cfg(feature = "enhanced-monitoring")]
+        let start = Instant::now();
+
+        let a = bus.get_f64(&self.input_a)?;
+        let b = bus.get_f64(&self.input_b)?;
+        let result = (a - b).abs() < f64::EPSILON; // Use epsilon for floating point comparison
+        bus.set(&self.output, Value::Bool(result))?;
+
+        #[cfg(feature = "enhanced-monitoring")]
+        {
+            self.last_execution = Some(start.elapsed());
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> &str { &self.name }
+    fn block_type(&self) -> &str { "EQ" }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    fn last_execution_time(&self) -> Option<Duration> {
+        self.last_execution
+    }
+}
 pub struct Or {
     name: String,
     inputs: Vec<String>,
