@@ -1,7 +1,6 @@
 // src/block.rs
 use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
 use std::time::{Instant, Duration};
-use tracing::trace;
 
 #[cfg(feature = "async-blocks")]
 use async_trait::async_trait;
