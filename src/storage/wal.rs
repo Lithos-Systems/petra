@@ -3,7 +3,7 @@ use rocksdb::{DB, Options, WriteBatch};
 use std::path::Path;
 use std::sync::Arc;
 use parking_lot::Mutex;
-use bytes::{BytesMut, BufMut};
+use bytes::{BytesMut, BufMut, Buf};
 use tracing::{info, debug};
 
 pub struct WriteAheadLog {
@@ -165,7 +165,120 @@ impl WriteAheadLog {
     }
     
     fn deserialize_entry(&self, data: &[u8]) -> Result<WalEntry> {
-        // Implement deserialization
-        unimplemented!("Deserialize WAL entry")
+        let mut buf = bytes::Bytes::copy_from_slice(data);
+
+        if buf.remaining() < 8 {
+            return Err(PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "WAL entry truncated",
+            )));
+        }
+
+        let timestamp = buf.get_i64();
+
+        if buf.remaining() < 2 {
+            return Err(PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "WAL entry truncated",
+            )));
+        }
+
+        let sig_len = buf.get_u16() as usize;
+
+        if buf.remaining() < sig_len + 1 {
+            return Err(PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "WAL entry truncated",
+            )));
+        }
+
+        let mut sig_bytes = vec![0u8; sig_len];
+        buf.copy_to_slice(&mut sig_bytes);
+        let signal = String::from_utf8(sig_bytes).map_err(|e| {
+            PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid UTF-8 in WAL entry: {}", e),
+            ))
+        })?;
+
+        let value_type = buf.get_u8();
+
+        let value = match value_type {
+            0 => {
+                if buf.remaining() < 1 {
+                    return Err(PlcError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "WAL entry truncated",
+                    )));
+                }
+                Value::Bool(buf.get_u8() != 0)
+            }
+            1 => {
+                if buf.remaining() < 4 {
+                    return Err(PlcError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "WAL entry truncated",
+                    )));
+                }
+                Value::Int(buf.get_i32())
+            }
+            2 => {
+                if buf.remaining() < 8 {
+                    return Err(PlcError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "WAL entry truncated",
+                    )));
+                }
+                Value::Float(buf.get_f64())
+            }
+            _ => {
+                return Err(PlcError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Unknown value type in WAL entry",
+                )));
+            }
+        };
+
+        Ok(WalEntry {
+            sequence: 0,
+            timestamp,
+            signal,
+            value,
+        })
+    }
+
+    pub fn recover(&self) -> Result<Vec<(String, Vec<u8>)>> {
+        let db = self.db.lock();
+        let mut entries = Vec::new();
+
+        let iter = db.iterator(rocksdb::IteratorMode::Start);
+
+        for item in iter {
+            let (key, value) = item.map_err(|e| PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("WAL read failed: {}", e),
+            )))?;
+
+            let key_str = match String::from_utf8(key.to_vec()) {
+                Ok(s) => s,
+                Err(_) => {
+                    let seq = u64::from_be_bytes(
+                        key.as_ref()[..8]
+                            .try_into()
+                            .unwrap_or([0u8; 8]),
+                    );
+                    seq.to_string()
+                }
+            };
+            entries.push((key_str, value.to_vec()));
+        }
+
+        Ok(entries)
+    }
+
+    pub fn truncate(&self) -> Result<()> {
+        self.checkpoint(u64::MAX)?;
+        *self.sequence.lock() = 0;
+        Ok(())
     }
 }
