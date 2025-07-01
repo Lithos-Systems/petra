@@ -349,10 +349,7 @@ impl SignalBus {
         #[cfg(all(feature = "enhanced", feature = "metrics"))]
         let start = Instant::now();
         
-        #[cfg(any(feature = "enhanced", feature = "metrics"))]
         let mut count = 0u64;
-        #[cfg(not(any(feature = "enhanced", feature = "metrics")))]
-        let mut _count = 0u64;
         for (name, value) in updates {
             signals.insert(name.clone(), value.clone());
             
@@ -363,14 +360,7 @@ impl SignalBus {
                 signals = self.signals.write();
             }
             
-            #[cfg(any(feature = "enhanced", feature = "metrics"))]
-            {
-                count += 1;
-            }
-            #[cfg(not(any(feature = "enhanced", feature = "metrics")))]
-            {
-                _count += 1;
-            }
+            count += 1;
         }
         
         #[cfg(feature = "enhanced")]
@@ -382,6 +372,11 @@ impl SignalBus {
         {
             histogram!("petra_batch_update_duration_us")
                 .record(start.elapsed().as_micros() as f64);
+            counter!("petra_batch_updates_total").increment(count);
+        }
+        
+        #[cfg(all(not(feature = "enhanced"), feature = "metrics"))]
+        {
             counter!("petra_batch_updates_total").increment(count);
         }
         
