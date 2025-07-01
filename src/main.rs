@@ -258,9 +258,10 @@ async fn main() -> Result<()> {
     let metrics_handle = {
         info!("Starting metrics server on {}", args.metrics_addr);
         
+        let addr: std::net::SocketAddr = args.metrics_addr.parse()?;
         let builder = PrometheusBuilder::new();
         let (recorder, exporter) = builder
-            .with_http_listener(args.metrics_addr.parse()?)
+            .with_http_listener(addr)
             .build()
             .map_err(|e| petra::error::PlcError::Config(format!("Failed to build metrics exporter: {}", e)))?;
         
