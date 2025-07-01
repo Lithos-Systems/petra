@@ -4,16 +4,16 @@ use crate::{error::Result, signal::SignalBus, value::Value};
 use std::collections::HashMap;
 
 #[cfg(feature = "s7-support")]
-pub mod s7;
+pub use crate::s7;
 
 #[cfg(feature = "modbus-support")]
-pub mod modbus;
+pub use crate::modbus;
 
 #[cfg(feature = "opcua-support")]
-pub mod opcua;
+pub use crate::opcua;
 
 #[cfg(feature = "mqtt")]
-pub mod mqtt;
+pub use crate::mqtt;
 
 // Common protocol trait
 #[async_trait]

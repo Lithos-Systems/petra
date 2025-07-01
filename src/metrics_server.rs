@@ -2,7 +2,7 @@
 use crate::error::*;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, error};
 use serde::{Serialize, Deserialize};
 
 #[cfg(feature = "json-schema")]
@@ -89,7 +89,7 @@ impl MetricsServer {
         #[cfg(feature = "metrics")]
         {
             let metrics_path = self.config.path.as_deref().unwrap_or("/metrics");
-            
+
             let app = Router::new()
                 .route(metrics_path, get(metrics_handler))
                 .with_state(self.handle.clone());
@@ -101,15 +101,15 @@ impl MetricsServer {
 
             axum::serve(listener, app).await
                 .map_err(|e| PlcError::Config(format!("Metrics server error: {}", e)))?;
+
+            Ok(())
         }
-        
+
         #[cfg(not(feature = "metrics"))]
         {
             error!("Metrics feature not enabled");
-            return Err(PlcError::Config("Metrics feature not enabled".into()));
+            Err(PlcError::Config("Metrics feature not enabled".into()))
         }
-
-        Ok(())
     }
 
     /// Get metrics server stats
