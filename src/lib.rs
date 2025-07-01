@@ -59,8 +59,6 @@ pub mod realtime;
 #[cfg_attr(docsrs, doc(cfg(feature = "health")))]
 pub mod health;
 
-#[cfg(feature = "metrics")]
-#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub mod metrics_server;
 
 // Unified protocol module
