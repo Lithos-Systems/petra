@@ -349,7 +349,10 @@ impl SignalBus {
         #[cfg(all(feature = "enhanced", feature = "metrics"))]
         let start = Instant::now();
         
-        let mut count = 0;  // Fixed: changed from _count to count
+        #[cfg(any(feature = "enhanced", feature = "metrics"))]
+        let mut count = 0u64;
+        #[cfg(not(any(feature = "enhanced", feature = "metrics")))]
+        let mut _count = 0u64;
         for (name, value) in updates {
             signals.insert(name.clone(), value.clone());
             
@@ -360,7 +363,14 @@ impl SignalBus {
                 signals = self.signals.write();
             }
             
-            count += 1;
+            #[cfg(any(feature = "enhanced", feature = "metrics"))]
+            {
+                count += 1;
+            }
+            #[cfg(not(any(feature = "enhanced", feature = "metrics")))]
+            {
+                _count += 1;
+            }
         }
         
         #[cfg(feature = "enhanced")]
