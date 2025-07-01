@@ -149,7 +149,7 @@ mqtt-statistics = ["mqtt"]
 mqtt-reconnect = ["mqtt"]
 
 # Additional features
-metrics = ["dep:metrics", "metrics-exporter-prometheus"]
+metrics = ["dep:metrics", "metrics-exporter-prometheus", "axum", "tower", "tower-http"]
 web = ["reqwest", "tokio-tungstenite"]
 security = ["ring", "rustls", "rustls-pemfile"]
 json-schema = ["schemars", "jsonschema"]
