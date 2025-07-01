@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 
 #[cfg(feature = "metrics")]
-use metrics::{counter, gauge, histogram};
+use metrics::{counter, gauge};
 
 #[cfg(feature = "optimized")]
 use parking_lot::RwLock;
