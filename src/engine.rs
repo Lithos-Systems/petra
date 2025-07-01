@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Instant, Duration};
 use tokio::time::interval;
 use tokio::sync::mpsc;
-use tracing::{info, warn, debug, error};
+use tracing::{info, warn, debug};
 use std::collections::VecDeque;
 use std::sync::Mutex;
 use serde::Serialize;
