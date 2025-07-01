@@ -1,74 +1,86 @@
-//! Metrics server module for exposing Prometheus metrics
-
-use axum::{routing::get, Router};
-use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
+// src/metrics_server.rs
+use crate::{error::*, config::MetricsConfig};
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, error};
 
-use crate::error::Result;
+#[cfg(feature = "metrics")]
+use {
+    metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle},
+    axum::{
+        extract::State,
+        http::StatusCode,
+        response::IntoResponse,
+        routing::get,
+        Router,
+    },
+};
 
-/// Metrics server configuration
-#[derive(Debug, Clone)]
-pub struct MetricsServerConfig {
-    /// Address to bind the metrics server to
-    pub bind_address: SocketAddr,
-    /// Optional custom buckets for histograms
-    pub histogram_buckets: Option<Vec<f64>>,
-}
-
-impl Default for MetricsServerConfig {
-    fn default() -> Self {
-        Self {
-            bind_address: ([127, 0, 0, 1], 9090).into(),
-            histogram_buckets: None,
-        }
-    }
-}
-
-/// Metrics server that exposes Prometheus metrics
 pub struct MetricsServer {
-    config: MetricsServerConfig,
+    config: MetricsConfig,
+    #[cfg(feature = "metrics")]
     handle: PrometheusHandle,
 }
 
 impl MetricsServer {
-    /// Create a new metrics server
-    pub fn new(config: MetricsServerConfig) -> Result<Self> {
-        let builder = PrometheusBuilder::new();
+    pub fn new(config: MetricsConfig) -> Result<Self> {
+        #[cfg(feature = "metrics")]
+        {
+            let builder = PrometheusBuilder::new()
+                .with_http_listener(config.bind_address.parse::<SocketAddr>()
+                    .map_err(|e| PlcError::Config(format!("Invalid bind address: {}", e)))?
+                );
+
+            let handle = builder.install_recorder()
+                .map_err(|e| PlcError::Config(format!("Failed to install metrics recorder: {}", e)))?;
+
+            Ok(Self {
+                config,
+                handle,
+            })
+        }
         
-        let builder = if let Some(buckets) = &config.histogram_buckets {
-            builder.set_buckets_for_metric(
-                Matcher::Full("petra_scan_duration_us".to_string()),
-                buckets,
-            )?
-        } else {
-            builder
-        };
-        
-        let handle = builder.install_recorder()?;
-        
-        Ok(Self { config, handle })
+        #[cfg(not(feature = "metrics"))]
+        {
+            Ok(Self { config })
+        }
     }
-    
-    /// Start the metrics server
-    pub async fn start(self) -> Result<()> {
-        let app = Router::new()
-            .route("/metrics", get(move || async move {
-                self.handle.render()
-            }));
+
+    pub async fn run(&self) -> Result<()> {
+        #[cfg(feature = "metrics")]
+        {
+            let app = Router::new()
+                .route("/metrics", get(metrics_handler))
+                .with_state(self.handle.clone());
+
+            let listener = TcpListener::bind(&self.config.bind_address).await
+                .map_err(|e| PlcError::Config(format!("Failed to bind to {}: {}", self.config.bind_address, e)))?;
+
+            info!("Metrics server listening on {}", self.config.bind_address);
+
+            axum::serve(listener, app).await
+                .map_err(|e| PlcError::Config(format!("Metrics server error: {}", e)))?;
+        }
         
-        let listener = TcpListener::bind(&self.config.bind_address).await?;
-        info!("Metrics server listening on {}", self.config.bind_address);
-        
-        axum::serve(listener, app).await?;
+        #[cfg(not(feature = "metrics"))]
+        {
+            error!("Metrics feature not enabled");
+            return Err(PlcError::Config("Metrics feature not enabled".into()));
+        }
+
         Ok(())
     }
 }
 
-/// Start a metrics server with default configuration
-pub async fn start_metrics_server() -> Result<()> {
-    let server = MetricsServer::new(MetricsServerConfig::default())?;
-    server.start().await
+#[cfg(feature = "metrics")]
+async fn metrics_handler(
+    State(handle): State<PrometheusHandle>,
+) -> impl IntoResponse {
+    match handle.render() {
+        Ok(metrics) => (StatusCode::OK, metrics),
+        Err(err) => {
+            error!("Failed to render metrics: {}", err);
+            (StatusCode::INTERNAL_SERVER_ERROR, String::from("Failed to render metrics"))
+        }
+    }
 }
