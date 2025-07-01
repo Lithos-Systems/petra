@@ -42,7 +42,7 @@ zstd = { version = "0.13", optional = true }
 lz4 = { version = "1.24", optional = true }
 
 ## Communication protocols
-snap7 = { version = "1.0", optional = true }
+rust-snap7 = { version = "1.142.2", optional = true }
 tokio-modbus = { version = "0.13", optional = true }
 opcua = { version = "0.12", optional = true }
 rumqttc = { version = "0.24", optional = true }
@@ -108,7 +108,7 @@ default = ["standard-monitoring"]
 
 # Core feature sets
 standard-monitoring = []
-enhanced-monitoring = ["standard-monitoring", "ringbuffer", "chrono"]
+enhanced-monitoring = ["standard-monitoring", "ringbuffer"]
 optimized = ["parking_lot"]
 
 # Storage features
@@ -133,7 +133,7 @@ history-compaction = ["history"]
 remote-retry = ["remote-history"]
 
 # Protocol support
-s7-support = ["snap7", "libc"]
+s7-support = ["rust-snap7", "libc"]
 modbus-support = ["tokio-modbus"]
 opcua-support = ["opcua"]
 mqtt = ["rumqttc"]
@@ -144,7 +144,7 @@ mqtt-tls = ["mqtt", "rustls"]
 mqtt-websocket = ["mqtt", "tokio-tungstenite"]
 mqtt-5 = ["mqtt"]
 mqtt-bridge = ["mqtt"]
-mqtt-transforms = ["mqtt", "serde_json"]
+mqtt-transforms = ["mqtt"]
 mqtt-statistics = ["mqtt"]
 mqtt-reconnect = ["mqtt"]
 
@@ -169,7 +169,7 @@ cross-field-validation = ["composite-validation"]
 validation-presets = ["validation"]
 validation-warnings = ["validation"]
 stateful-validation = ["validation"]
-async-validation = ["validation", "async-trait"]
+async-validation = ["validation"]
 
 # Security features
 basic-auth = ["security"]
@@ -180,7 +180,7 @@ audit-db = ["audit"]
 audit-file = ["audit"]
 
 # Health features
-detailed-health = ["health", "async-trait"]
+detailed-health = ["health"]
 health-metrics = ["health", "sysinfo"]
 health-history = ["health"]
 custom-endpoints = ["health"]
@@ -192,7 +192,7 @@ realtime-monitor = ["realtime", "parking_lot"]
 deadline-monitor = ["realtime"]
 
 # Block features
-async-blocks = ["async-trait"]
+async-blocks = []
 circuit-breaker = ["parking_lot"]
 block-metadata = []
 advanced-blocks = []
@@ -212,9 +212,9 @@ enhanced = ["enhanced-monitoring"]
 history = ["parquet", "arrow", "arrow-array", "arrow-schema"]
 
 # Value features
-extended-types = ["chrono"]
+extended-types = []
 engineering-types = []
-quality-codes = ["chrono"]
+quality-codes = []
 value-arithmetic = []
 unit-conversion = ["engineering-types"]
 
@@ -275,9 +275,6 @@ name = "generate_schema"
 path = "src/bin/generate_schema.rs"
 required-features = ["json-schema"]
 
-[[bin]]
-name = "petra_init"
-path = "src/bin/petra_init.rs"
 
 [profile.release]
 lto = "thin"
