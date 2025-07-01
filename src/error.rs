@@ -1,5 +1,28 @@
 // src/error.rs
 use thiserror::Error;
+#[cfg(feature = "metrics")]
+use metrics::SetRecorderError;
+
+#[cfg(feature = "metrics")]
+impl<T> From<SetRecorderError<T>> for PlcError {
+    fn from(err: SetRecorderError<T>) -> Self {
+        PlcError::Config(format!("Failed to set metrics recorder: {}", err))
+    }
+}
+
+// Add this if using serde_json
+impl From<serde_json::Error> for PlcError {
+    fn from(err: serde_json::Error) -> Self {
+        PlcError::Config(format!("JSON error: {}", err))
+    }
+}
+
+// Add this for socket address parsing
+impl From<std::net::AddrParseError> for PlcError {
+    fn from(err: std::net::AddrParseError) -> Self {
+        PlcError::Config(format!("Invalid address: {}", err))
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum PlcError {
