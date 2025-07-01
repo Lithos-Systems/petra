@@ -499,7 +499,6 @@ impl Block for PidController {
     fn block_type(&self) -> &str { "PID" }
 }
 
-// Block factory with feature-aware creation
 pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
     match config.block_type.as_str() {
         // Core blocks (always available)
@@ -509,6 +508,11 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
         "TON" => create_timer_on_block(config),
         "R_TRIG" => create_rising_edge_block(config),
         "SR_LATCH" => create_sr_latch_block(config),
+        
+        // Comparison blocks (always available)
+        "LT" => create_less_than_block(config),
+        "GT" => create_greater_than_block(config),
+        "EQ" => create_equal_block(config),
         
         // Communication blocks
         #[cfg(feature = "web")]
