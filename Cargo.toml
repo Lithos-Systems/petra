@@ -29,11 +29,9 @@ parquet      = { version = "55.2", optional = true }
 arrow        = { version = "55.2", optional = true }
 arrow-array  = { version = "55.2", optional = true }
 arrow-schema = { version = "55.2", optional = true }
-# NOTE: DataFusion 49+ required for Arrow 55 – keep 48 for now
 datafusion   = { version = "48", optional = true }
 
-## Advanced storage
-rocksdb     = { version = "0.23", optional = true }
+## Advanced storage (removed rocksdb)
 clickhouse  = { version = "0.13", optional = true }
 object_store = { version = "0.12", features = ["aws", "gcp", "azure"], optional = true }
 aws-config  = { version = "1.8", optional = true }
@@ -91,7 +89,6 @@ egui_plot     = { version = "0.31", optional = true }
 
 ## Utilities
 ringbuffer = { version = "0.15", optional = true }
-# tempfile duplicated for dev-deps already, keep here for optional runtime use
 tempfile   = { version = "3.10", optional = true }
 fs2        = { version = "0.4", optional = true }
 
@@ -114,10 +111,10 @@ standard-monitoring = []
 enhanced-monitoring = ["standard-monitoring", "ringbuffer"]
 optimized = ["parking_lot"]
 
-# Storage features
-advanced-storage = ["rocksdb", "clickhouse", "object_store", "aws-sdk-s3", "aws-config"]
+# Storage features (simplified without rocksdb)
+advanced-storage = ["clickhouse", "object_store", "aws-sdk-s3", "aws-config"]
 compression = ["zstd", "lz4"]
-wal = ["advanced-storage"]
+wal = ["fs2"]  # Simple file-based WAL without RocksDB
 
 # History backends
 parquet-history = ["history", "parquet"]
@@ -161,6 +158,91 @@ alarms = ["lettre"]
 realtime = ["libc", "nix", "sysinfo"]
 health = ["axum", "tower", "tower-http", "sysinfo"]
 profiling = []
+
+# GUI features
+gui = ["eframe", "egui", "egui-phosphor", "egui_plot"]
+
+# Development features
+examples = []
+
+# Feature bundles
+enhanced-all = ["enhanced-monitoring", "optimized", "validation", "enhanced-errors"]
+full = ["enhanced-all", "advanced-storage", "compression", "wal", "metrics", "web", "security", "json-schema", "history", "alarms", "health", "mqtt", "s7-support", "detailed-health", "health-metrics", "mqtt-persistence", "mqtt-statistics"]
+dev = ["full", "gui", "examples", "profiling"]
+
+# Production configurations (simplified)
+production = ["optimized", "standard-monitoring", "metrics", "security", "wal"]
+production-full = ["production", "advanced-storage", "compression", "mqtt", "history"]
+edge = ["mqtt", "standard-monitoring", "compression"]
+scada = ["s7-support", "modbus-support", "opcua-support", "production"]
+
+# Binary configurations
+[[bin]]
+name = "petra"
+path = "src/main.rs"
+
+[[bin]]
+name = "s7_test"
+path = "src/bin/s7_test.rs"
+required-features = ["s7-support"]
+
+[[bin]]
+name = "mqtt_publisher"
+path = "src/bin/mqtt_publisher.rs"
+required-features = ["examples", "mqtt"]
+
+[[bin]]
+name = "petra_dashboard"
+path = "src/bin/dashboard.rs"
+required-features = ["gui", "history"]
+
+[[bin]]
+name = "parquet_viewer"
+path = "src/bin/parquet_viewer.rs"
+required-features = ["history"]
+
+[[bin]]
+name = "storage_test"
+path = "src/bin/storage_test.rs"
+required-features = ["history", "advanced-storage"]
+
+[[bin]]
+name = "twilio_test"
+path = "src/bin/twilio_test.rs"
+required-features = ["web"]
+
+[[bin]]
+name = "simple_s7_test"
+path = "src/bin/simple_s7_test.rs"
+required-features = ["s7-support"]
+
+[[bin]]
+name = "generate_schema"
+path = "src/bin/generate_schema.rs"
+required-features = ["json-schema"]
+
+# Optimization profiles
+[profile.release]
+lto = "thin"
+codegen-units = 4
+panic = "abort"
+strip = true
+opt-level = 3
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+strip = false
+
+[profile.bench]
+debug = true
+
+# Additional feature definitions for clarity
+[dependencies.datafusion]
+version = "48"
+optional = true
+default-features = false
+features = ["parquet", "compression"]
 
 # Validation features
 basic-validation = ["validation"]
@@ -219,74 +301,7 @@ extended-types = []
 engineering-types = []
 quality-codes = []
 value-arithmetic = []
-unit-conversion = ["engineering-types"]
-
-# GUI features
-gui = ["eframe", "egui", "egui-phosphor", "egui_plot"]
-
-# Development features
-examples = []
-
-# Feature bundles
-enhanced-all = ["enhanced-monitoring", "optimized", "validation", "enhanced-errors"]
-full = ["enhanced-all", "advanced-storage", "compression", "wal", "metrics", "web", "security", "json-schema", "history", "alarms", "health", "mqtt", "s7-support", "detailed-health", "health-metrics", "mqtt-persistence", "mqtt-statistics"]
-dev = ["full", "gui", "examples", "profiling"]
-production = ["optimized", "standard-monitoring", "metrics", "security", "wal"]
-
-# Binary configurations
-[[bin]]
-name = "petra"
-path = "src/main.rs"
-
-[[bin]]
-name = "s7_test"
-path = "src/bin/s7_test.rs"
-required-features = ["s7-support"]
-
-[[bin]]
-name = "mqtt_publisher"
-path = "src/bin/mqtt_publisher.rs"
-required-features = ["examples", "mqtt"]
-
-[[bin]]
-name = "petra_dashboard"
-path = "src/bin/dashboard.rs"
-required-features = ["gui", "history"]
-
-[[bin]]
-name = "parquet_viewer"
-path = "src/bin/parquet_viewer.rs"
-required-features = ["history"]
-
-[[bin]]
-name = "storage_test"
-path = "src/bin/storage_test.rs"
-required-features = ["history", "advanced-storage"]
-
-[[bin]]
-name = "twilio_test"
-path = "src/bin/twilio_test.rs"
-required-features = ["web"]
-
-[[bin]]
-name = "simple_s7_test"
-path = "src/bin/simple_s7_test.rs"
-required-features = ["s7-support"]
-
-[[bin]]
-name = "generate_schema"
-path = "src/bin/generate_schema.rs"
-required-features = ["json-schema"]
-
-
-[profile.release]
-lto = "thin"
-codegen-units = 4
-panic = "abort"
-strip = true
-
-[profile.bench]
-debug = true
+unit-conversion = []
 
 # Package metadata
 [package.metadata.docs.rs]
