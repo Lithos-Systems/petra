@@ -22,6 +22,7 @@ dashmap = "6.1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
+futures = "0.3"
 
 # Optional dependencies
 ## Storage and history
