@@ -366,16 +366,70 @@ impl HistoryManager {
     #[cfg(feature = "history-compaction")]
     pub async fn compact(&self, older_than_days: u32) -> Result<()> {
         info!("Compacting history older than {} days", older_than_days);
-        
+
         let cutoff = Utc::now() - chrono::Duration::days(older_than_days as i64);
-        
+
         // Find and compact old files
         let files = self.find_files_older_than(cutoff).await?;
-        
+
         for file in files {
-            self.compact_file(&file).await?;
+            self.compact(&file).await?;
         }
-        
+
+        Ok(())
+    }
+
+    #[cfg(all(feature = "history-replay", not(feature = "history-indexing")))]
+    async fn find_files_in_range(&self, start: DateTime<Utc>, end: DateTime<Utc>) -> Result<Vec<PathBuf>> {
+        async fn visit(dir: &Path, start: DateTime<Utc>, end: DateTime<Utc>, files: &mut Vec<PathBuf>) -> Result<()> {
+            let mut entries = tokio::fs::read_dir(dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                let metadata = entry.metadata().await?;
+                if metadata.is_dir() {
+                    visit(&path, start, end, files).await?;
+                } else if let Ok(modified) = metadata.modified() {
+                    let modified_time: DateTime<Utc> = modified.into();
+                    if modified_time >= start && modified_time <= end {
+                        files.push(path);
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        let mut files = Vec::new();
+        visit(&self.config.storage_path, start, end, &mut files).await?;
+        Ok(files)
+    }
+
+    #[cfg(feature = "history-compaction")]
+    async fn find_files_older_than(&self, cutoff: DateTime<Utc>) -> Result<Vec<PathBuf>> {
+        async fn visit(dir: &Path, cutoff: DateTime<Utc>, files: &mut Vec<PathBuf>) -> Result<()> {
+            let mut entries = tokio::fs::read_dir(dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                let metadata = entry.metadata().await?;
+                if metadata.is_dir() {
+                    visit(&path, cutoff, files).await?;
+                } else if let Ok(modified) = metadata.modified() {
+                    let modified_time: DateTime<Utc> = modified.into();
+                    if modified_time < cutoff {
+                        files.push(path);
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        let mut files = Vec::new();
+        visit(&self.config.storage_path, cutoff, &mut files).await?;
+        Ok(files)
+    }
+
+    #[cfg(feature = "history-compaction")]
+    async fn compact(&self, file: &Path) -> Result<()> {
+        tokio::fs::remove_file(file).await?;
         Ok(())
     }
     
