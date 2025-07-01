@@ -50,9 +50,10 @@ rumqttc      = { version = "0.24", optional = true }
 ## Web and networking
 reqwest            = { version = "0.12", features = ["json"], optional = true }
 tokio-tungstenite  = { version = "0.23", optional = true }
-axum               = { version = "0.7", optional = true }
-tower              = { version = "0.4", optional = true }
-tower-http         = { version = "0.6.6", features = ["cors", "tracing"], optional = true }
+axum = { version = "0.7", features = ["macros"], optional = true }
+tower = { version = "0.4", optional = true }
+tower-http = { version = "0.5", features = ["cors"], optional = true }
+
 
 ## Security
 ring            = { version = "0.17", optional = true }
