@@ -25,15 +25,15 @@ clap = { version = "4.5", features = ["derive", "env"] }
 
 # Optional dependencies
 ## Storage and history
-parquet = { version = "52.0", optional = true }
-arrow = { version = "52.0", optional = true }
-arrow-array = { version = "52.0", optional = true }
-arrow-schema = { version = "52.0", optional = true }
+parquet      = { version = "55.2", optional = true }
+arrow        = { version = "55.2", optional = true }
+arrow-array  = { version = "55.2", optional = true }
+arrow-schema = { version = "55.2", optional = true }
 datafusion = { version = "48", optional = true }
 ## Advanced storage
 rocksdb = { version = "0.22", optional = true }
 clickhouse = { version = "0.11", optional = true }
-object_store = { version = "0.10", features = ["aws", "gcp", "azure"], optional = true }
+object_store = { version = "0.12", features = ["aws", "gcp", "azure"], optional = true }
 aws-config = { version = "1.5", optional = true }
 aws-sdk-s3 = { version = "1.38", optional = true }
 
