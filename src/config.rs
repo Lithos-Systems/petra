@@ -7,12 +7,21 @@ use crate::error::{Result, PlcError};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 
+// Conditionally import security types
 #[cfg(feature = "security")]
-use crate::security::{verify_signature, SignatureConfig};
+use crate::security::{SecurityConfig as SecurityConfigType, SignatureConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Config {
+    pub signals: Vec<SignalConfig>,
+    pub blocks: Vec<BlockConfig>,
+    pub scan_time_ms: u64,
+    
+    #[cfg(feature = "security")]
+    pub security: Option<SecurityConfigType>,
+    
+    pub engine_config: Option<serde_yaml::Value>,
     #[serde(default)]
     pub signals: Vec<SignalConfig>,
     
@@ -123,6 +132,14 @@ pub struct SecurityConfig {
 }
 
 impl Config {
+    pub fn save(&self, path: &Path) -> Result<()> {
+        // Convert to YAML string first, then to bytes
+        let yaml_str = serde_yaml::to_string(self)?;
+        let config_bytes = yaml_str.into_bytes();
+        
+        fs::write(path, config_bytes)?;
+        Ok(())
+    }
     /// Load configuration from a YAML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let contents = std::fs::read_to_string(&path)?;
