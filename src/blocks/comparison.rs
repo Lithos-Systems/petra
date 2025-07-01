@@ -1,6 +1,8 @@
 // src/blocks/comparison.rs - Comparison blocks module
 use super::Block;
 use crate::{error::*, signal::SignalBus, value::Value, config::BlockConfig};
+
+#[cfg(feature = "enhanced-monitoring")]
 use std::time::{Duration, Instant};
 
 // Less Than Block
