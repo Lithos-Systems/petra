@@ -147,7 +147,7 @@ pub struct HistoryManager {
 }
 
 #[cfg(feature = "history-statistics")]
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct HistoryStatistics {
     total_entries: u64,
     entries_per_signal: std::collections::HashMap<String, u64>,
