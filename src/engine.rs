@@ -302,7 +302,7 @@ impl Engine {
         #[cfg(feature = "metrics")]
         gauge!("petra_engine_running").set(0.0);
 
-        let mut stats = self.stats_handle.write().unwrap();
+        let mut stats = self.stats_handle.write().await;
         stats.running = false;
         Ok(())
     }
