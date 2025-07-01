@@ -1,6 +1,7 @@
 // src/value.rs
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use crate::error::PlcError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
@@ -168,6 +169,32 @@ impl Value {
             (Value::Int(a), Value::Float(b)) => Some(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Int(b)) => Some(Value::Float(a * *b as f64)),
             _ => None,
+        }
+    }
+
+    /// Construct a Value from raw bytes
+    pub fn from_bytes(data: &[u8]) -> Result<Self, PlcError> {
+        let text = std::str::from_utf8(data)
+            .map_err(|e| PlcError::Runtime(format!("Invalid UTF-8: {}", e)))?;
+
+        if let Ok(b) = text.parse::<bool>() {
+            return Ok(Value::Bool(b));
+        }
+        if let Ok(i) = text.parse::<i32>() {
+            return Ok(Value::Int(i));
+        }
+        if let Ok(f) = text.parse::<f64>() {
+            return Ok(Value::Float(f));
+        }
+
+        #[cfg(feature = "extended-types")]
+        {
+            return Ok(Value::String(text.to_string()));
+        }
+
+        #[cfg(not(feature = "extended-types"))]
+        {
+            Err(PlcError::Runtime(format!("Cannot parse value: {}", text)))
         }
     }
 }
