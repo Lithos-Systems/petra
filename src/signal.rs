@@ -349,7 +349,7 @@ impl SignalBus {
         #[cfg(all(feature = "enhanced", feature = "metrics"))]
         let start = Instant::now();
         
-        let mut count = 0;
+        let mut _count = 0;
         for (name, value) in updates {
             signals.insert(name.clone(), value.clone());
             
