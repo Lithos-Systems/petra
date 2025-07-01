@@ -1,7 +1,9 @@
 // src/storage/mod.rs
-use crate::error::Result;
+use crate::error::{Result, PlcError};
+use crate::value::Value;
 use async_trait::async_trait;
 use std::path::Path;
+use chrono::Utc;
 
 #[cfg(feature = "advanced-storage")]
 pub mod clickhouse;
@@ -146,7 +148,9 @@ impl StorageManager {
         // Write to WAL first if enabled
         #[cfg(feature = "wal")]
         if let Some(wal) = &self.wal {
-            wal.append(key, data).await?;
+            let timestamp = Utc::now().timestamp();
+            let value = Value::from_bytes(data)?;
+            wal.append(key, value, timestamp)?;
         }
 
         // Write to primary storage
@@ -176,10 +180,12 @@ impl StorageManager {
                 #[cfg(feature = "advanced-storage")]
                 if let Some(secondary) = &self.secondary {
                     return secondary.read(key).await;
+                } else {
+                    return Err(PlcError::NotFound(format!("Key {} not found", key)));
                 }
-                
+
                 #[cfg(not(feature = "advanced-storage"))]
-                Err(crate::error::PlcError::Storage("Key not found".into()))
+                Err(PlcError::Storage("Key not found".into()))
             }
         }
     }

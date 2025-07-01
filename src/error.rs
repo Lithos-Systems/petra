@@ -9,6 +9,9 @@ pub enum PlcError {
     
     #[error("Signal not found: {0}")]
     SignalNotFound(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
     
     #[error("Type mismatch: {0}")]
     TypeMismatch(String),
