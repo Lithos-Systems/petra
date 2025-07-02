@@ -1,8 +1,201 @@
-// src/protocols/mod.rs
+// src/protocols/mod.rs - Unified protocol driver interface
+use crate::{error::Result, value::Value, signal::SignalBus};
 use async_trait::async_trait;
-use crate::{error::Result, signal::SignalBus, value::Value};
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
+/// Core trait for all protocol drivers
+/// 
+/// This trait defines the common interface that all protocol implementations
+/// must provide for integration with PETRA.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// use petra::protocols::{ProtocolDriver, ProtocolManager};
+/// use petra::{Value, SignalBus};
+/// use async_trait::async_trait;
+/// use std::collections::HashMap;
+/// 
+/// struct MyDriver {
+///     connected: bool,
+/// }
+/// 
+/// #[async_trait]
+/// impl ProtocolDriver for MyDriver {
+///     async fn connect(&mut self) -> petra::Result<()> {
+///         self.connected = true;
+///         Ok(())
+///     }
+///     
+///     async fn disconnect(&mut self) -> petra::Result<()> {
+///         self.connected = false;
+///         Ok(())
+///     }
+///     
+///     async fn read_values(&self, addresses: &[String]) -> petra::Result<HashMap<String, Value>> {
+///         let mut values = HashMap::new();
+///         for addr in addresses {
+///             values.insert(addr.clone(), Value::Float(23.5));
+///         }
+///         Ok(values)
+///     }
+///     
+///     async fn write_values(&mut self, values: &HashMap<String, Value>) -> petra::Result<()> {
+///         // Write implementation
+///         Ok(())
+///     }
+///     
+///     fn is_connected(&self) -> bool {
+///         self.connected
+///     }
+///     
+///     fn protocol_name(&self) -> &'static str {
+///         "my_protocol"
+///     }
+/// }
+/// ```
+#[async_trait]
+pub trait ProtocolDriver: Send + Sync {
+    /// Connect to the protocol endpoint
+    async fn connect(&mut self) -> Result<()>;
+    
+    /// Disconnect from the protocol endpoint
+    async fn disconnect(&mut self) -> Result<()>;
+    
+    /// Read values from specified addresses
+    async fn read_values(&self, addresses: &[String]) -> Result<HashMap<String, Value>>;
+    
+    /// Write values to specified addresses
+    async fn write_values(&mut self, values: &HashMap<String, Value>) -> Result<()>;
+    
+    /// Check if the driver is connected
+    fn is_connected(&self) -> bool;
+    
+    /// Get the protocol name
+    fn protocol_name(&self) -> &'static str;
+    
+    /// Get protocol-specific diagnostics (optional)
+    fn diagnostics(&self) -> HashMap<String, Value> {
+        HashMap::new()
+    }
+    
+    /// Validate an address format (optional)
+    fn validate_address(&self, address: &str) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Protocol manager for handling multiple protocol drivers
+/// 
+/// The ProtocolManager coordinates multiple protocol drivers and provides
+/// a unified interface for the engine to interact with all protocols.
+pub struct ProtocolManager {
+    drivers: Arc<RwLock<HashMap<String, Box<dyn ProtocolDriver>>>>,
+    signal_bus: SignalBus,
+}
+
+impl ProtocolManager {
+    /// Create a new protocol manager
+    pub fn new(signal_bus: SignalBus) -> Self {
+        Self {
+            drivers: Arc::new(RwLock::new(HashMap::new())),
+            signal_bus,
+        }
+    }
+    
+    /// Add a protocol driver
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// # use petra::protocols::ProtocolManager;
+    /// # use petra::SignalBus;
+    /// # let signal_bus = SignalBus::new();
+    /// let mut manager = ProtocolManager::new(signal_bus);
+    /// // manager.add_driver("modbus".to_string(), Box::new(ModbusDriver::new(config)));
+    /// ```
+    pub async fn add_driver(&self, name: String, driver: Box<dyn ProtocolDriver>) -> Result<()> {
+        let mut drivers = self.drivers.write().await;
+        drivers.insert(name, driver);
+        Ok(())
+    }
+    
+    /// Remove a protocol driver
+    pub async fn remove_driver(&self, name: &str) -> Result<()> {
+        let mut drivers = self.drivers.write().await;
+        if let Some(mut driver) = drivers.remove(name) {
+            driver.disconnect().await?;
+        }
+        Ok(())
+    }
+    
+    /// Connect all drivers
+    pub async fn connect_all(&self) -> Result<()> {
+        let mut drivers = self.drivers.write().await;
+        for (name, driver) in drivers.iter_mut() {
+            if !driver.is_connected() {
+                tracing::info!("Connecting to {} protocol", name);
+                driver.connect().await?;
+            }
+        }
+        Ok(())
+    }
+    
+    /// Disconnect all drivers
+    pub async fn disconnect_all(&self) -> Result<()> {
+        let mut drivers = self.drivers.write().await;
+        for (name, driver) in drivers.iter_mut() {
+            if driver.is_connected() {
+                tracing::info!("Disconnecting from {} protocol", name);
+                driver.disconnect().await?;
+            }
+        }
+        Ok(())
+    }
+    
+    /// Read from a specific protocol
+    pub async fn read_from(&self, protocol: &str, addresses: &[String]) -> Result<HashMap<String, Value>> {
+        let drivers = self.drivers.read().await;
+        if let Some(driver) = drivers.get(protocol) {
+            driver.read_values(addresses).await
+        } else {
+            Err(crate::error::PlcError::NotFound(format!("Protocol '{}' not found", protocol)))
+        }
+    }
+    
+    /// Write to a specific protocol
+    pub async fn write_to(&self, protocol: &str, values: &HashMap<String, Value>) -> Result<()> {
+        let mut drivers = self.drivers.write().await;
+        if let Some(driver) = drivers.get_mut(protocol) {
+            driver.write_values(values).await
+        } else {
+            Err(crate::error::PlcError::NotFound(format!("Protocol '{}' not found", protocol)))
+        }
+    }
+    
+    /// Get all connected protocols
+    pub async fn connected_protocols(&self) -> Vec<String> {
+        let drivers = self.drivers.read().await;
+        drivers
+            .iter()
+            .filter(|(_, driver)| driver.is_connected())
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+    
+    /// Get diagnostics for all protocols
+    pub async fn all_diagnostics(&self) -> HashMap<String, HashMap<String, Value>> {
+        let drivers = self.drivers.read().await;
+        drivers
+            .iter()
+            .map(|(name, driver)| (name.clone(), driver.diagnostics()))
+            .collect()
+    }
+}
+
+// Re-export protocol implementations
 #[cfg(feature = "s7-support")]
 pub mod s7;
 
@@ -15,177 +208,80 @@ pub mod opcua;
 #[cfg(feature = "mqtt")]
 pub mod mqtt;
 
-// Common protocol trait
-#[async_trait]
-pub trait ProtocolDriver: Send + Sync {
-    async fn connect(&mut self) -> Result<()>;
-    async fn disconnect(&mut self) -> Result<()>;
-    async fn read_values(&self, addresses: &[String]) -> Result<HashMap<String, Value>>;
-    async fn write_values(&mut self, values: &HashMap<String, Value>) -> Result<()>;
+#[cfg(test)]
+mod tests {
+    use super::*;
     
-    fn is_connected(&self) -> bool;
-    fn protocol_name(&self) -> &'static str;
-    
-    #[cfg(feature = "diagnostics")]
-    fn diagnostics(&self) -> ProtocolDiagnostics {
-        ProtocolDiagnostics::default()
-    }
-}
-
-#[cfg(feature = "diagnostics")]
-#[derive(Default, Debug)]
-pub struct ProtocolDiagnostics {
-    pub messages_sent: u64,
-    pub messages_received: u64,
-    pub errors: u64,
-    pub last_error: Option<String>,
-    pub connection_time: Option<std::time::Duration>,
-    pub average_latency_ms: Option<f64>,
-}
-
-// Unified protocol manager
-pub struct ProtocolManager {
-    drivers: HashMap<String, Box<dyn ProtocolDriver>>,
-    bus: SignalBus,
-    #[cfg(feature = "protocol-retry")]
-    retry_config: RetryConfig,
-    #[cfg(feature = "protocol-monitoring")]
-    monitoring: ProtocolMonitoring,
-}
-
-#[cfg(feature = "protocol-retry")]
-#[derive(Clone)]
-struct RetryConfig {
-    max_retries: u32,
-    initial_delay_ms: u64,
-    max_delay_ms: u64,
-    exponential_backoff: bool,
-}
-
-impl ProtocolManager {
-    pub fn new(bus: SignalBus) -> Self {
-        Self {
-            drivers: HashMap::new(),
-            bus,
-            #[cfg(feature = "protocol-retry")]
-            retry_config: RetryConfig {
-                max_retries: 3,
-                initial_delay_ms: 100,
-                max_delay_ms: 5000,
-                exponential_backoff: true,
-            },
-            #[cfg(feature = "protocol-monitoring")]
-            monitoring: ProtocolMonitoring::new(),
-        }
+    struct MockDriver {
+        connected: bool,
+        values: HashMap<String, Value>,
     }
     
-    pub fn add_driver(&mut self, name: String, driver: Box<dyn ProtocolDriver>) {
-        self.drivers.insert(name, driver);
-    }
-    
-    pub async fn connect_all(&mut self) -> Result<()> {
-        for (name, driver) in &mut self.drivers {
-            tracing::info!("Connecting to {} using {}", name, driver.protocol_name());
-            
-            #[cfg(feature = "protocol-retry")]
-            {
-                self.connect_with_retry(name, driver).await?;
-            }
-            
-            #[cfg(not(feature = "protocol-retry"))]
-            {
-                driver.connect().await?;
-            }
-        }
-        Ok(())
-    }
-    
-    #[cfg(feature = "protocol-retry")]
-    async fn connect_with_retry(
-        &self, 
-        name: &str, 
-        driver: &mut Box<dyn ProtocolDriver>
-    ) -> Result<()> {
-        let mut delay = self.retry_config.initial_delay_ms;
-        
-        for attempt in 0..=self.retry_config.max_retries {
-            match driver.connect().await {
-                Ok(_) => {
-                    tracing::info!("Successfully connected to {}", name);
-                    return Ok(());
-                }
-                Err(e) if attempt < self.retry_config.max_retries => {
-                    tracing::warn!(
-                        "Connection attempt {} to {} failed: {}", 
-                        attempt + 1, name, e
-                    );
-                    
-                    tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
-                    
-                    if self.retry_config.exponential_backoff {
-                        delay = (delay * 2).min(self.retry_config.max_delay_ms);
-                    }
-                }
-                Err(e) => return Err(e),
-            }
+    #[async_trait]
+    impl ProtocolDriver for MockDriver {
+        async fn connect(&mut self) -> Result<()> {
+            self.connected = true;
+            Ok(())
         }
         
-        unreachable!()
-    }
-    
-    pub async fn run(&mut self) -> Result<()> {
-        // Main protocol polling loop
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+        async fn disconnect(&mut self) -> Result<()> {
+            self.connected = false;
+            Ok(())
+        }
         
-        loop {
-            interval.tick().await;
-            
-            for (name, driver) in &mut self.drivers {
-                if !driver.is_connected() {
-                    tracing::warn!("{} disconnected, attempting reconnection", name);
-                    #[cfg(feature = "protocol-retry")]
-                    {
-                        let _ = self.connect_with_retry(name, driver).await;
-                    }
-                    continue;
-                }
-                
-                // Read configured addresses
-                // This would be configured per driver
-                let addresses = vec![]; // TODO: Get from config
-                
-                match driver.read_values(&addresses).await {
-                    Ok(values) => {
-                        for (addr, value) in values {
-                            if let Err(e) = self.bus.set(&addr, value) {
-                                tracing::error!("Failed to update signal {}: {}", addr, e);
-                            }
-                        }
-                        
-                        #[cfg(feature = "protocol-monitoring")]
-                        self.monitoring.record_success(name);
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to read from {}: {}", name, e);
-                        
-                        #[cfg(feature = "protocol-monitoring")]
-                        self.monitoring.record_error(name, &e);
-                    }
+        async fn read_values(&self, addresses: &[String]) -> Result<HashMap<String, Value>> {
+            let mut result = HashMap::new();
+            for addr in addresses {
+                if let Some(value) = self.values.get(addr) {
+                    result.insert(addr.clone(), value.clone());
                 }
             }
+            Ok(result)
+        }
+        
+        async fn write_values(&mut self, values: &HashMap<String, Value>) -> Result<()> {
+            for (addr, value) in values {
+                self.values.insert(addr.clone(), value.clone());
+            }
+            Ok(())
+        }
+        
+        fn is_connected(&self) -> bool {
+            self.connected
+        }
+        
+        fn protocol_name(&self) -> &'static str {
+            "mock"
         }
     }
-}
-
-#[cfg(feature = "protocol-monitoring")]
-struct ProtocolMonitoring {
-    stats: std::sync::Arc<parking_lot::RwLock<HashMap<String, ProtocolStats>>>,
-}
-
-#[cfg(feature = "protocol-monitoring")]
-struct ProtocolStats {
-    successes: u64,
-    failures: u64,
-    last_success: Option<std::time::Instant>,
-    last_failure: Option<std::time::Instant>,
+    
+    #[tokio::test]
+    async fn test_protocol_manager() {
+        let signal_bus = SignalBus::new();
+        let manager = ProtocolManager::new(signal_bus);
+        
+        // Add mock driver
+        let mock_driver = Box::new(MockDriver {
+            connected: false,
+            values: HashMap::new(),
+        });
+        
+        manager.add_driver("mock".to_string(), mock_driver).await.unwrap();
+        
+        // Connect all
+        manager.connect_all().await.unwrap();
+        
+        // Check connected protocols
+        let connected = manager.connected_protocols().await;
+        assert_eq!(connected, vec!["mock"]);
+        
+        // Write and read values
+        let mut values = HashMap::new();
+        values.insert("test_signal".to_string(), Value::Int(42));
+        
+        manager.write_to("mock", &values).await.unwrap();
+        
+        let read_values = manager.read_from("mock", &["test_signal".to_string()]).await.unwrap();
+        assert_eq!(read_values.get("test_signal"), Some(&Value::Int(42)));
+    }
 }
