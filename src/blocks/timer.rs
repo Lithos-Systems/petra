@@ -63,7 +63,7 @@ pub fn create_timer_on_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
         .ok_or_else(|| PlcError::Config("TON block requires 'in' input".into()))?;
     let output = config.outputs.get("out")
         .ok_or_else(|| PlcError::Config("TON block requires 'out' output".into()))?;
-    let preset_ms = config.params.get("preset_ms")
+    let preset_ms = config.parameters.get("preset_ms")
         .and_then(|v| v.as_u64())
         .unwrap_or(1000);
 
