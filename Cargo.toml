@@ -226,7 +226,7 @@ alarms = []
 
 # Notification channels
 email = ["alarms", "lettre"]
-twilio = ["alarms", "reqwest", "web"]
+twilio = ["alarms", "web"]
 
 # Alarm feature groups
 basic-alarms = ["alarms", "email"] 
