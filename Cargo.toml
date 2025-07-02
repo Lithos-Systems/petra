@@ -58,6 +58,13 @@ hyper = { version = "1.5", optional = true }
 reqwest = { version = "0.12", features = ["json"], optional = true }
 lettre = { version = "0.11", features = ["tokio1", "smtp-transport"], optional = true }
 
+# Hot reload and status API dependencies
+notify = { version = "6.1", optional = true }
+warp = { version = "0.3", optional = true }
+tokio-tungstenite = { version = "0.21", optional = true }
+futures-util = { version = "0.3", optional = true }
+tokio-stream = { version = "0.1", optional = true }
+
 # Monitoring & Metrics
 metrics = { version = "0.24", optional = true }
 metrics-exporter-prometheus = { version = "0.16", optional = true }
@@ -75,7 +82,6 @@ once_cell = { version = "1.20", optional = true }
 jsonschema = { version = "0.26", optional = true }
 
 # System & Realtime
-libc = { version = "0.2", optional = true }
 nix = { version = "0.29", features = ["process", "sched"], optional = true }
 sysinfo = { version = "0.32", optional = true }
 
@@ -89,13 +95,22 @@ egui_plot = { version = "0.29", optional = true }
 aws-config = { version = "1.5", optional = true }
 aws-sdk-s3 = { version = "1.64", optional = true }
 
+# Platform-specific dependencies for real-time features
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "0.2", optional = true }
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.14"
 pretty_assertions = "1.4"
 
 [features]
-default = ["standard-monitoring = []
+# Default features - Updated to include hot-swap
+default = ["mqtt", "basic-blocks", "alarms", "enhanced-monitoring", "hot-swap"]
+
+# Core feature sets
+basic-features = ["validation", "metrics"]
+standard-monitoring = []
 enhanced-monitoring = []
 optimized = ["parking_lot"]
 
@@ -119,6 +134,14 @@ web = ["axum", "tower", "hyper", "reqwest"]
 metrics = ["dep:metrics", "metrics-exporter-prometheus"]
 web-api = ["web"]
 
+# Hot reload and status API features
+hot-reload = ["notify"]
+status-api = ["warp", "tower", "tower-http", "tokio-tungstenite"]
+burn-in = []
+
+# Combined feature for all hot-swap capabilities
+hot-swap = ["hot-reload", "status-api", "burn-in"]
+
 # Security features
 security = ["sha2", "hmac"]
 basic-auth = ["security"]
@@ -128,11 +151,47 @@ audit = ["security"]
 audit-db = ["audit", "sqlx"]
 audit-file = ["audit"]
 
+# Realtime features
+realtime = ["libc", "nix", "sysinfo"]
+memory-locking = ["realtime"]
+cgroups = ["realtime"]
+realtime-monitor = ["realtime", "parking_lot"]
+deadline-monitor = ["realtime"]
+
+# Block features
+basic-blocks = []
+async-blocks = []
+circuit-breaker = ["parking_lot"]
+block-metadata = []
+advanced-blocks = []
+pid-control = []
+pid-limits = ["advanced-blocks"]
+pid-antiwindup = ["advanced-blocks"]
+statistics = []
+ml-blocks = []
+email = ["lettre"]
+twilio = ["web"]
+rate-limiting = []
+
+# Error features
+enhanced-errors = []
+error-recovery = []
+
+# Signal features
+enhanced = ["enhanced-monitoring"]
+history = ["parquet", "arrow", "arrow-array", "arrow-schema"]
+
+# Value features
+extended-types = []
+engineering-types = []
+quality-codes = []
+value-arithmetic = []
+unit-conversion = []
+
 # Additional features
 json-schema = ["dep:jsonschema"]
 validation = ["regex", "validator", "once_cell"]
 alarms = ["lettre"]
-realtime = ["libc", "nix", "sysinfo"]
 health = ["axum", "tower", "tower-http", "sysinfo"]
 profiling = []
 
@@ -165,53 +224,39 @@ validation-warnings = ["validation"]
 stateful-validation = ["validation"]
 async-validation = ["validation"]
 
-# Security features
-basic-auth = ["security"]
-jwt-auth = ["security", "jsonwebtoken"]
-rbac = ["security"]
-audit = ["security"]
-audit-db = ["audit"]
-audit-file = ["audit"]
-
 # Health features
 detailed-health = ["health"]
 health-metrics = ["health", "sysinfo"]
 health-history = ["health"]
 custom-endpoints = ["health"]
 
-# Realtime features
-memory-locking = ["realtime"]
-cgroups = ["realtime"]
-realtime-monitor = ["realtime", "parking_lot"]
-deadline-monitor = ["realtime"]
-
-# Block features
-async-blocks = []
-circuit-breaker = ["parking_lot"]
-block-metadata = []
-advanced-blocks = []
-pid-limits = ["advanced-blocks"]
-pid-antiwindup = ["advanced-blocks"]
-statistics = []
-ml-blocks = []
-email = ["lettre"]
-twilio = ["web"]
-rate-limiting = []
-
-# Error features
-enhanced-errors = []
-error-recovery = []
-
-# Signal features
-enhanced = ["enhanced-monitoring"]
-history = ["parquet", "arrow", "arrow-array", "arrow-schema"]
-
-# Value features
-extended-types = []
-engineering-types = []
-quality-codes = []
-value-arithmetic = []
-unit-conversion = []
+# Example of full feature build - Updated to include all features
+all = [
+    "mqtt",
+    "s7-support",
+    "modbus-support",
+    "opcua-support",
+    "basic-blocks",
+    "advanced-blocks",
+    "pid-control",
+    "statistics",
+    "alarms",
+    "email",
+    "web",
+    "history",
+    "advanced-storage",
+    "clickhouse",
+    "s3",
+    "metrics",
+    "enhanced-monitoring",
+    "circuit-breaker",
+    "rate-limiting",
+    "security",
+    "validation",
+    "json-schema",
+    "hot-swap",
+    "burn-in"
+]
 
 # Binary configurations
 [[bin]]
@@ -277,8 +322,4 @@ debug = true
 # Package metadata
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]", "basic-features"]
-
-# Core feature sets
-basic-features = ["validation", "metrics"]
-standard-monitoring
+rustdoc-args = ["--cfg", "docsrs"]
