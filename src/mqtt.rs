@@ -255,13 +255,13 @@ pub enum BridgeDirection {
 impl From<crate::config::MqttConfig> for MqttConfig {
     fn from(cfg: crate::config::MqttConfig) -> Self {
         Self {
-            broker_host: cfg.broker_url.split("://").last().unwrap_or(&cfg.broker_url)
+            broker_host: cfg.broker.host.clone(),
                 .split(':').next().unwrap_or("localhost").to_string(),
-            broker_port: cfg.port,
+            broker_port: cfg.broker.port,
             client_id: cfg.client_id,
             username: cfg.username,
             password: cfg.password,
-            keep_alive_secs: cfg.keep_alive,
+            keep_alive_secs: cfg.keepalive_secs,
             clean_session: true, // Default for new config
             subscriptions: cfg.subscriptions.into_iter().map(|s| MqttSubscription {
                 topic: s.topic,
