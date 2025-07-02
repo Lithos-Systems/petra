@@ -301,8 +301,7 @@ impl Engine {
                 }
             }
         }
-
-        let target_scan_time = Duration::from_millis(config.scan_time_ms);
+        let target_scan_time = Duration::from_millis(config.engine.scan_time_ms);
         let start_time = Instant::now();
         
         // Initialize stats
@@ -313,7 +312,7 @@ impl Engine {
             uptime_secs: 0,
             signal_count: config.signals.len(),
             block_count: config.blocks.len(),
-            target_scan_time_ms: config.scan_time_ms,
+            target_scan_time_ms: config.engine.scan_time_ms,
             last_scan_time_us: None,
             
             #[cfg(feature = "enhanced-monitoring")]
@@ -371,7 +370,7 @@ impl Engine {
         if self.engine_config.metrics_enabled {
             gauge!("petra_engine_running").set(1.0);
             gauge!("petra_engine_scan_time_ms").set(self.config.scan_time_ms as f64);
-            gauge!("petra_engine_signal_count").set(self.config.signals.len() as f64);
+            gauge!("petra_engine_scan_time_ms").set(self.config.engine.scan_time_ms as f64);
             gauge!("petra_engine_block_count").set(self.config.blocks.len() as f64);
         }
 
