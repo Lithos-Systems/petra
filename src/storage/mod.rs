@@ -1,266 +1,305 @@
-// src/storage/mod.rs
-use crate::error::{Result, PlcError};
-use crate::value::Value;
-use async_trait::async_trait;
-use std::path::Path;
-use chrono::Utc;
+// src/storage/mod.rs - Complete Fixed Implementation
+use crate::error::{PlcError, Result};
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use serde::{Serialize, Deserialize};
+use tracing::{info, warn, error};
 
-#[cfg(feature = "advanced-storage")]
-pub mod clickhouse;
-
-#[cfg(feature = "advanced-storage")]
-pub mod s3;
-
-#[cfg(feature = "advanced-storage")]
+#[cfg(feature = "wal")]
 pub mod wal;
 
-#[cfg(feature = "compression")]
-pub mod compression;
+#[cfg(feature = "clickhouse")]
+pub mod clickhouse;
 
-// Base storage trait
-#[async_trait]
-pub trait StorageBackend: Send + Sync {
-    async fn write(&self, data: &[u8], key: &str) -> Result<()>;
-    async fn read(&self, key: &str) -> Result<Vec<u8>>;
-    async fn delete(&self, key: &str) -> Result<()>;
-    async fn list(&self, prefix: &str) -> Result<Vec<String>>;
-    async fn exists(&self, key: &str) -> Result<bool>;
+#[cfg(feature = "s3")]
+pub mod s3;
+
+pub mod manager;
+pub mod metrics;
+
+#[cfg(feature = "wal")]
+use self::wal::{Wal, WalConfig, WalEntry};
+
+use self::manager::StorageManager;
+use self::metrics::StorageMetrics;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageConfig {
+    pub local: LocalStorageConfig,
+    
+    #[cfg(feature = "clickhouse")]
+    pub clickhouse: Option<clickhouse::ClickhouseConfig>,
+    
+    #[cfg(feature = "s3")]
+    pub s3: Option<s3::S3Config>,
+    
+    #[cfg(feature = "wal")]
+    pub wal: WalConfig,
+    
+    pub features: StorageFeatures,
 }
 
-// Simple local storage (always available)
-pub struct LocalStorage {
-    base_path: std::path::PathBuf,
-    #[cfg(feature = "compression")]
-    compression: compression::CompressionType,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalStorageConfig {
+    pub data_dir: PathBuf,
+    pub max_size_mb: u64,
+    pub compact_after_hours: u32,
+    pub retention_days: u32,
 }
 
-impl LocalStorage {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        std::fs::create_dir_all(&path)?;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageFeatures {
+    #[serde(default)]
+    pub compression: bool,
+    
+    #[serde(default)]
+    pub encryption: bool,
+    
+    #[serde(default)]
+    pub deduplication: bool,
+    
+    #[cfg(feature = "wal")]
+    #[serde(default = "default_wal")]
+    pub write_ahead_log: bool,
+}
+
+#[cfg(feature = "wal")]
+fn default_wal() -> bool { true }
+
+pub struct StorageEngine {
+    config: Arc<StorageConfig>,
+    manager: Arc<StorageManager>,
+    metrics: Arc<StorageMetrics>,
+    
+    #[cfg(feature = "wal")]
+    wal: Option<Arc<RwLock<Wal>>>,
+    
+    #[cfg(feature = "clickhouse")]
+    clickhouse: Option<Arc<clickhouse::ClickhouseClient>>,
+    
+    #[cfg(feature = "s3")]
+    s3: Option<Arc<s3::S3Client>>,
+}
+
+impl StorageEngine {
+    pub async fn new(config: StorageConfig) -> Result<Self> {
+        info!("Initializing storage engine with features: {:?}", config.features);
+        
+        // Create data directory
+        std::fs::create_dir_all(&config.local.data_dir)?;
+        
+        // Clone config for Arc
+        let config_arc = Arc::new(config.clone());
+        
+        // Initialize WAL if enabled
+        #[cfg(feature = "wal")]
+        let wal = if config.features.write_ahead_log {
+            let wal_config = config.wal.clone();
+            let wal_instance = Wal::new(wal_config)?;
+            
+            // Recover any pending entries
+            let entries = wal_instance.recover()?;
+            if !entries.is_empty() {
+                info!("Recovered {} entries from WAL", entries.len());
+            }
+            
+            Some(Arc::new(RwLock::new(wal_instance)))
+        } else {
+            None
+        };
+        
+        // Initialize ClickHouse client
+        #[cfg(feature = "clickhouse")]
+        let clickhouse = if let Some(ch_config) = &config.clickhouse {
+            match clickhouse::ClickhouseClient::new(ch_config.clone()).await {
+                Ok(client) => {
+                    info!("Connected to ClickHouse at {}", ch_config.url);
+                    Some(Arc::new(client))
+                }
+                Err(e) => {
+                    error!("Failed to connect to ClickHouse: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        
+        // Initialize S3 client
+        #[cfg(feature = "s3")]
+        let s3 = if let Some(s3_config) = &config.s3 {
+            match s3::S3Client::new(s3_config.clone()).await {
+                Ok(client) => {
+                    info!("Connected to S3 bucket: {}", s3_config.bucket);
+                    Some(Arc::new(client))
+                }
+                Err(e) => {
+                    error!("Failed to connect to S3: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        
+        // Initialize metrics
+        let metrics = Arc::new(StorageMetrics::new());
+        
+        // Initialize storage manager
+        let manager = Arc::new(StorageManager::new(
+            config_arc.clone(),
+            metrics.clone(),
+            #[cfg(feature = "clickhouse")]
+            clickhouse.clone(),
+            #[cfg(feature = "s3")]
+            s3.clone(),
+        )?);
+        
         Ok(Self {
-            base_path: path.as_ref().to_path_buf(),
-            #[cfg(feature = "compression")]
-            compression: compression::CompressionType::None,
+            config: config_arc,
+            manager,
+            metrics,
+            #[cfg(feature = "wal")]
+            wal,
+            #[cfg(feature = "clickhouse")]
+            clickhouse,
+            #[cfg(feature = "s3")]
+            s3,
         })
     }
-
-    #[cfg(feature = "compression")]
-    pub fn with_compression(mut self, compression: compression::CompressionType) -> Self {
-        self.compression = compression;
-        self
-    }
-}
-
-#[async_trait]
-impl StorageBackend for LocalStorage {
-    async fn write(&self, data: &[u8], key: &str) -> Result<()> {
-        let path = self.base_path.join(key);
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-
-        #[cfg(feature = "compression")]
-        let data = self.compression.compress(data)?;
-
-        tokio::fs::write(path, data).await?;
-        Ok(())
-    }
-
-    async fn read(&self, key: &str) -> Result<Vec<u8>> {
-        let path = self.base_path.join(key);
-        let data = tokio::fs::read(path).await?;
-
-        #[cfg(feature = "compression")]
-        let data = self.compression.decompress(&data)?;
-
-        Ok(data)
-    }
-
-    async fn delete(&self, key: &str) -> Result<()> {
-        let path = self.base_path.join(key);
-        tokio::fs::remove_file(path).await?;
-        Ok(())
-    }
-
-    async fn list(&self, prefix: &str) -> Result<Vec<String>> {
-        let mut entries = Vec::new();
-        let prefix_path = self.base_path.join(prefix);
+    
+    pub async fn write(&self, data: StorageData) -> Result<()> {
+        self.metrics.write_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         
-        let mut dir = tokio::fs::read_dir(prefix_path).await?;
-        while let Some(entry) = dir.next_entry().await? {
-            if let Some(name) = entry.file_name().to_str() {
-                entries.push(name.to_string());
-            }
-        }
-        
-        Ok(entries)
-    }
-
-    async fn exists(&self, key: &str) -> Result<bool> {
-        let path = self.base_path.join(key);
-        Ok(path.exists())
-    }
-}
-
-// Unified storage manager with tiered storage
-pub struct StorageManager {
-    primary: Box<dyn StorageBackend>,
-    #[cfg(feature = "advanced-storage")]
-    secondary: Option<Box<dyn StorageBackend>>,
-    #[cfg(feature = "advanced-storage")]
-    archive: Option<Box<dyn StorageBackend>>,
-    #[cfg(feature = "wal")]
-    wal: Option<wal::WriteAheadLog>,
-}
-
-impl StorageManager {
-    pub fn new(primary: Box<dyn StorageBackend>) -> Self {
-        Self {
-            primary,
-            #[cfg(feature = "advanced-storage")]
-            secondary: None,
-            #[cfg(feature = "advanced-storage")]
-            archive: None,
-            #[cfg(feature = "wal")]
-            wal: None,
-        }
-    }
-
-    #[cfg(feature = "advanced-storage")]
-    pub fn with_secondary(mut self, secondary: Box<dyn StorageBackend>) -> Self {
-        self.secondary = Some(secondary);
-        self
-    }
-
-    #[cfg(feature = "advanced-storage")]
-    pub fn with_archive(mut self, archive: Box<dyn StorageBackend>) -> Self {
-        self.archive = Some(archive);
-        self
-    }
-
-    #[cfg(feature = "wal")]
-    pub fn with_wal(mut self, wal_path: &Path) -> Result<Self> {
-        self.wal = Some(wal::WriteAheadLog::new(wal_path)?);
-        Ok(self)
-    }
-
-    pub async fn write(&self, data: &[u8], key: &str) -> Result<()> {
         // Write to WAL first if enabled
         #[cfg(feature = "wal")]
         if let Some(wal) = &self.wal {
-            let timestamp = Utc::now().timestamp();
-            let value = Value::from_bytes(data)?;
-            wal.append(key, value, timestamp)?;
+            let entry = WalEntry {
+                timestamp: chrono::Utc::now(),
+                data: serde_json::to_vec(&data)?,
+            };
+            
+            wal.write().await.append(entry)?;
         }
-
-        // Write to primary storage
-        self.primary.write(data, key).await?;
-
-        // Replicate to secondary if configured
-        #[cfg(feature = "advanced-storage")]
-        if let Some(secondary) = &self.secondary {
-            // Fire and forget for async replication
-            let secondary = secondary.as_ref();
-            let data = data.to_vec();
-            let key = key.to_string();
+        
+        // Process through storage manager
+        self.manager.write(data).await
+    }
+    
+    pub async fn query(&self, query: StorageQuery) -> Result<Vec<StorageData>> {
+        self.metrics.query_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.manager.query(query).await
+    }
+    
+    pub async fn start_background_tasks(self: Arc<Self>) {
+        // Start compaction task
+        let engine = self.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                if let Err(e) = engine.manager.run_compaction().await {
+                    error!("Compaction failed: {}", e);
+                }
+            }
+        });
+        
+        // Start sync task if remote storage configured
+        #[cfg(any(feature = "clickhouse", feature = "s3"))]
+        {
+            let engine = self.clone();
             tokio::spawn(async move {
-                let _ = secondary.write(&data, &key).await;
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+                loop {
+                    interval.tick().await;
+                    if let Err(e) = engine.manager.sync_to_remote().await {
+                        error!("Remote sync failed: {}", e);
+                    }
+                }
             });
         }
-
-        Ok(())
-    }
-
-    pub async fn read(&self, key: &str) -> Result<Vec<u8>> {
-        // Try primary first
-        match self.primary.read(key).await {
-            Ok(data) => Ok(data),
-            Err(_) => {
-                // Try secondary if primary fails
-                #[cfg(feature = "advanced-storage")]
-                if let Some(secondary) = &self.secondary {
-                    return secondary.read(key).await;
-                } else {
-                    return Err(PlcError::NotFound(format!("Key {} not found", key)));
-                }
-
-                #[cfg(not(feature = "advanced-storage"))]
-                Err(PlcError::Storage("Key not found".into()))
+        
+        // Start metrics reporting
+        let metrics = self.metrics.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                metrics.report();
             }
-        }
+        });
     }
+    
+    pub fn get_metrics(&self) -> StorageMetricsSnapshot {
+        self.metrics.snapshot()
+    }
+}
 
-    #[cfg(feature = "advanced-storage")]
-    pub async fn archive(&self, key: &str, age_days: u32) -> Result<()> {
-        if let Some(archive) = &self.archive {
-            // Read from primary
-            let data = self.primary.read(key).await?;
-            
-            // Write to archive
-            archive.write(&data, key).await?;
-            
-            // Delete from primary if older than threshold
-            // (implement age checking logic here)
-            
-            Ok(())
-        } else {
-            Ok(())
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageData {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub signal_name: String,
+    pub value: crate::value::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<std::collections::HashMap<String, String>>,
+}
 
-    #[cfg(feature = "wal")]
-    pub async fn recover(&mut self) -> Result<()> {
-        if let Some(wal) = &self.wal {
-            let entries = wal.recover().await?;
-            
-            for (key, data) in entries {
-                self.primary.write(&data, &key).await?;
-            }
-            
-            wal.truncate().await?;
-        }
-        Ok(())
-    }
+#[derive(Debug, Clone)]
+pub struct StorageQuery {
+    pub signal_name: Option<String>,
+    pub start_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub end_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub tags: Option<std::collections::HashMap<String, String>>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StorageMetricsSnapshot {
+    pub write_count: u64,
+    pub query_count: u64,
+    pub bytes_written: u64,
+    pub bytes_read: u64,
+    pub active_connections: u32,
+    pub error_count: u64,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-
+    use tempfile::tempdir;
+    
     #[tokio::test]
-    async fn test_local_storage() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = LocalStorage::new(temp_dir.path()).unwrap();
-
-        // Test write and read
-        let data = b"test data";
-        storage.write(data, "test.txt").await.unwrap();
+    async fn test_storage_engine_init() {
+        let dir = tempdir().unwrap();
         
-        let read_data = storage.read("test.txt").await.unwrap();
-        assert_eq!(data, &read_data[..]);
-
-        // Test exists
-        assert!(storage.exists("test.txt").await.unwrap());
-        assert!(!storage.exists("missing.txt").await.unwrap());
-
-        // Test delete
-        storage.delete("test.txt").await.unwrap();
-        assert!(!storage.exists("test.txt").await.unwrap());
-    }
-
-    #[cfg(feature = "compression")]
-    #[tokio::test]
-    async fn test_compressed_storage() {
-        let temp_dir = TempDir::new().unwrap();
-        let storage = LocalStorage::new(temp_dir.path())
-            .unwrap()
-            .with_compression(compression::CompressionType::Zstd);
-
-        let data = b"test data that should be compressed";
-        storage.write(data, "compressed.txt").await.unwrap();
+        let config = StorageConfig {
+            local: LocalStorageConfig {
+                data_dir: dir.path().to_path_buf(),
+                max_size_mb: 1000,
+                compact_after_hours: 24,
+                retention_days: 30,
+            },
+            #[cfg(feature = "clickhouse")]
+            clickhouse: None,
+            #[cfg(feature = "s3")]
+            s3: None,
+            #[cfg(feature = "wal")]
+            wal: WalConfig {
+                dir: dir.path().join("wal"),
+                max_size_mb: 100,
+                sync_interval_ms: 1000,
+            },
+            features: StorageFeatures {
+                compression: true,
+                encryption: false,
+                deduplication: false,
+                #[cfg(feature = "wal")]
+                write_ahead_log: true,
+            },
+        };
         
-        let read_data = storage.read("compressed.txt").await.unwrap();
-        assert_eq!(data, &read_data[..]);
+        let engine = StorageEngine::new(config).await.unwrap();
+        assert!(engine.config.local.data_dir.exists());
     }
 }
