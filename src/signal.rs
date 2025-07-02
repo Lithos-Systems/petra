@@ -232,7 +232,7 @@ impl SignalBus {
     pub fn get_bool(&self, name: &str) -> Result<bool> {
         match self.get(name) {
             Some(Value::Bool(b)) => Ok(b),
-            Some(Value::Integer(i)) => Ok(i != 0),
+            Some(Value::Int(i)) => Ok(i != 0),
             Some(Value::Float(f)) => Ok(f != 0.0),
             #[cfg(feature = "extended-types")]
             Some(Value::String(s)) => match s.to_lowercase().as_str() {
@@ -249,7 +249,7 @@ impl SignalBus {
                     // Recursively call get_bool on the wrapped value
                     match value.as_ref() {
                         Value::Bool(b) => Ok(*b),
-                        Value::Integer(i) => Ok(*i != 0),
+                        Value::Int(i) => Ok(*i != 0),
                         Value::Float(f) => Ok(*f != 0.0),
                         _ => Err(PlcError::TypeMismatch {
                             expected: "bool".to_string(),
@@ -271,7 +271,7 @@ impl SignalBus {
     /// Get an integer signal value  
     pub fn get_int(&self, name: &str) -> Result<i32> {
         match self.get(name) {
-            Some(Value::Integer(i)) => Ok(i),
+            Some(Value::Int(i)) => Ok(i),
             Some(Value::Float(f)) => {
                 if f.is_finite() && f >= i32::MIN as f64 && f <= i32::MAX as f64 {
                     Ok(f as i32)
@@ -293,7 +293,7 @@ impl SignalBus {
                 if quality.is_good() {
                     // Recursively call get_int on the wrapped value
                     match value.as_ref() {
-                        Value::Integer(i) => Ok(*i),
+                        Value::Int(i) => Ok(*i),
                         Value::Float(f) => {
                             if f.is_finite() && *f >= i32::MIN as f64 && *f <= i32::MAX as f64 {
                                 Ok(*f as i32)
@@ -323,7 +323,7 @@ impl SignalBus {
     pub fn get_float(&self, name: &str) -> Result<f64> {
         match self.get(name) {
             Some(Value::Float(f)) => Ok(f),
-            Some(Value::Integer(i)) => Ok(i as f64),
+            Some(Value::Int(i)) => Ok(i as f64),
             Some(Value::Bool(b)) => Ok(if b { 1.0 } else { 0.0 }),
             #[cfg(feature = "extended-types")]
             Some(Value::String(s)) => {
@@ -341,7 +341,7 @@ impl SignalBus {
                     // Recursively call get_float on the wrapped value
                     match value.as_ref() {
                         Value::Float(f) => Ok(*f),
-                        Value::Integer(i) => Ok(*i as f64),
+                        Value::Int(i) => Ok(*i as f64),
                         Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
                         #[cfg(feature = "engineering-types")]
                         Value::Engineering { value, .. } => Ok(*value),
@@ -367,7 +367,7 @@ impl SignalBus {
     pub fn get_string(&self, name: &str) -> Result<String> {
         match self.get(name) {
             Some(Value::String(s)) => Ok(s),
-            Some(Value::Integer(i)) => Ok(i.to_string()),
+            Some(Value::Int(i)) => Ok(i.to_string()),
             Some(Value::Float(f)) => Ok(f.to_string()),
             Some(Value::Bool(b)) => Ok(b.to_string()),
             #[cfg(feature = "engineering-types")]
