@@ -215,7 +215,7 @@ scada = ["s7-support", "modbus-support", "opcua-support", "production"]
 # Validation features
 basic-validation = ["validation"]
 regex-validation = ["validation", "regex", "once_cell"]
-schema-validation = ["validation", "jsonschema"]
+schema-validation = ["validation", "dep:jsonschema"]
 custom-validation = ["validation"]
 composite-validation = ["validation"]
 cross-field-validation = ["composite-validation"]
