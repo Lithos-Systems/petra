@@ -222,7 +222,7 @@ full-validation = ["advanced-validation", "cross-field-validation"]
 # ============================================================================
 
 # Base alarm management
-alarms = ["chrono"]
+alarms = []
 
 # Notification channels
 email = ["alarms", "lettre"]
