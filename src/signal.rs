@@ -238,9 +238,9 @@ impl SignalBus {
             Some(Value::String(s)) => match s.to_lowercase().as_str() {
                 "true" | "1" | "yes" | "on" => Ok(true),
                 "false" | "0" | "no" | "off" => Ok(false),
-                _ => Err(PlcError::TypeMismatch {
-                    expected: "bool".to_string(),
-                    actual: "string".to_string(),
+                _ => Err(PlcError::TypeMismatch(format!(
+                    "Expected bool but got {}",
+                    v.type_name()
                 }),
             },
             #[cfg(feature = "quality-codes")]
@@ -251,18 +251,18 @@ impl SignalBus {
                         Value::Bool(b) => Ok(*b),
                         Value::Int(i) => Ok(*i != 0),
                         Value::Float(f) => Ok(*f != 0.0),
-                        _ => Err(PlcError::TypeMismatch {
-                            expected: "bool".to_string(),
-                            actual: value.type_name().to_string(),
+                        _ => Err(PlcError::TypeMismatch(format!(
+                            "Expected bool but got {}",
+                            v.type_name()
                         }),
                     }
                 } else {
                     Err(PlcError::SignalQuality(format!("Signal '{}' has bad quality: {:?}", name, quality)))
                 }
             }
-            Some(v) => Err(PlcError::TypeMismatch {
-                expected: "bool".to_string(),
-                actual: v.type_name().to_string(),
+            Some(v) => Err(PlcError::TypeMismatch(format!(
+                "Expected bool but got {}",
+                v.type_name()
             }),
             None => Err(PlcError::SignalNotFound(name.to_string())),
         }
@@ -302,18 +302,18 @@ impl SignalBus {
                             }
                         }
                         Value::Bool(b) => Ok(if *b { 1 } else { 0 }),
-                        _ => Err(PlcError::TypeMismatch {
-                            expected: "int".to_string(),
-                            actual: value.type_name().to_string(),
+                        _ => Err(PlcError::TypeMismatch(format!(
+                        "Expected bool but got {}",
+                        v.type_name()
                         }),
                     }
                 } else {
                     Err(PlcError::SignalQuality(format!("Signal '{}' has bad quality: {:?}", name, quality)))
                 }
             }
-            Some(v) => Err(PlcError::TypeMismatch {
-                expected: "int".to_string(),
-                actual: v.type_name().to_string(),
+            Some(v) => Err(PlcError::TypeMismatch(format!(
+                    "Expected bool but got {}",
+                    v.type_name()
             }),
             None => Err(PlcError::SignalNotFound(name.to_string())),
         }
@@ -345,18 +345,18 @@ impl SignalBus {
                         Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
                         #[cfg(feature = "engineering-types")]
                         Value::Engineering { value, .. } => Ok(*value),
-                        _ => Err(PlcError::TypeMismatch {
-                            expected: "float".to_string(),
-                            actual: value.type_name().to_string(),
+                        _ => EErr(PlcError::TypeMismatch(format!(
+                        "Expected bool but got {}",
+                        v.type_name()
                         }),
                     }
                 } else {
                     Err(PlcError::SignalQuality(format!("Signal '{}' has bad quality: {:?}", name, quality)))
                 }
             }
-            Some(v) => Err(PlcError::TypeMismatch {
-                expected: "float".to_string(),
-                actual: v.type_name().to_string(),
+            Some(v) => Err(PlcError::TypeMismatch(format!(
+                    "Expected bool but got {}",
+                    v.type_name()
             }),
             None => Err(PlcError::SignalNotFound(name.to_string())),
         }
