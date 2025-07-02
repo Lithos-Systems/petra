@@ -9,6 +9,17 @@ repository = "https://github.com/lithos-systems/petra"
 keywords = ["automation", "plc", "scada", "industrial", "iot"]
 categories = ["embedded", "network-programming", "automation"]
 
+[package]
+name = "petra"
+version = "2.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Programmable Engine for Telemetry, Runtime, and Automation"
+authors = ["Your Name <your.email@example.com>"]
+repository = "https://github.com/your-org/petra"
+keywords = ["automation", "plc", "scada", "industrial", "iot"]
+categories = ["embedded", "network-programming", "automation"]
+
 [dependencies]
 # Core runtime - minimal features only
 tokio = { version = "1.40", features = ["rt-multi-thread", "time", "signal", "macros", "sync"] }
@@ -136,7 +147,7 @@ default = ["standard-monitoring"]
 # Bundle features
 edge = ["mqtt", "basic-storage", "basic-security", "standard-monitoring"]
 scada = ["mqtt", "industrial", "enterprise-storage", "enterprise-security", "enhanced-monitoring", "basic-alarms"]
-production = ["mqtt", "optimized", "enterprise-storage", "enterprise-security", "enhanced-monitoring", "metrics", "health"]
+production = ["mqtt", "optimized", "enterprise-storage", "enterprise-security", "standard-monitoring", "metrics", "health"]
 enterprise = ["mqtt", "industrial", "enterprise-storage", "enterprise-security", "enhanced-monitoring", "metrics", "full-alarms", "full-web", "full-types", "full-validation"]
 development = ["edge", "dev-tools", "profiling"]
 
