@@ -1,0 +1,480 @@
+name: Feature Combination Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run nightly to catch feature regressions
+    - cron: '0 2 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ============================================================================
+  # FEATURE VALIDATION
+  # ============================================================================
+  
+  feature-validation:
+    name: Feature Flag Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy, rustfmt
+        
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-cargo-validation-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Check build script compilation
+      run: |
+        # Ensure build.rs compiles correctly
+        cargo check --build
+        
+    - name: Validate feature definitions
+      run: |
+        # Test that Cargo.toml is valid
+        cargo metadata --format-version 1 > /dev/null
+        
+    - name: Check for feature conflicts in Cargo.toml
+      run: |
+        # Basic validation that bundle features don't conflict
+        python3 -c "
+        import tomllib
+        with open('Cargo.toml', 'rb') as f:
+            cargo = tomllib.load(f)
+        
+        features = cargo['features']
+        print('Total features defined:', len(features))
+        
+        # Check for suspicious patterns
+        monitoring_features = [f for f in features if 'monitoring' in f]
+        print('Monitoring features:', monitoring_features)
+        
+        if len(monitoring_features) > 2:
+            print('Warning: Many monitoring features detected')
+        "
+
+  # ============================================================================
+  # BUNDLE TESTING
+  # ============================================================================
+  
+  test-bundles:
+    name: Test Feature Bundles
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        bundle: 
+          - "default"
+          - "edge"
+          - "scada" 
+          - "production"
+          - "enterprise"
+          - "development"
+          - "minimal"
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          libpq-dev \
+          llvm-dev \
+          libclang-dev
+          
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-cargo-${{ matrix.bundle }}-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Build with bundle features
+      run: |
+        if [ "${{ matrix.bundle }}" = "default" ]; then
+          cargo build --verbose
+        else
+          cargo build --features ${{ matrix.bundle }} --verbose
+        fi
+        
+    - name: Test with bundle features
+      run: |
+        if [ "${{ matrix.bundle }}" = "default" ]; then
+          cargo test --verbose tests/features.rs
+        else
+          cargo test --features ${{ matrix.bundle }} --verbose tests/features.rs
+        fi
+        
+    - name: Check binary size
+      run: |
+        if [ "${{ matrix.bundle }}" = "default" ]; then
+          size target/debug/petra
+        else
+          echo "Bundle: ${{ matrix.bundle }}"
+          # Build release for size comparison
+          cargo build --release --features ${{ matrix.bundle }}
+          size target/release/petra
+          ls -lh target/release/petra
+        fi
+
+  # ============================================================================
+  # INDIVIDUAL FEATURE TESTING
+  # ============================================================================
+  
+  test-individual-features:
+    name: Test Individual Features
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        feature:
+          # Core features
+          - "standard-monitoring"
+          - "enhanced-monitoring"
+          - "optimized"
+          - "metrics"
+          
+          # Protocol features
+          - "mqtt"
+          - "s7-support"
+          - "modbus-support" 
+          - "opcua-support"
+          
+          # Storage features
+          - "history"
+          - "advanced-storage"
+          - "compression"
+          - "wal"
+          
+          # Security features
+          - "security"
+          - "basic-auth"
+          - "jwt-auth"
+          - "rbac"
+          
+          # Other key features
+          - "alarms"
+          - "web"
+          - "health"
+          - "validation"
+          
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          libpq-dev \
+          llvm-dev \
+          libclang-dev
+          
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry  
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-cargo-individual-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Test individual feature
+      run: |
+        echo "Testing feature: ${{ matrix.feature }}"
+        
+        # Build with just this feature (plus required dependencies)
+        cargo build --no-default-features --features ${{ matrix.feature }} --verbose
+        
+        # Run feature-specific tests if they exist
+        cargo test --no-default-features --features ${{ matrix.feature }} --verbose tests/features.rs::test_${{ matrix.feature }}_feature || true
+
+  # ============================================================================
+  # FEATURE COMBINATION TESTING
+  # ============================================================================
+  
+  test-feature-combinations:
+    name: Test Feature Combinations
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        combination:
+          # Common combinations
+          - "mqtt,security"
+          - "mqtt,history"
+          - "mqtt,alarms"
+          - "s7-support,history"
+          - "s7-support,security"
+          - "modbus-support,alarms"
+          - "history,compression"
+          - "history,wal"
+          - "security,rbac"
+          - "security,jwt-auth"
+          - "alarms,email"
+          - "web,health"
+          - "enhanced-monitoring,metrics"
+          - "optimized,metrics"
+          
+          # Complex combinations
+          - "mqtt,s7-support,history,security"
+          - "industrial,enterprise-storage,enterprise-security"
+          - "enhanced-monitoring,metrics,web,health"
+          
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          libpq-dev \
+          llvm-dev \
+          libclang-dev
+          
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-cargo-combo-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Test feature combination
+      run: |
+        echo "Testing combination: ${{ matrix.combination }}"
+        
+        # Build with feature combination
+        cargo build --features ${{ matrix.combination }} --verbose
+        
+        # Run tests
+        cargo test --features ${{ matrix.combination }} --verbose tests/features.rs
+
+  # ============================================================================
+  # CROSS-PLATFORM TESTING
+  # ============================================================================
+  
+  test-cross-platform:
+    name: Cross-Platform Feature Testing
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        bundle: ["edge", "production"]
+        
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          libpq-dev \
+          llvm-dev \
+          libclang-dev
+          
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install llvm openssl postgresql
+        echo "LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib" >> $GITHUB_ENV
+        
+    - name: Install system dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        # Install LLVM for Windows
+        choco install llvm
+        
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-cargo-cross-${{ matrix.bundle }}-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Build and test
+      run: |
+        cargo build --features ${{ matrix.bundle }} --verbose
+        cargo test --features ${{ matrix.bundle }} --verbose tests/features.rs
+        
+    - name: Check platform-specific features
+      run: |
+        echo "Platform: ${{ matrix.os }}"
+        echo "Bundle: ${{ matrix.bundle }}"
+        
+        # Test feature detection
+        cargo run --features ${{ matrix.bundle }} --bin petra -- --version
+
+  # ============================================================================
+  # NO-FEATURES TESTING
+  # ============================================================================
+  
+  test-no-features:
+    name: Test Minimal Build (No Features)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config
+        
+    - name: Test minimal build
+      run: |
+        # Try to build with absolutely no features
+        cargo build --no-default-features --verbose
+        
+        # Test that it compiles but may not be functional
+        echo "Minimal build successful"
+        
+    - name: Check minimal binary size
+      run: |
+        ls -lh target/debug/petra
+        echo "Minimal binary size:"
+        size target/debug/petra
+
+  # ============================================================================
+  # DOCUMENTATION TESTING
+  # ============================================================================
+  
+  test-feature-docs:
+    name: Test Feature Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          libpq-dev \
+          llvm-dev \
+          libclang-dev
+          
+    - name: Test documentation generation
+      run: |
+        # Test that docs build with all features
+        cargo doc --all-features --no-deps --verbose
+        
+        # Check for documentation warnings
+        cargo doc --all-features --no-deps 2>&1 | tee doc-output.log
+        
+        if grep -i "warning" doc-output.log; then
+          echo "Documentation warnings found"
+          exit 1
+        fi
+        
+    - name: Test feature-specific documentation
+      run: |
+        # Test docs for individual bundles
+        for bundle in edge scada production enterprise; do
+          echo "Testing docs for bundle: $bundle"
+          cargo doc --features $bundle --no-deps --verbose
+        done
+
+  # ============================================================================
+  # SUMMARY JOB
+  # ============================================================================
+  
+  feature-testing-summary:
+    name: Feature Testing Summary
+    runs-on: ubuntu-latest
+    needs: 
+      - feature-validation
+      - test-bundles
+      - test-individual-features
+      - test-feature-combinations
+      - test-cross-platform
+      - test-no-features
+      - test-feature-docs
+    if: always()
+    
+    steps:
+    - name: Report results
+      run: |
+        echo "Feature Testing Summary"
+        echo "======================"
+        echo "Feature validation: ${{ needs.feature-validation.result }}"
+        echo "Bundle testing: ${{ needs.test-bundles.result }}"
+        echo "Individual features: ${{ needs.test-individual-features.result }}"
+        echo "Feature combinations: ${{ needs.test-feature-combinations.result }}"
+        echo "Cross-platform: ${{ needs.test-cross-platform.result }}"
+        echo "No features: ${{ needs.test-no-features.result }}"
+        echo "Documentation: ${{ needs.test-feature-docs.result }}"
+        
+        # Fail if any critical jobs failed
+        if [ "${{ needs.feature-validation.result }}" != "success" ]; then
+          echo "Feature validation failed!"
+          exit 1
+        fi
+        
+        if [ "${{ needs.test-bundles.result }}" != "success" ]; then
+          echo "Bundle testing failed!"
+          exit 1
+        fi
