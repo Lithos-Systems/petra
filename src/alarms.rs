@@ -351,6 +351,8 @@ impl AlarmManager {
         let mut to_activate = Vec::new();
         let mut to_deactivate = Vec::new();
 
+        let bus = self.bus.clone();
+
         #[cfg(feature = "alarm-shelving")]
         let mut to_unshelve = Vec::new();
 
@@ -386,13 +388,13 @@ impl AlarmManager {
             }
 
             let mut should_activate =
-                self.evaluate_condition(&alarm.config.condition, &signal_value)?;
+                Self::evaluate_condition(&bus, &alarm.config.condition, &signal_value)?;
 
             #[cfg(feature = "alarm-hysteresis")]
             {
                 if let Some(hysteresis) = alarm.config.hysteresis {
                     should_activate =
-                        self.apply_hysteresis(alarm, should_activate, &signal_value, hysteresis);
+                        Self::apply_hysteresis(alarm, should_activate, &signal_value, hysteresis);
                 }
             }
 
@@ -461,7 +463,7 @@ impl AlarmManager {
         Ok(())
     }
 
-    fn evaluate_condition(&self, condition: &AlarmCondition, value: &Value) -> Result<bool> {
+    fn evaluate_condition(bus: &SignalBus, condition: &AlarmCondition, value: &Value) -> Result<bool> {
         Ok(match condition {
             AlarmCondition::High { threshold } => value.as_float().unwrap_or(0.0) > *threshold,
             AlarmCondition::Low { threshold } => value.as_float().unwrap_or(0.0) < *threshold,
@@ -487,7 +489,7 @@ impl AlarmManager {
                 reference_signal,
                 max_deviation,
             } => {
-                if let Some(ref_value) = self.bus.get(reference_signal) {
+                if let Some(ref_value) = bus.get(reference_signal) {
                     let v = value.as_float().unwrap_or(0.0);
                     let ref_v = ref_value.as_float().unwrap_or(0.0);
                     (v - ref_v).abs() > *max_deviation
@@ -510,7 +512,6 @@ impl AlarmManager {
 
     #[cfg(feature = "alarm-hysteresis")]
     fn apply_hysteresis(
-        &self,
         alarm: &Alarm,
         should_activate: bool,
         value: &Value,
@@ -619,16 +620,103 @@ impl AlarmManager {
     }
 
     async fn activate_alarm_by_index(&mut self, idx: usize) -> Result<()> {
-        if let Some(alarm) = self.alarms.get_mut(idx) {
-            self.activate_alarm(alarm).await?;
+        if idx >= self.alarms.len() {
+            return Ok(());
         }
+
+        let alarm = &mut self.alarms[idx];
+
+        alarm.state = AlarmState::Active;
+        alarm.last_transition = Utc::now();
+
+        #[cfg(feature = "alarm-history")]
+        {
+            alarm.activation_count += 1;
+        }
+
+        #[cfg(feature = "alarm-acknowledgment")]
+        {
+            alarm.acknowledged = false;
+            alarm.acknowledged_by = None;
+            alarm.acknowledged_at = None;
+        }
+
+        info!(
+            "Alarm '{}' activated - severity: {:?}",
+            alarm.config.name, alarm.config.severity
+        );
+
+        let _ = self
+            .tx
+            .send(AlarmEvent::Activated {
+                name: alarm.config.name.clone(),
+                severity: alarm.config.severity,
+            })
+            .await;
+
+        #[cfg(feature = "alarm-actions")]
+        for action in &alarm.config.actions {
+            self.action_executor.execute(action, &alarm.config).await?;
+        }
+
+        #[cfg(feature = "alarm-history")]
+        self.add_history_entry(AlarmHistoryEntry {
+            timestamp: Utc::now(),
+            alarm_name: alarm.config.name.clone(),
+            event: "Activated".to_string(),
+            severity: alarm.config.severity,
+            value: alarm.last_value.clone(),
+            user: None,
+        });
+
+        #[cfg(feature = "alarm-statistics")]
+        {
+            self.statistics.total_activations += 1;
+            self.statistics.active_count += 1;
+            *self
+                .statistics
+                .activations_by_severity
+                .entry(alarm.config.severity)
+                .or_insert(0) += 1;
+        }
+
         Ok(())
     }
 
     async fn deactivate_alarm_by_index(&mut self, idx: usize) -> Result<()> {
-        if let Some(alarm) = self.alarms.get_mut(idx) {
-            self.deactivate_alarm(alarm).await?;
+        if idx >= self.alarms.len() {
+            return Ok(());
         }
+
+        let alarm = &mut self.alarms[idx];
+
+        alarm.state = AlarmState::Normal;
+        alarm.last_transition = Utc::now();
+
+        info!("Alarm '{}' deactivated", alarm.config.name);
+
+        let _ = self
+            .tx
+            .send(AlarmEvent::Deactivated {
+                name: alarm.config.name.clone(),
+            })
+            .await;
+
+        #[cfg(feature = "alarm-history")]
+        self.add_history_entry(AlarmHistoryEntry {
+            timestamp: Utc::now(),
+            alarm_name: alarm.config.name.clone(),
+            event: "Deactivated".to_string(),
+            severity: alarm.config.severity,
+            value: alarm.last_value.clone(),
+            user: None,
+        });
+
+        #[cfg(feature = "alarm-statistics")]
+        {
+            self.statistics.active_count = self.statistics.active_count.saturating_sub(1);
+        }
+
         Ok(())
     }
 
@@ -826,22 +914,14 @@ mod tests {
         let manager = AlarmManager::new(vec![], SignalBus::new()).unwrap();
 
         let high_condition = AlarmCondition::High { threshold: 50.0 };
-        assert!(manager
-            .evaluate_condition(&high_condition, &Value::Float(60.0))
-            .unwrap());
-        assert!(!manager
-            .evaluate_condition(&high_condition, &Value::Float(40.0))
-            .unwrap());
+        assert!(AlarmManager::evaluate_condition(&manager.bus, &high_condition, &Value::Float(60.0)).unwrap());
+        assert!(!AlarmManager::evaluate_condition(&manager.bus, &high_condition, &Value::Float(40.0)).unwrap());
 
         let range_condition = AlarmCondition::InRange {
             min: 10.0,
             max: 20.0,
         };
-        assert!(manager
-            .evaluate_condition(&range_condition, &Value::Float(15.0))
-            .unwrap());
-        assert!(!manager
-            .evaluate_condition(&range_condition, &Value::Float(25.0))
-            .unwrap());
+        assert!(AlarmManager::evaluate_condition(&manager.bus, &range_condition, &Value::Float(15.0)).unwrap());
+        assert!(!AlarmManager::evaluate_condition(&manager.bus, &range_condition, &Value::Float(25.0)).unwrap());
     }
 }

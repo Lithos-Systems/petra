@@ -507,12 +507,11 @@ pub fn verify_config_signature(config_path: &PathBuf, signature_path: &PathBuf, 
     Ok(true)
 }
 
-pub fn sign_config(config_path: &PathBuf, key: &[u8]) -> Result<Vec<u8>> {
+pub fn sign_config(config_data: &[u8], _key: &[u8]) -> Result<Vec<u8>> {
     // Simplified config signing
     // Real implementation would use proper cryptographic signatures
     warn!("Config signing not fully implemented");
-    let config_data = std::fs::read(config_path)?;
-    let signature = general_purpose::STANDARD.encode(&config_data);
+    let signature = general_purpose::STANDARD.encode(config_data);
     Ok(signature.into_bytes())
 }
 

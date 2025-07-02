@@ -130,11 +130,7 @@ impl Engine {
 
         // Check if enhanced monitoring is enabled in config
         #[cfg(feature = "enhanced-monitoring")]
-        let enable_enhanced_monitoring = config.engine_config
-            .as_ref()
-            .and_then(|ec| ec.get("enhanced_monitoring"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let enable_enhanced_monitoring = false;
 
         Ok(Self {
             bus,
@@ -206,11 +202,7 @@ impl Engine {
 
         // Check if enhanced monitoring is enabled in config
         #[cfg(feature = "enhanced-monitoring")]
-        let enable_enhanced_monitoring = config.engine_config
-            .as_ref()
-            .and_then(|ec| ec.get("enhanced_monitoring"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let enable_enhanced_monitoring = false;
 
         Ok(Self {
             bus,
@@ -341,7 +333,7 @@ impl Engine {
 
         #[cfg(feature = "enhanced-monitoring")]
         if let Some(times) = block_times {
-            let mut execution_times = self.block_execution_times.write().unwrap();
+            let mut execution_times = self.block_execution_times.write().await;
             *execution_times = times;
         }
 

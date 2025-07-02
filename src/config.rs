@@ -213,7 +213,8 @@ impl Config {
     pub fn sign(&mut self, key_path: &Path) -> Result<()> {
         let yaml_str = serde_yaml::to_string(self)?;
         let config_bytes = yaml_str.into_bytes();
-        let signature = sign_config(&config_bytes, key_path)?;
+        let key = std::fs::read(key_path)?;
+        let signature = sign_config(&config_bytes, &key)?;
         
         self.signature = Some(signature);
         

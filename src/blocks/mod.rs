@@ -13,6 +13,9 @@ use parking_lot::RwLock;
 #[cfg(feature = "circuit-breaker")]
 use std::time::Instant;
 
+#[cfg(feature = "enhanced-monitoring")]
+use std::time::Duration;
+
 // Block trait definition
 pub trait Block: Send + Sync {
     fn execute(&mut self, bus: &SignalBus) -> Result<()>;
