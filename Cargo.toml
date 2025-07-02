@@ -2,10 +2,10 @@
 name = "petra"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Nathan Stone <nathan@lithos.systems>"]
 description = "Programmable Engine for Telemetry, Runtime, and Automation"
 license = "MIT"
-repository = "https://github.com/your-org/petra"
+repository = "https://github.com/lithos-systems/petra"
 keywords = ["automation", "plc", "scada", "industrial", "iot"]
 categories = ["embedded", "network-programming", "automation"]
 
@@ -35,7 +35,7 @@ metrics-exporter-prometheus = { version = "0.15", optional = true }
 
 # Protocol support
 rumqttc = { version = "0.24", optional = true }
-snap7-sys = { version = "1.0", optional = true }
+rust-snap7 = { version = "1.142.2", optional = true }
 tokio-modbus = { version = "0.14", optional = true }
 opcua = { version = "0.12", optional = true }
 
@@ -120,7 +120,7 @@ enhanced-monitoring = ["standard-monitoring"]
 metrics = ["dep:metrics", "dep:metrics-exporter-prometheus"]
 
 # Protocol features
-s7-support = ["dep:snap7-sys"]
+s7-support = ["dep:rust-snap7"]
 modbus-support = ["dep:tokio-modbus"]
 opcua-support = ["dep:opcua"]
 industrial = ["s7-support", "modbus-support", "opcua-support"]
@@ -209,10 +209,6 @@ data-processing = ["extended-types-blocks"]
 [[bin]]
 name = "petra"
 path = "src/main.rs"
-
-[[bench]]
-name = "engine"
-harness = false
 
 [profile.release]
 opt-level = 3
