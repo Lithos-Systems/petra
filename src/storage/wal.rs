@@ -96,7 +96,7 @@ impl WriteAheadLog {
                 format!("WAL read failed: {}", e)
             )))?;
             
-            if key.as_ref() > &end_key {
+            if key.as_ref() > end_key.as_slice() {
                 break;
             }
             
@@ -120,7 +120,7 @@ impl WriteAheadLog {
                 format!("WAL checkpoint failed: {}", e)
             )))?;
             
-            if key.as_ref() > &end_key {
+            if key.as_ref() > end_key.as_slice() {
                 break;
             }
             
