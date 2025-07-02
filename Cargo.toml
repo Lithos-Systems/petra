@@ -26,6 +26,7 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "env"] }
 base64 = { version = "0.22", optional = true }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 
 # Optional core dependencies
 parking_lot = { version = "0.12", optional = true }
