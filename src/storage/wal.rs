@@ -35,7 +35,7 @@ impl WriteAheadLog {
             )))?;
         
         // Recover sequence number
-        let sequence = Self::recover_sequence(&db);
+        let sequence = Self::recover_sequence_from_db(&db);
         
         info!("WAL initialized with sequence {}", sequence);
         
@@ -44,8 +44,7 @@ impl WriteAheadLog {
             sequence: Arc::new(Mutex::new(sequence)),
         })
     }
-    
-    fn recover_sequence(db: &DB) -> u64 {
+    fn recover_sequence_from_db(db: &DB) -> u64 {
         let iter = db.iterator(rocksdb::IteratorMode::End);
         if let Some(Ok((key, _))) = iter.into_iter().next() {
             u64::from_be_bytes(key[..8].try_into().unwrap_or([0; 8])) + 1
