@@ -811,7 +811,7 @@ pub fn get_parameter<T>(
 where
     T: serde::de::DeserializeOwned + Clone,
 {
-    match config.params.get(param_name) {
+    match config.parameters.get(param_name) {
         Some(value) => {
             serde_yaml::from_value(value.clone())
                 .map_err(|e| PlcError::Config(format!(
@@ -838,7 +838,7 @@ pub fn get_string_parameter(
     param_name: &str,
     default: Option<&str>,
 ) -> Result<String> {
-    match config.params.get(param_name) {
+    match config.parameters.get(param_name) {
         Some(serde_yaml::Value::String(s)) => Ok(s.clone()),
         Some(value) => Ok(value.to_string()),
         None => {
@@ -864,7 +864,7 @@ where
     T: serde::de::DeserializeOwned + std::str::FromStr + Clone,
     T::Err: std::fmt::Display,
 {
-    match config.params.get(param_name) {
+    match config.parameters.get(param_name) {
         Some(serde_yaml::Value::Number(n)) => {
             serde_yaml::from_value(serde_yaml::Value::Number(n.clone()))
                 .map_err(|e| PlcError::Config(format!(
@@ -902,7 +902,7 @@ pub fn get_bool_parameter(
     param_name: &str,
     default: Option<bool>,
 ) -> Result<bool> {
-    match config.params.get(param_name) {
+    match config.parameters.get(param_name) {
         Some(serde_yaml::Value::Bool(b)) => Ok(*b),
         Some(serde_yaml::Value::String(s)) => {
             match s.to_lowercase().as_str() {
