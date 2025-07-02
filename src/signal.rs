@@ -225,6 +225,168 @@ impl SignalBus {
     }
 
     // ============================================================================
+    // TYPED GETTER METHODS (required by blocks)
+    // ============================================================================
+    
+    /// Get a boolean signal value
+    pub fn get_bool(&self, name: &str) -> Result<bool> {
+        match self.get(name) {
+            Some(Value::Bool(b)) => Ok(b),
+            Some(Value::Integer(i)) => Ok(i != 0),
+            Some(Value::Float(f)) => Ok(f != 0.0),
+            #[cfg(feature = "extended-types")]
+            Some(Value::String(s)) => match s.to_lowercase().as_str() {
+                "true" | "1" | "yes" | "on" => Ok(true),
+                "false" | "0" | "no" | "off" => Ok(false),
+                _ => Err(PlcError::TypeMismatch {
+                    expected: "bool".to_string(),
+                    actual: "string".to_string(),
+                }),
+            },
+            #[cfg(feature = "quality-codes")]
+            Some(Value::QualityValue { value, quality, .. }) => {
+                if quality.is_good() {
+                    // Recursively call get_bool on the wrapped value
+                    match value.as_ref() {
+                        Value::Bool(b) => Ok(*b),
+                        Value::Integer(i) => Ok(*i != 0),
+                        Value::Float(f) => Ok(*f != 0.0),
+                        _ => Err(PlcError::TypeMismatch {
+                            expected: "bool".to_string(),
+                            actual: value.type_name().to_string(),
+                        }),
+                    }
+                } else {
+                    Err(PlcError::SignalQuality(format!("Signal '{}' has bad quality: {:?}", name, quality)))
+                }
+            }
+            Some(v) => Err(PlcError::TypeMismatch {
+                expected: "bool".to_string(),
+                actual: v.type_name().to_string(),
+            }),
+            None => Err(PlcError::SignalNotFound(name.to_string())),
+        }
+    }
+    
+    /// Get an integer signal value  
+    pub fn get_int(&self, name: &str) -> Result<i32> {
+        match self.get(name) {
+            Some(Value::Integer(i)) => Ok(i),
+            Some(Value::Float(f)) => {
+                if f.is_finite() && f >= i32::MIN as f64 && f <= i32::MAX as f64 {
+                    Ok(f as i32)
+                } else {
+                    Err(PlcError::Runtime(format!("Float value {} out of i32 range", f)))
+                }
+            }
+            Some(Value::Bool(b)) => Ok(if b { 1 } else { 0 }),
+            #[cfg(feature = "extended-types")]
+            Some(Value::String(s)) => {
+                s.parse::<i32>()
+                    .map_err(|e| PlcError::TypeMismatch {
+                        expected: "int".to_string(),
+                        actual: format!("string (parse error: {})", e),
+                    })
+            }
+            #[cfg(feature = "quality-codes")]
+            Some(Value::QualityValue { value, quality, .. }) => {
+                if quality.is_good() {
+                    // Recursively call get_int on the wrapped value
+                    match value.as_ref() {
+                        Value::Integer(i) => Ok(*i),
+                        Value::Float(f) => {
+                            if f.is_finite() && *f >= i32::MIN as f64 && *f <= i32::MAX as f64 {
+                                Ok(*f as i32)
+                            } else {
+                                Err(PlcError::Runtime(format!("Float value {} out of i32 range", f)))
+                            }
+                        }
+                        Value::Bool(b) => Ok(if *b { 1 } else { 0 }),
+                        _ => Err(PlcError::TypeMismatch {
+                            expected: "int".to_string(),
+                            actual: value.type_name().to_string(),
+                        }),
+                    }
+                } else {
+                    Err(PlcError::SignalQuality(format!("Signal '{}' has bad quality: {:?}", name, quality)))
+                }
+            }
+            Some(v) => Err(PlcError::TypeMismatch {
+                expected: "int".to_string(),
+                actual: v.type_name().to_string(),
+            }),
+            None => Err(PlcError::SignalNotFound(name.to_string())),
+        }
+    }
+    
+    /// Get a float signal value
+    pub fn get_float(&self, name: &str) -> Result<f64> {
+        match self.get(name) {
+            Some(Value::Float(f)) => Ok(f),
+            Some(Value::Integer(i)) => Ok(i as f64),
+            Some(Value::Bool(b)) => Ok(if b { 1.0 } else { 0.0 }),
+            #[cfg(feature = "extended-types")]
+            Some(Value::String(s)) => {
+                s.parse::<f64>()
+                    .map_err(|e| PlcError::TypeMismatch {
+                        expected: "float".to_string(),
+                        actual: format!("string (parse error: {})", e),
+                    })
+            }
+            #[cfg(feature = "engineering-types")]
+            Some(Value::Engineering { value, .. }) => Ok(value),
+            #[cfg(feature = "quality-codes")]
+            Some(Value::QualityValue { value, quality, .. }) => {
+                if quality.is_good() {
+                    // Recursively call get_float on the wrapped value
+                    match value.as_ref() {
+                        Value::Float(f) => Ok(*f),
+                        Value::Integer(i) => Ok(*i as f64),
+                        Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
+                        #[cfg(feature = "engineering-types")]
+                        Value::Engineering { value, .. } => Ok(*value),
+                        _ => Err(PlcError::TypeMismatch {
+                            expected: "float".to_string(),
+                            actual: value.type_name().to_string(),
+                        }),
+                    }
+                } else {
+                    Err(PlcError::SignalQuality(format!("Signal '{}' has bad quality: {:?}", name, quality)))
+                }
+            }
+            Some(v) => Err(PlcError::TypeMismatch {
+                expected: "float".to_string(),
+                actual: v.type_name().to_string(),
+            }),
+            None => Err(PlcError::SignalNotFound(name.to_string())),
+        }
+    }
+    
+    /// Get a string signal value (feature-gated)
+    #[cfg(feature = "extended-types")]
+    pub fn get_string(&self, name: &str) -> Result<String> {
+        match self.get(name) {
+            Some(Value::String(s)) => Ok(s),
+            Some(Value::Integer(i)) => Ok(i.to_string()),
+            Some(Value::Float(f)) => Ok(f.to_string()),
+            Some(Value::Bool(b)) => Ok(b.to_string()),
+            #[cfg(feature = "engineering-types")]
+            Some(Value::Engineering { value, unit, .. }) => Ok(format!("{} {}", value, unit)),
+            #[cfg(feature = "quality-codes")]
+            Some(Value::QualityValue { value, quality, .. }) => {
+                if quality.is_good() {
+                    // Recursively call as_string on the wrapped value
+                    Ok(value.as_string())
+                } else {
+                    Err(PlcError::SignalQuality(format!("Signal '{}' has bad quality: {:?}", name, quality)))
+                }
+            }
+            Some(v) => Ok(v.as_string()),
+            None => Err(PlcError::SignalNotFound(name.to_string())),
+        }
+    }
+
+    // ============================================================================
     // ENHANCED SIGNAL OPERATIONS (feature-gated)
     // ============================================================================
 
@@ -699,6 +861,31 @@ mod tests {
         keys.sort();
         
         assert_eq!(keys, vec!["alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn test_typed_getters() {
+        let bus = SignalBus::new();
+        
+        // Test bool getter
+        bus.set("bool_test", Value::Bool(true)).unwrap();
+        assert_eq!(bus.get_bool("bool_test").unwrap(), true);
+        
+        // Test int getter
+        bus.set("int_test", Value::Integer(42)).unwrap();
+        assert_eq!(bus.get_int("int_test").unwrap(), 42);
+        
+        // Test float getter
+        bus.set("float_test", Value::Float(3.14)).unwrap();
+        assert_eq!(bus.get_float("float_test").unwrap(), 3.14);
+        
+        // Test type conversions
+        bus.set("convert_test", Value::Integer(1)).unwrap();
+        assert_eq!(bus.get_bool("convert_test").unwrap(), true);
+        assert_eq!(bus.get_float("convert_test").unwrap(), 1.0);
+        
+        // Test missing signal
+        assert!(bus.get_bool("missing").is_err());
     }
 
     #[cfg(feature = "quality-codes")]
