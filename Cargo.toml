@@ -44,7 +44,7 @@ bytes = "1.5"
 ringbuffer = { version = "0.15", optional = true }
 async-trait = "0.1"
 regex = { version = "1.10", optional = true }
-base64 = "0.22"
+base64 = { version = "0.22", optional = true }
 htmlescape = "0.3"
 md5 = "0.7"
 once_cell = { version = "1.19", optional = true }
