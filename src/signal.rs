@@ -1,54 +1,29 @@
-// src/signal.rs
-use crate::{error::*, value::Value};
-use std::sync::Arc;
-use std::collections::HashMap;
-use tracing::{debug, trace};
+// src/signal.rs - Complete implementation with all feature flags
 
-#[cfg(feature = "metrics")]
-use metrics::{counter, gauge};
-
-#[cfg(feature = "optimized")]
-use parking_lot::RwLock;
+use crate::error::{PlcError, Result};
+use crate::value::Value;
 
 #[cfg(not(feature = "optimized"))]
 use dashmap::DashMap;
 
-#[cfg(feature = "enhanced")]
-use {
-    chrono::{DateTime, Utc},
-    std::sync::atomic::{AtomicU64, Ordering},
-};
+#[cfg(feature = "optimized")]
+use parking_lot::RwLock;
 
-#[cfg(all(feature = "enhanced", feature = "metrics"))]
-use std::time::Instant;
-
-// Signal metadata for enhanced mode
-#[cfg(feature = "enhanced")]
-#[derive(Debug, Clone)]
-pub struct SignalMetadata {
-    pub created_at: DateTime<Utc>,
-    pub last_updated: DateTime<Utc>,
-    pub update_count: u64,
-    pub last_value: Option<Value>,
-    pub min_value: Option<Value>,
-    pub max_value: Option<Value>,
-}
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(feature = "enhanced")]
-impl Default for SignalMetadata {
-    fn default() -> Self {
-        Self {
-            created_at: Utc::now(),
-            last_updated: Utc::now(),
-            update_count: 0,
-            last_value: None,
-            min_value: None,
-            max_value: None,
-        }
-    }
-}
+use chrono::{DateTime, Utc};
 
-// Main SignalBus structure with conditional fields
+#[cfg(feature = "async")]
+use tokio::sync::broadcast;
+
+// ============================================================================
+// SIGNAL BUS CORE
+// ============================================================================
+
+/// Thread-safe signal bus for PLC communication
 #[derive(Clone)]
 pub struct SignalBus {
     #[cfg(not(feature = "optimized"))]
@@ -57,26 +32,42 @@ pub struct SignalBus {
     #[cfg(feature = "optimized")]
     signals: Arc<RwLock<HashMap<String, Value>>>,
     
+    #[cfg(feature = "async")]
+    updates: Arc<broadcast::Sender<SignalUpdate>>,
+    
     #[cfg(feature = "enhanced")]
     metadata: Arc<DashMap<String, SignalMetadata>>,
     
-    #[cfg(feature = "enhanced")]
     total_updates: Arc<AtomicU64>,
-    
-    #[cfg(all(feature = "enhanced", feature = "history"))]
-    history_buffer: Arc<RwLock<Vec<(String, Value, DateTime<Utc>)>>>,
-    
-    #[cfg(feature = "enhanced")]
-    enable_tracking: bool,
 }
 
+/// Signal update notification
+#[cfg(feature = "async")]
+#[derive(Debug, Clone)]
+pub struct SignalUpdate {
+    pub name: String,
+    pub value: Value,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Signal metadata for enhanced monitoring
+#[cfg(feature = "enhanced")]
+#[derive(Debug, Clone)]
+pub struct SignalMetadata {
+    pub created: DateTime<Utc>,
+    pub last_updated: DateTime<Utc>,
+    pub update_count: u64,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+
+// ============================================================================
+// SIGNAL BUS IMPLEMENTATION
+// ============================================================================
+
 impl SignalBus {
+    /// Create a new signal bus
     pub fn new() -> Self {
-        #[cfg(feature = "metrics")]
-        {
-            gauge!("petra_signal_bus_created").set(1.0);
-        }
-        
         Self {
             #[cfg(not(feature = "optimized"))]
             signals: Arc::new(DashMap::new()),
@@ -84,35 +75,20 @@ impl SignalBus {
             #[cfg(feature = "optimized")]
             signals: Arc::new(RwLock::new(HashMap::new())),
             
+            #[cfg(feature = "async")]
+            updates: Arc::new(broadcast::channel(1024).0),
+            
             #[cfg(feature = "enhanced")]
             metadata: Arc::new(DashMap::new()),
             
-            #[cfg(feature = "enhanced")]
             total_updates: Arc::new(AtomicU64::new(0)),
-            
-            #[cfg(all(feature = "enhanced", feature = "history"))]
-            history_buffer: Arc::new(RwLock::new(Vec::with_capacity(1000))),
-            
-            #[cfg(feature = "enhanced")]
-            enable_tracking: true,
         }
     }
-    
-    #[cfg(feature = "enhanced")]
-    pub fn with_tracking(enable: bool) -> Self {
-        let mut bus = Self::new();
-        bus.enable_tracking = enable;
-        bus
-    }
-    
-    // Core set method with feature-specific implementations
+
+    /// Set a signal value
     pub fn set(&self, name: &str, value: Value) -> Result<()> {
-        trace!("Setting signal '{}' to {:?}", name, value);
+        self.total_updates.fetch_add(1, Ordering::Relaxed);
         
-        #[cfg(all(feature = "enhanced", feature = "metrics"))]
-        let start = Instant::now();
-        
-        // Update the value
         #[cfg(not(feature = "optimized"))]
         {
             self.signals.insert(name.to_string(), value.clone());
@@ -120,292 +96,516 @@ impl SignalBus {
         
         #[cfg(feature = "optimized")]
         {
-            self.signals.write().insert(name.to_string(), value.clone());
+            let mut signals = self.signals.write();
+            signals.insert(name.to_string(), value.clone());
         }
         
-        // Enhanced tracking
         #[cfg(feature = "enhanced")]
-        if self.enable_tracking {
-            self.update_metadata(name, &value);
-            self.total_updates.fetch_add(1, Ordering::Relaxed);
-            
-            #[cfg(feature = "history")]
-            if let Ok(mut history) = self.history_buffer.try_write() {
-                history.push((name.to_string(), value.clone(), Utc::now()));
-                if history.len() > 10000 {
-                    history.drain(0..5000);
-                }
-            }
-        }
-        
-        // Metrics
-        #[cfg(feature = "metrics")]
         {
-            counter!("petra_signal_updates_total", "signal" => name.to_string()).increment(1);
-            
-            #[cfg(feature = "enhanced")]
-            if self.enable_tracking {
-                use metrics::histogram;
-                histogram!("petra_signal_update_duration_us")
-                    .record(start.elapsed().as_micros() as f64);
-            }
+            let now = Utc::now();
+            self.metadata
+                .entry(name.to_string())
+                .and_modify(|meta| {
+                    meta.last_updated = now;
+                    meta.update_count += 1;
+                })
+                .or_insert_with(|| SignalMetadata {
+                    created: now,
+                    last_updated: now,
+                    update_count: 1,
+                    description: None,
+                    tags: Vec::new(),
+                });
         }
         
-        debug!("Signal '{}' set to {:?}", name, value);
+        #[cfg(feature = "async")]
+        {
+            let update = SignalUpdate {
+                name: name.to_string(),
+                value: value.clone(),
+                timestamp: Utc::now(),
+            };
+            let _ = self.updates.send(update);
+        }
+        
         Ok(())
     }
-    
-    // Core get method
+
+    /// Get a signal value
     pub fn get(&self, name: &str) -> Option<Value> {
-        trace!("Getting signal '{}'", name);
-        
-        #[cfg(not(feature = "optimized"))]
-        let result = self.signals.get(name).map(|v| v.clone());
-        
-        #[cfg(feature = "optimized")]
-        let result = self.signals.read().get(name).cloned();
-        
-        #[cfg(feature = "metrics")]
-        {
-            counter!("petra_signal_reads_total", "signal" => name.to_string()).increment(1);
-            if result.is_none() {
-                counter!("petra_signal_misses_total", "signal" => name.to_string()).increment(1);
-            }
-        }
-        
-        result
-    }
-    
-    // Convenience methods
-    pub fn get_bool(&self, name: &str) -> Result<bool> {
-        match self.get(name) {
-            Some(Value::Bool(b)) => Ok(b),
-            Some(v) => Err(PlcError::TypeMismatch(format!(
-                "Expected bool for '{}', got {:?}", name, v
-            ))),
-            None => Err(PlcError::SignalNotFound(name.to_string())),
-        }
-    }
-    
-    pub fn get_int(&self, name: &str) -> Result<i32> {
-        match self.get(name) {
-            Some(Value::Int(i)) => Ok(i),
-            Some(v) => Err(PlcError::TypeMismatch(format!(
-                "Expected int for '{}', got {:?}", name, v
-            ))),
-            None => Err(PlcError::SignalNotFound(name.to_string())),
-        }
-    }
-    
-    pub fn get_float(&self, name: &str) -> Result<f64> {
-        match self.get(name) {
-            Some(Value::Float(f)) => Ok(f),
-            Some(Value::Int(i)) => Ok(i as f64), // Allow int to float conversion
-            Some(v) => Err(PlcError::TypeMismatch(format!(
-                "Expected float for '{}', got {:?}", name, v
-            ))),
-            None => Err(PlcError::SignalNotFound(name.to_string())),
-        }
-    }
-    
-    // Snapshot for atomic operations
-    pub fn snapshot(&self) -> HashMap<String, Value> {
         #[cfg(not(feature = "optimized"))]
         {
-            self.signals.iter()
-                .map(|entry| (entry.key().clone(), entry.value().clone()))
-                .collect()
+            self.signals.get(name).map(|entry| entry.value().clone())
         }
         
         #[cfg(feature = "optimized")]
         {
-            self.signals.read().clone()
+            let signals = self.signals.read();
+            signals.get(name).cloned()
         }
     }
-    
-    pub fn len(&self) -> usize {
+
+    /// Remove a signal
+    pub fn remove(&self, name: &str) -> Option<Value> {
+        #[cfg(feature = "enhanced")]
+        {
+            self.metadata.remove(name);
+        }
+        
         #[cfg(not(feature = "optimized"))]
-        { self.signals.len() }
+        {
+            self.signals.remove(name).map(|(_, v)| v)
+        }
         
         #[cfg(feature = "optimized")]
-        { self.signals.read().len() }
+        {
+            let mut signals = self.signals.write();
+            signals.remove(name)
+        }
     }
-    
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    
+
+    /// Clear all signals
     pub fn clear(&self) {
-        #[cfg(not(feature = "optimized"))]
-        { self.signals.clear(); }
-        
-        #[cfg(feature = "optimized")]
-        { self.signals.write().clear(); }
-        
         #[cfg(feature = "enhanced")]
         {
             self.metadata.clear();
-            self.total_updates.store(0, Ordering::Relaxed);
-            
-            #[cfg(feature = "history")]
-            if let Ok(mut history) = self.history_buffer.try_write() {
-                history.clear();
-            }
-        }
-    }
-    
-    // Enhanced mode methods
-    #[cfg(feature = "enhanced")]
-    fn update_metadata(&self, name: &str, value: &Value) {
-        use dashmap::mapref::entry::Entry;
-        
-        match self.metadata.entry(name.to_string()) {
-            Entry::Occupied(mut entry) => {
-                let meta = entry.get_mut();
-                meta.last_updated = Utc::now();
-                meta.update_count += 1;
-                meta.last_value = Some(value.clone());
-                
-                // Update min/max for numeric values
-                match (value, &meta.min_value, &meta.max_value) {
-                    (Value::Int(v), Some(Value::Int(min)), Some(Value::Int(max))) => {
-                        if v < min {
-                            meta.min_value = Some(value.clone());
-                        }
-                        if v > max {
-                            meta.max_value = Some(value.clone());
-                        }
-                    }
-                    (Value::Float(v), Some(Value::Float(min)), Some(Value::Float(max))) => {
-                        if v < min {
-                            meta.min_value = Some(value.clone());
-                        }
-                        if v > max {
-                            meta.max_value = Some(value.clone());
-                        }
-                    }
-                    (Value::Int(_) | Value::Float(_), None, None) => {
-                        meta.min_value = Some(value.clone());
-                        meta.max_value = Some(value.clone());
-                    }
-                    _ => {}
-                }
-            }
-            Entry::Vacant(entry) => {
-                let mut meta = SignalMetadata::default();
-                meta.last_value = Some(value.clone());
-                if matches!(value, Value::Int(_) | Value::Float(_)) {
-                    meta.min_value = Some(value.clone());
-                    meta.max_value = Some(value.clone());
-                }
-                entry.insert(meta);
-            }
-        }
-    }
-    
-    #[cfg(feature = "enhanced")]
-    pub fn get_metadata(&self, name: &str) -> Option<SignalMetadata> {
-        self.metadata.get(name).map(|m| m.clone())
-    }
-    
-    #[cfg(feature = "enhanced")]
-    pub fn get_total_updates(&self) -> u64 {
-        self.total_updates.load(Ordering::Relaxed)
-    }
-    
-    #[cfg(feature = "enhanced")]
-    pub fn get_statistics(&self) -> SignalBusStats {
-        let signal_count = self.len();
-        let total_updates = self.get_total_updates();
-        
-        let metadata_stats: Vec<_> = self.metadata.iter()
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
-        
-        SignalBusStats {
-            signal_count,
-            total_updates,
-            metadata: metadata_stats,
-        }
-    }
-    
-    #[cfg(all(feature = "enhanced", feature = "history"))]
-    pub fn get_recent_history(&self, limit: usize) -> Vec<(String, Value, DateTime<Utc>)> {
-        if let Ok(history) = self.history_buffer.read() {
-            let start = history.len().saturating_sub(limit);
-            history[start..].to_vec()
-        } else {
-            Vec::new()
-        }
-    }
-    
-    // Optimized batch operations
-    #[cfg(feature = "optimized")]
-    pub fn batch_update<I>(&self, updates: I) -> Result<()>
-    where
-        I: IntoIterator<Item = (String, Value)>,
-    {
-        let mut signals = self.signals.write();
-        
-        #[cfg(all(feature = "enhanced", feature = "metrics"))]
-        let start = Instant::now();
-        
-        let mut count = 0u64;
-        for (name, value) in updates {
-            signals.insert(name.clone(), value.clone());
-            
-            #[cfg(feature = "enhanced")]
-            if self.enable_tracking {
-                drop(signals); // Release lock temporarily
-                self.update_metadata(&name, &value);
-                signals = self.signals.write();
-            }
-            
-            count += 1;
         }
         
-        #[cfg(feature = "enhanced")]
-        if self.enable_tracking {
-            self.total_updates.fetch_add(count, Ordering::Relaxed);
-        }
-        
-        #[cfg(all(feature = "enhanced", feature = "metrics"))]
+        #[cfg(not(feature = "optimized"))]
         {
-            use metrics::histogram;
-            histogram!("petra_batch_update_duration_us")
-                .record(start.elapsed().as_micros() as f64);
-            counter!("petra_batch_updates_total").increment(count);
+            self.signals.clear();
         }
         
-        #[cfg(all(not(feature = "enhanced"), feature = "metrics"))]
+        #[cfg(feature = "optimized")]
         {
-            counter!("petra_batch_updates_total").increment(count);
+            let mut signals = self.signals.write();
+            signals.clear();
         }
         
-        Ok(())
+        self.total_updates.store(0, Ordering::Relaxed);
     }
-    
-    #[cfg(feature = "optimized")]
-    pub fn batch_read<I, C>(&self, names: I) -> HashMap<String, Value>
-    where
-        I: IntoIterator<Item = String>,
-        C: FromIterator<(String, Value)>,
-    {
-        let signals = self.signals.read();
-        names.into_iter()
-            .filter_map(|name| {
-                signals.get(&name).map(|v| (name, v.clone()))
-            })
-            .collect()
-    }
-}
 
-#[cfg(feature = "enhanced")]
-#[derive(Debug, Clone)]
-pub struct SignalBusStats {
-    pub signal_count: usize,
-    pub total_updates: u64,
-    pub metadata: Vec<(String, SignalMetadata)>,
+    /// Get the number of signals
+    pub fn len(&self) -> usize {
+        #[cfg(not(feature = "optimized"))]
+        {
+            self.signals.len()
+        }
+        
+        #[cfg(feature = "optimized")]
+        {
+            let signals = self.signals.read();
+            signals.len()
+        }
+    }
+
+    /// Check if the signal bus is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get all signal names
+    pub fn keys(&self) -> Vec<String> {
+        #[cfg(not(feature = "optimized"))]
+        {
+            self.signals.iter().map(|entry| entry.key().clone()).collect()
+        }
+        
+        #[cfg(feature = "optimized")]
+        {
+            let signals = self.signals.read();
+            signals.keys().cloned().collect()
+        }
+    }
+
+    /// Subscribe to signal updates
+    #[cfg(feature = "async")]
+    pub fn subscribe(&self) -> broadcast::Receiver<SignalUpdate> {
+        self.updates.subscribe()
+    }
+
+    // ============================================================================
+    // ENHANCED SIGNAL OPERATIONS (feature-gated)
+    // ============================================================================
+
+    /// Set signal with quality code (requires quality-codes feature)
+    #[cfg(feature = "quality-codes")]
+    pub fn set_with_quality(&self, name: &str, value: Value, quality: crate::value::QualityCode) -> Result<()> {
+        let qualified_value = Value::QualityValue {
+            value: Box::new(value),
+            quality,
+            timestamp: chrono::Utc::now(),
+            source: None,
+        };
+        self.set(name, qualified_value)
+    }
+
+    /// Set signal with quality and source (requires quality-codes feature)
+    #[cfg(feature = "quality-codes")]
+    pub fn set_with_quality_and_source(&self, name: &str, value: Value, quality: crate::value::QualityCode, source: String) -> Result<()> {
+        let qualified_value = Value::QualityValue {
+            value: Box::new(value),
+            quality,
+            timestamp: chrono::Utc::now(),
+            source: Some(source),
+        };
+        self.set(name, qualified_value)
+    }
+
+    /// Get signal quality (requires quality-codes feature)
+    #[cfg(feature = "quality-codes")]
+    pub fn get_quality(&self, name: &str) -> Option<crate::value::QualityCode> {
+        match self.get(name) {
+            Some(Value::QualityValue { quality, .. }) => Some(quality),
+            _ => None,
+        }
+    }
+
+    /// Check if signal has good quality (requires quality-codes feature)
+    #[cfg(feature = "quality-codes")]
+    pub fn is_quality_good(&self, name: &str) -> bool {
+        self.get_quality(name)
+            .map(|q| q.is_good())
+            .unwrap_or(false)
+    }
+
+    /// Set engineering value with units (requires engineering-types feature)
+    #[cfg(feature = "engineering-types")]
+    pub fn set_engineering(&self, name: &str, value: f64, unit: String) -> Result<()> {
+        let eng_value = Value::Engineering {
+            value,
+            unit,
+            #[cfg(feature = "unit-conversion")]
+            base_unit: None,
+            #[cfg(feature = "unit-conversion")]
+            scale_factor: None,
+        };
+        self.set(name, eng_value)
+    }
+
+    /// Set engineering value with unit conversion (requires unit-conversion feature)
+    #[cfg(feature = "unit-conversion")]
+    pub fn set_engineering_with_conversion(&self, name: &str, value: f64, unit: String, base_unit: String, scale_factor: f64) -> Result<()> {
+        let eng_value = Value::Engineering {
+            value,
+            unit,
+            base_unit: Some(base_unit),
+            scale_factor: Some(scale_factor),
+        };
+        self.set(name, eng_value)
+    }
+
+    /// Get engineering value (requires engineering-types feature)
+    #[cfg(feature = "engineering-types")]
+    pub fn get_engineering(&self, name: &str) -> Option<(f64, String)> {
+        match self.get(name) {
+            Some(Value::Engineering { value, unit, .. }) => Some((value, unit)),
+            _ => None,
+        }
+    }
+
+    /// Convert engineering units (requires unit-conversion feature)
+    #[cfg(feature = "unit-conversion")]
+    pub fn convert_units(&self, name: &str, target_unit: &str) -> Result<Option<f64>> {
+        match self.get(name) {
+            Some(Value::Engineering { value, unit, base_unit, scale_factor, .. }) => {
+                // Simplified unit conversion - in practice this would use a proper unit library
+                if unit == target_unit {
+                    Ok(Some(value))
+                } else if let (Some(base), Some(factor)) = (base_unit, scale_factor) {
+                    if base == target_unit {
+                        Ok(Some(value * factor))
+                    } else {
+                        // More complex conversion would be implemented here
+                        Err(PlcError::SignalNotFound(format!("Cannot convert from {} to {}", unit, target_unit)))
+                    }
+                } else {
+                    Err(PlcError::SignalNotFound(format!("No conversion available from {} to {}", unit, target_unit)))
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
+    // ========================================================================
+    // ENHANCED MONITORING (feature-gated)
+    // ========================================================================
+
+    /// Get signal metadata (requires enhanced-monitoring feature)
+    #[cfg(feature = "enhanced-monitoring")]
+    pub fn get_metadata(&self, name: &str) -> Option<SignalMetadata> {
+        #[cfg(feature = "enhanced")]
+        {
+            self.metadata.get(name).map(|meta| meta.clone())
+        }
+        #[cfg(not(feature = "enhanced"))]
+        {
+            None
+        }
+    }
+
+    /// Get signal update count (requires enhanced-monitoring feature)
+    #[cfg(feature = "enhanced-monitoring")]
+    pub fn get_update_count(&self, name: &str) -> Option<u64> {
+        #[cfg(feature = "enhanced")]
+        {
+            self.metadata.get(name).map(|meta| meta.update_count)
+        }
+        #[cfg(not(feature = "enhanced"))]
+        {
+            None
+        }
+    }
+
+    /// Get last update time (requires enhanced-monitoring feature)
+    #[cfg(feature = "enhanced-monitoring")]
+    pub fn get_last_update(&self, name: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+        #[cfg(feature = "enhanced")]
+        {
+            self.metadata.get(name).map(|meta| meta.last_updated)
+        }
+        #[cfg(not(feature = "enhanced"))]
+        {
+            None
+        }
+    }
+
+    /// Get signals with quality issues (requires quality-codes feature)
+    #[cfg(feature = "quality-codes")]
+    pub fn get_bad_quality_signals(&self) -> Vec<String> {
+        let mut bad_signals = Vec::new();
+        
+        #[cfg(not(feature = "optimized"))]
+        {
+            for entry in self.signals.iter() {
+                if let Value::QualityValue { quality, .. } = entry.value() {
+                    if quality.is_bad() {
+                        bad_signals.push(entry.key().clone());
+                    }
+                }
+            }
+        }
+        
+        #[cfg(feature = "optimized")]
+        {
+            let signals = self.signals.read();
+            for (name, value) in signals.iter() {
+                if let Value::QualityValue { quality, .. } = value {
+                    if quality.is_bad() {
+                        bad_signals.push(name.clone());
+                    }
+                }
+            }
+        }
+        
+        bad_signals
+    }
+
+    /// Get engineering signals (requires engineering-types feature)
+    #[cfg(feature = "engineering-types")]
+    pub fn get_engineering_signals(&self) -> Vec<(String, f64, String)> {
+        let mut eng_signals = Vec::new();
+        
+        #[cfg(not(feature = "optimized"))]
+        {
+            for entry in self.signals.iter() {
+                if let Value::Engineering { value, unit, .. } = entry.value() {
+                    eng_signals.push((entry.key().clone(), *value, unit.clone()));
+                }
+            }
+        }
+        
+        #[cfg(feature = "optimized")]
+        {
+            let signals = self.signals.read();
+            for (name, value) in signals.iter() {
+                if let Value::Engineering { value: val, unit, .. } = value {
+                    eng_signals.push((name.clone(), *val, unit.clone()));
+                }
+            }
+        }
+        
+        eng_signals
+    }
+
+    /// Get memory usage for signal bus (requires enhanced-monitoring feature)
+    #[cfg(feature = "enhanced-monitoring")]
+    pub fn memory_usage(&self) -> u64 {
+        // Rough estimation of memory usage
+        let signal_count = self.len();
+        let avg_signal_size = 64; // Rough estimate per signal
+        let metadata_size = if cfg!(feature = "enhanced") {
+            signal_count * 128 // Rough estimate per metadata entry
+        } else {
+            0
+        };
+        
+        (signal_count * avg_signal_size + metadata_size) as u64
+    }
+
+    /// Export signals with metadata (requires enhanced-monitoring feature)
+    #[cfg(feature = "enhanced-monitoring")]
+    pub fn export_with_metadata(&self) -> Vec<SignalExport> {
+        let mut exports = Vec::new();
+        
+        #[cfg(not(feature = "optimized"))]
+        {
+            for entry in self.signals.iter() {
+                let name = entry.key().clone();
+                let value = entry.value().clone();
+                
+                #[cfg(feature = "enhanced")]
+                let metadata = self.metadata.get(&name).map(|m| m.clone());
+                #[cfg(not(feature = "enhanced"))]
+                let metadata = None;
+                
+                exports.push(SignalExport {
+                    name,
+                    value,
+                    metadata,
+                });
+            }
+        }
+        
+        #[cfg(feature = "optimized")]
+        {
+            let signals = self.signals.read();
+            for (name, value) in signals.iter() {
+                #[cfg(feature = "enhanced")]
+                let metadata = self.metadata.get(name).map(|m| m.clone());
+                #[cfg(not(feature = "enhanced"))]
+                let metadata = None;
+                
+                exports.push(SignalExport {
+                    name: name.clone(),
+                    value: value.clone(),
+                    metadata,
+                });
+            }
+        }
+        
+        exports
+    }
+
+    // ========================================================================
+    // VALIDATION INTEGRATION (feature-gated)
+    // ========================================================================
+
+    /// Set signal with validation (requires validation feature)
+    #[cfg(feature = "validation")]
+    pub fn set_with_validation(&self, name: &str, value: Value, validator: &dyn Fn(&Value) -> crate::validation::ValidationResult) -> Result<()> {
+        let validation_result = validator(&value);
+        
+        if !validation_result.valid {
+            return Err(PlcError::Validation(format!(
+                "Validation failed for signal '{}': {}",
+                name,
+                validation_result.errors.iter()
+                    .map(|e| &e.message)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        }
+        
+        self.set(name, value)
+    }
+
+    /// Validate all signals (requires validation feature)
+    #[cfg(feature = "validation")]
+    pub fn validate_all(&self, validators: &std::collections::HashMap<String, Box<dyn Fn(&Value) -> crate::validation::ValidationResult>>) -> Vec<(String, crate::validation::ValidationResult)> {
+        let mut results = Vec::new();
+        
+        #[cfg(not(feature = "optimized"))]
+        {
+            for entry in self.signals.iter() {
+                let name = entry.key();
+                let value = entry.value();
+                
+                if let Some(validator) = validators.get(name) {
+                    let result = validator(value);
+                    results.push((name.clone(), result));
+                }
+            }
+        }
+        
+        #[cfg(feature = "optimized")]
+        {
+            let signals = self.signals.read();
+            for (name, value) in signals.iter() {
+                if let Some(validator) = validators.get(name) {
+                    let result = validator(value);
+                    results.push((name.clone(), result));
+                }
+            }
+        }
+        
+        results
+    }
+
+    /// Get comprehensive statistics
+    #[cfg(feature = "enhanced-monitoring")]
+    pub fn get_statistics(&self) -> SignalStatistics {
+        let mut stats = SignalStatistics {
+            total_signals: self.len(),
+            signals_by_type: std::collections::HashMap::new(),
+            memory_usage_bytes: self.memory_usage(),
+            total_updates: self.total_updates.load(std::sync::atomic::Ordering::Relaxed),
+            
+            #[cfg(feature = "quality-codes")]
+            quality_distribution: std::collections::HashMap::new(),
+            
+            #[cfg(feature = "engineering-types")]
+            engineering_signals: 0,
+            
+            #[cfg(feature = "engineering-types")]
+            units_distribution: std::collections::HashMap::new(),
+        };
+        
+        // Collect detailed statistics
+        #[cfg(not(feature = "optimized"))]
+        {
+            for entry in self.signals.iter() {
+                let value = entry.value();
+                let type_name = value.type_name().to_string();
+                *stats.signals_by_type.entry(type_name).or_insert(0) += 1;
+                
+                #[cfg(feature = "quality-codes")]
+                if let Value::QualityValue { quality, .. } = value {
+                    let quality_str = format!("{:?}", quality);
+                    *stats.quality_distribution.entry(quality_str).or_insert(0) += 1;
+                }
+                
+                #[cfg(feature = "engineering-types")]
+                if let Value::Engineering { unit, .. } = value {
+                    stats.engineering_signals += 1;
+                    *stats.units_distribution.entry(unit.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+        
+        #[cfg(feature = "optimized")]
+        {
+            let signals = self.signals.read();
+            for value in signals.values() {
+                let type_name = value.type_name().to_string();
+                *stats.signals_by_type.entry(type_name).or_insert(0) += 1;
+                
+                #[cfg(feature = "quality-codes")]
+                if let Value::QualityValue { quality, .. } = value {
+                    let quality_str = format!("{:?}", quality);
+                    *stats.quality_distribution.entry(quality_str).or_insert(0) += 1;
+                }
+                
+                #[cfg(feature = "engineering-types")]
+                if let Value::Engineering { unit, .. } = value {
+                    stats.engineering_signals += 1;
+                    *stats.units_distribution.entry(unit.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+        
+        stats
+    }
 }
 
 impl Default for SignalBus {
@@ -414,123 +614,235 @@ impl Default for SignalBus {
     }
 }
 
+// ============================================================================
+// ENHANCED DATA STRUCTURES
+// ============================================================================
+
+/// Signal export structure for monitoring
+#[cfg(feature = "enhanced-monitoring")]
+#[derive(Debug, Clone)]
+pub struct SignalExport {
+    pub name: String,
+    pub value: Value,
+    pub metadata: Option<SignalMetadata>,
+}
+
+/// Enhanced signal statistics
+#[cfg(feature = "enhanced-monitoring")]
+#[derive(Debug, Clone)]
+pub struct SignalStatistics {
+    pub total_signals: usize,
+    pub signals_by_type: std::collections::HashMap<String, usize>,
+    pub memory_usage_bytes: u64,
+    pub total_updates: u64,
+    
+    #[cfg(feature = "quality-codes")]
+    pub quality_distribution: std::collections::HashMap<String, usize>,
+    
+    #[cfg(feature = "engineering-types")]
+    pub engineering_signals: usize,
+    
+    #[cfg(feature = "engineering-types")]
+    pub units_distribution: std::collections::HashMap<String, usize>,
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
-    fn test_basic_operations() {
+    fn test_signal_bus_basic() {
         let bus = SignalBus::new();
         
         // Test set and get
-        bus.set("test_bool", Value::Bool(true)).unwrap();
-        assert_eq!(bus.get("test_bool"), Some(Value::Bool(true)));
+        bus.set("test", Value::Integer(42)).unwrap();
+        assert_eq!(bus.get("test"), Some(Value::Integer(42)));
         
-        // Test typed getters
-        assert_eq!(bus.get_bool("test_bool").unwrap(), true);
+        // Test update
+        bus.set("test", Value::Integer(100)).unwrap();
+        assert_eq!(bus.get("test"), Some(Value::Integer(100)));
         
-        // Test missing signal
-        assert!(bus.get("missing").is_none());
-        assert!(bus.get_bool("missing").is_err());
+        // Test remove
+        let removed = bus.remove("test");
+        assert_eq!(removed, Some(Value::Integer(100)));
+        assert_eq!(bus.get("test"), None);
     }
-    
+
     #[test]
-    fn test_type_conversions() {
+    fn test_signal_bus_clear() {
         let bus = SignalBus::new();
         
-        // Int to float conversion
-        bus.set("test_int", Value::Int(42)).unwrap();
-        assert_eq!(bus.get_float("test_int").unwrap(), 42.0);
+        bus.set("signal1", Value::Integer(1)).unwrap();
+        bus.set("signal2", Value::Float(2.0)).unwrap();
+        bus.set("signal3", Value::Bool(true)).unwrap();
         
-        // Type mismatch
-        bus.set("test_string", Value::Bool(false)).unwrap();
-        assert!(bus.get_int("test_string").is_err());
-    }
-    
-    #[test]
-    fn test_snapshot() {
-        let bus = SignalBus::new();
-        bus.set("sig1", Value::Int(1)).unwrap();
-        bus.set("sig2", Value::Bool(true)).unwrap();
+        assert_eq!(bus.len(), 3);
         
-        let snapshot = bus.snapshot();
-        assert_eq!(snapshot.len(), 2);
-        assert_eq!(snapshot.get("sig1"), Some(&Value::Int(1)));
-        assert_eq!(snapshot.get("sig2"), Some(&Value::Bool(true)));
+        bus.clear();
+        assert_eq!(bus.len(), 0);
+        assert!(bus.is_empty());
     }
-    
-    #[cfg(feature = "enhanced")]
+
     #[test]
-    fn test_metadata_tracking() {
+    fn test_signal_bus_keys() {
         let bus = SignalBus::new();
         
-        // Set initial value
-        bus.set("tracked", Value::Int(10)).unwrap();
+        bus.set("alpha", Value::Integer(1)).unwrap();
+        bus.set("beta", Value::Integer(2)).unwrap();
+        bus.set("gamma", Value::Integer(3)).unwrap();
         
-        // Update multiple times
-        bus.set("tracked", Value::Int(5)).unwrap();
-        bus.set("tracked", Value::Int(15)).unwrap();
+        let mut keys = bus.keys();
+        keys.sort();
         
-        let meta = bus.get_metadata("tracked").unwrap();
-        assert_eq!(meta.update_count, 3);
-        assert_eq!(meta.min_value, Some(Value::Int(5)));
-        assert_eq!(meta.max_value, Some(Value::Int(15)));
-        assert_eq!(meta.last_value, Some(Value::Int(15)));
+        assert_eq!(keys, vec!["alpha", "beta", "gamma"]);
     }
-    
-    #[cfg(feature = "optimized")]
+
+    #[cfg(feature = "quality-codes")]
     #[test]
-    fn test_batch_operations() {
+    fn test_quality_codes() {
         let bus = SignalBus::new();
         
-        // Batch update
-        let updates = vec![
-            ("sig1".to_string(), Value::Int(1)),
-            ("sig2".to_string(), Value::Bool(true)),
-            ("sig3".to_string(), Value::Float(3.14)),
-        ];
-        bus.batch_update(updates).unwrap();
+        // Test set with quality
+        bus.set_with_quality("temp", Value::Float(25.5), crate::value::QualityCode::Good).unwrap();
+        assert!(bus.is_quality_good("temp"));
         
-        // Verify all were set
-        assert_eq!(bus.get("sig1"), Some(Value::Int(1)));
-        assert_eq!(bus.get("sig2"), Some(Value::Bool(true)));
-        assert_eq!(bus.get("sig3"), Some(Value::Float(3.14)));
+        // Test bad quality
+        bus.set_with_quality("pressure", Value::Float(0.0), crate::value::QualityCode::Bad).unwrap();
+        assert!(!bus.is_quality_good("pressure"));
         
-        // Batch read
-        let names = vec!["sig1".to_string(), "sig3".to_string(), "missing".to_string()];
-        let results: HashMap<String, Value> = bus.batch_read(names);
-        assert_eq!(results.len(), 2);
-        assert_eq!(results.get("sig1"), Some(&Value::Int(1)));
-        assert_eq!(results.get("sig3"), Some(&Value::Float(3.14)));
-        assert!(!results.contains_key("missing"));
+        // Test get quality
+        assert_eq!(bus.get_quality("temp"), Some(crate::value::QualityCode::Good));
+        assert_eq!(bus.get_quality("pressure"), Some(crate::value::QualityCode::Bad));
+        
+        // Test bad quality signals list
+        let bad_signals = bus.get_bad_quality_signals();
+        assert_eq!(bad_signals, vec!["pressure"]);
     }
-    
-    #[cfg(all(feature = "enhanced", feature = "history"))]
+
+    #[cfg(feature = "engineering-types")]
     #[test]
-    fn test_history_buffer() {
+    fn test_engineering_values() {
         let bus = SignalBus::new();
         
-        // Add some history
-        for i in 0..5 {
-            bus.set("counter", Value::Int(i)).unwrap();
-        }
+        // Test set engineering value
+        bus.set_engineering("temperature", 25.5, "°C".to_string()).unwrap();
         
-        let history = bus.get_recent_history(3);
-        assert_eq!(history.len(), 3);
+        // Test get engineering value
+        let eng = bus.get_engineering("temperature");
+        assert_eq!(eng, Some((25.5, "°C".to_string())));
         
-        // Check the values are the most recent ones
-        let values: Vec<i32> = history.iter()
-            .filter_map(|(name, value, _)| {
-                if name == "counter" {
-                    match value {
-                        Value::Int(i) => Some(*i),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
-        assert_eq!(values, vec![2, 3, 4]);
+        // Test engineering signals list
+        bus.set_engineering("pressure", 101.3, "kPa".to_string()).unwrap();
+        let eng_signals = bus.get_engineering_signals();
+        assert_eq!(eng_signals.len(), 2);
+    }
+
+    #[cfg(feature = "unit-conversion")]
+    #[test]
+    fn test_unit_conversion() {
+        let bus = SignalBus::new();
+        
+        // Test conversion setup
+        bus.set_engineering_with_conversion("length", 1000.0, "mm".to_string(), "m".to_string(), 0.001).unwrap();
+        
+        // Test same unit
+        let result = bus.convert_units("length", "mm").unwrap();
+        assert_eq!(result, Some(1000.0));
+        
+        // Test conversion to base unit
+        let result = bus.convert_units("length", "m").unwrap();
+        assert_eq!(result, Some(1.0));
+    }
+
+    #[cfg(all(feature = "enhanced", feature = "enhanced-monitoring"))]
+    #[test]
+    fn test_metadata() {
+        let bus = SignalBus::new();
+        
+        bus.set("test", Value::Integer(42)).unwrap();
+        
+        // Test metadata exists
+        let meta = bus.get_metadata("test");
+        assert!(meta.is_some());
+        
+        // Test update count
+        bus.set("test", Value::Integer(100)).unwrap();
+        let count = bus.get_update_count("test");
+        assert_eq!(count, Some(2));
+        
+        // Test last update time
+        let last_update = bus.get_last_update("test");
+        assert!(last_update.is_some());
+    }
+
+    #[cfg(feature = "validation")]
+    #[test]
+    fn test_validation() {
+        let bus = SignalBus::new();
+        
+        // Test valid value
+        let validator = |v: &Value| -> crate::validation::ValidationResult {
+            match v {
+                Value::Integer(n) if *n >= 0 && *n <= 100 => crate::validation::ValidationResult {
+                    valid: true,
+                    errors: vec![],
+                    warnings: vec![],
+                },
+                _ => crate::validation::ValidationResult {
+                    valid: false,
+                    errors: vec![crate::validation::ValidationError {
+                        path: "".to_string(),
+                        message: "Value must be integer between 0 and 100".to_string(),
+                        severity: crate::validation::ValidationSeverity::Error,
+                    }],
+                    warnings: vec![],
+                },
+            }
+        };
+        
+        // Test valid value
+        let result = bus.set_with_validation("percentage", Value::Integer(50), &validator);
+        assert!(result.is_ok());
+        
+        // Test invalid value
+        let result = bus.set_with_validation("percentage", Value::Integer(150), &validator);
+        assert!(result.is_err());
+    }
+
+    #[cfg(feature = "enhanced-monitoring")]
+    #[test]
+    fn test_statistics() {
+        let bus = SignalBus::new();
+        
+        bus.set("int1", Value::Integer(1)).unwrap();
+        bus.set("float1", Value::Float(1.0)).unwrap();
+        bus.set("bool1", Value::Bool(true)).unwrap();
+        
+        let stats = bus.get_statistics();
+        assert_eq!(stats.total_signals, 3);
+        assert_eq!(stats.signals_by_type.get("Integer"), Some(&1));
+        assert_eq!(stats.signals_by_type.get("Float"), Some(&1));
+        assert_eq!(stats.signals_by_type.get("Bool"), Some(&1));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_async_updates() {
+        use tokio::time::{timeout, Duration};
+        
+        let bus = SignalBus::new();
+        let mut rx = bus.subscribe();
+        
+        // Send update
+        bus.set("async_test", Value::Integer(42)).unwrap();
+        
+        // Receive update
+        let update = timeout(Duration::from_secs(1), rx.recv()).await.unwrap().unwrap();
+        assert_eq!(update.name, "async_test");
+        assert_eq!(update.value, Value::Integer(42));
     }
 }
