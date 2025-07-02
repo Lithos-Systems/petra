@@ -2,10 +2,10 @@
 name = "petra"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Nathan Stone <nathan@lithos.systems>"]
 description = "PETRA - Programmable Engine for Telemetry, Runtime, and Automation"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/yourusername/petra"
+repository = "https://github.com/lithos-systems/petra"
 keywords = ["automation", "plc", "scada", "industrial", "iot"]
 categories = ["embedded", "network-programming"]
 
