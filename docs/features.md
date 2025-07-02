@@ -478,7 +478,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Getting Help
 
-- **Documentation**: [docs.petra.systems](https://docs.petra.systems)
 - **GitHub Issues**: Bug reports and feature requests
 - **Discord**: Community support and discussion
 - **Enterprise Support**: Commercial support available
@@ -493,4 +492,4 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for information on:
 
 ---
 
-*Last updated: December 2024*
+*Last updated: July 2025*
