@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use serde::{Serialize, Deserialize};
-use futures::future::{BoxFuture, FutureExt};
+use futures::FutureExt;
 
 #[cfg(feature = "parquet")]
 use parquet::{
