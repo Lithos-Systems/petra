@@ -1,434 +1,342 @@
-// src/main.rs - Fixed version
+// Updates to src/main.rs
+
 use clap::Parser;
-use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use tracing::{info, error};
-use tokio::signal;
-use petra::{
-    config::Config,
-    engine::Engine,
-    error::Result,
-};
 
-#[cfg(feature = "mqtt")]
-use petra::mqtt::{MqttClient, MqttConfig as PetraMqttConfig};
-
-#[cfg(feature = "s7-support")]
-use petra::s7::S7Driver;
-
-#[cfg(feature = "history")]
-use petra::history::HistoryManager;
-
-#[cfg(feature = "metrics")]
-use metrics_exporter_prometheus::PrometheusBuilder;
-
-#[cfg(feature = "alarms")]
-use petra::alarms::AlarmManager;
-
-#[cfg(feature = "realtime")]
-use petra::realtime::{set_realtime_priority, pin_to_cpu};
-
-#[cfg(feature = "health")]
-use petra::health::HealthServer;
-
-#[cfg(feature = "security")]
-use petra::security::SecurityManager;
-
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[derive(Parser)]
+#[command(name = "petra")]
+#[command(about = "High-performance automation engine", long_about = None)]
 struct Args {
     /// Configuration file path
-    #[arg(value_name = "CONFIG")]
     config: PathBuf,
-
-    /// Log level (trace, debug, info, warn, error)
-    #[arg(short, long, default_value = "info")]
-    log_level: String,
-
-    /// Enable verbose output
+    
+    /// Override scan time in milliseconds
+    #[arg(long)]
+    scan_time: Option<u64>,
+    
+    /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
-
-    /// Validate configuration and exit
-    #[arg(long)]
-    validate: bool,
-
-    /// Dry run - validate config only
-    #[arg(long)]
-    dry_run: bool,
-
-    // ===== Enhanced/Optional Features =====
     
-    #[cfg(feature = "metrics")]
-    /// Metrics server bind address
-    #[arg(long, default_value = "0.0.0.0:9090", env = "PETRA_METRICS_ADDR")]
-    metrics_addr: String,
-
-    #[cfg(feature = "health")]
-    /// Health check server bind address
-    #[arg(long, default_value = "0.0.0.0:8080", env = "PETRA_HEALTH_ADDR")]
-    health_addr: String,
-
-    #[cfg(feature = "enhanced-monitoring")]
-    /// Enable enhanced monitoring
-    #[arg(long, env = "PETRA_ENHANCED_MONITORING")]
-    enhanced_monitoring: bool,
-
-    #[cfg(feature = "realtime")]
-    /// Enable real-time scheduling (requires root)
+    /// Enable hot configuration reloading
+    #[arg(long)]
+    hot_reload: bool,
+    
+    /// Configuration reload validation mode
+    #[arg(long, value_enum, default_value = "permissive")]
+    reload_mode: ValidationMode,
+    
+    /// Enable status API server
+    #[arg(long)]
+    status_api: bool,
+    
+    /// Status API port
+    #[arg(long, default_value = "8080")]
+    status_port: u16,
+    
+    /// Enable real-time priority (requires root)
     #[arg(long)]
     realtime: bool,
-
-    #[cfg(feature = "realtime")]
-    /// CPU core to pin to (requires root)
-    #[arg(long, env = "PETRA_CPU_AFFINITY")]
-    cpu_affinity: Option<usize>,
-
-    #[cfg(feature = "security")]
-    /// Verify configuration signature
+    
+    /// Real-time priority level (1-99)
+    #[arg(long, default_value = "50")]
+    rt_priority: u8,
+    
+    /// CPU affinity (comma-separated list of CPU cores)
     #[arg(long)]
-    verify_signature: bool,
-
-    #[cfg(feature = "security")]
-    /// Path to signing key for config verification
-    #[arg(long, env = "PETRA_SIGNING_KEY")]
-    signing_key: Option<PathBuf>,
-
-    #[cfg(feature = "json-schema")]
-    /// Print JSON schema and exit
+    cpu_affinity: Option<String>,
+    
+    /// Lock memory to prevent paging (requires root)
     #[arg(long)]
-    print_schema: bool,
-
-    #[cfg(feature = "profiling")]
-    /// Enable CPU profiling
+    lock_memory: bool,
+    
+    /// Burn in configuration for maximum performance
     #[arg(long)]
-    profile: bool,
-
-    #[cfg(feature = "profiling")]
-    /// Profile output path
-    #[arg(long, default_value = "petra.profile")]
-    profile_output: PathBuf,
+    burn_in: bool,
+    
+    /// Delay before burning in configuration (seconds)
+    #[arg(long, default_value = "30")]
+    burn_in_delay: u64,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-
+    
     // Initialize logging
-    init_logging(&args)?;
-
-    #[cfg(feature = "json-schema")]
-    if args.print_schema {
-        let schema = Config::json_schema();
-        println!("{}", serde_json::to_string_pretty(&schema)?);
-        return Ok(());
-    }
-
-    #[cfg(feature = "profiling")]
-    let _profiler_guard = if args.profile {
-        info!("Starting CPU profiling");
-        Some(start_profiling(&args.profile_output)?)
-    } else {
-        None
-    };
-
-    // Load configuration
-    info!("Loading configuration from {}", args.config.display());
-    let config = Config::from_file(&args.config)?;
-
-    // Validate configuration
-    if args.validate || args.dry_run {
-        info!("Validating configuration...");
-        config.validate()?;
-        info!("Configuration is valid");
-        
-        if args.dry_run {
-            return Ok(());
-        }
-    }
-
-    #[cfg(feature = "security")]
-    if args.verify_signature {
-        info!("Verifying configuration signature...");
-        if let Some(signature) = &config.signature {
-            if signature.verify_enabled {
-                info!("Configuration signature verified successfully");
-            } else {
-                info!("Configuration signature verification disabled");
-            }
-        } else {
-            return Err(petra::error::PlcError::Security("No signature found in configuration".into()));
-        }
-    }
-
-    // Apply real-time settings
-    #[cfg(feature = "realtime")]
+    let log_level = if args.verbose { "debug" } else { "info" };
+    tracing_subscriber::fmt()
+        .with_env_filter(format!("petra={},tower_http=info", log_level))
+        .init();
+    
+    info!("PETRA v{} starting", env!("CARGO_PKG_VERSION"));
+    
+    // Set real-time priority if requested
     if args.realtime {
-        info!("Applying real-time settings");
-        set_realtime_priority(50)?;
+        set_realtime_priority(args.rt_priority)?;
+    }
+    
+    // Set CPU affinity if specified
+    if let Some(affinity) = args.cpu_affinity {
+        set_cpu_affinity(&affinity)?;
+    }
+    
+    // Lock memory if requested
+    if args.lock_memory {
+        lock_process_memory()?;
+    }
+    
+    // Load initial configuration
+    let mut config = Config::from_file(&args.config)?;
+    
+    // Override scan time if specified
+    if let Some(scan_time) = args.scan_time {
+        config.scan_time_ms = scan_time;
+        info!("Overriding scan time to {}ms", scan_time);
+    }
+    
+    // Create engine with Arc<RwLock> for sharing
+    let engine = Arc::new(RwLock::new(Engine::new(config)?));
+    
+    // Initialize metrics if enabled
+    #[cfg(feature = "metrics")]
+    {
+        let metrics_engine = engine.clone();
+        tokio::spawn(async move {
+            if let Err(e) = start_metrics_server(metrics_engine).await {
+                error!("Failed to start metrics server: {}", e);
+            }
+        });
+    }
+    
+    // Set up configuration hot reloading if enabled
+    let config_manager = if args.hot_reload {
+        info!("Hot reload enabled with {:?} validation", args.reload_mode);
         
-        if let Some(cpu) = args.cpu_affinity {
-            pin_to_cpu(cpu)?;
-            info!("Pinned to CPU core {}", cpu);
+        let mut manager = Arc::new(ConfigManager::new(
+            args.config.clone(),
+            args.reload_mode,
+        )?);
+        
+        // Enable file watching
+        Arc::get_mut(&mut manager)
+            .unwrap()
+            .enable_file_watching()?;
+        
+        // Start reload handler
+        let handler_manager = manager.clone();
+        let handler_engine = engine.clone();
+        std::thread::spawn(move || {
+            handler_manager.start_handler(handler_engine);
+        });
+        
+        Some(manager)
+    } else {
+        None
+    };
+    
+    // Start status API if enabled
+    if args.status_api {
+        let status_engine = engine.clone();
+        let status_port = args.status_port;
+        
+        tokio::spawn(async move {
+            let server = StatusServer::new(status_engine, status_port);
+            if let Err(e) = server.start().await {
+                error!("Failed to start status API: {}", e);
+            }
+        });
+        
+        info!("Status API available at http://0.0.0.0:{}", args.status_port);
+        info!("  REST API: http://0.0.0.0:{}/api/status", args.status_port);
+        info!("  WebSocket: ws://0.0.0.0:{}/ws/realtime", args.status_port);
+        info!("  SSE: http://0.0.0.0:{}/api/events", args.status_port);
+    }
+    
+    // Set up burn-in if requested
+    if args.burn_in {
+        #[cfg(feature = "burn-in")]
+        {
+            let burn_engine = engine.clone();
+            let burn_manager = config_manager.clone();
+            let burn_delay = args.burn_in_delay;
+            
+            tokio::spawn(async move {
+                info!("Configuration burn-in scheduled in {} seconds", burn_delay);
+                tokio::time::sleep(tokio::time::Duration::from_secs(burn_delay)).await;
+                
+                if let Some(manager) = burn_manager {
+                    if let Err(e) = manager.burn_in() {
+                        error!("Failed to trigger burn-in: {}", e);
+                    }
+                } else {
+                    // Direct burn-in without config manager
+                    if let Ok(mut eng) = burn_engine.write() {
+                        eng.burn_in_configuration();
+                    }
+                }
+            });
+        }
+        
+        #[cfg(not(feature = "burn-in"))]
+        {
+            warn!("Burn-in requested but feature not enabled. Rebuild with --features burn-in");
         }
     }
-
-    // Create and initialize engine
-    info!("Initializing automation engine");
-    let mut engine = Engine::new(config.clone())?;
-
-    // Initialize security manager
-    #[cfg(feature = "security")]
-    let _security_manager = if let Some(security_config) = &config.security {
-        info!("Initializing security manager");
-        Some(SecurityManager::new(security_config.clone())?)
-    } else {
-        None
-    };
-
-    // Initialize MQTT client if configured
-    #[cfg(feature = "mqtt")]
-    let mqtt_handle = if let Some(mqtt_config) = &config.mqtt {
-        info!("Connecting to MQTT broker at {}:{}", mqtt_config.broker_host, mqtt_config.broker_port);
-        
-        let mqtt_cfg: PetraMqttConfig = mqtt_config.clone().into();
-        let mqtt_client = MqttClient::new(mqtt_cfg, engine.signal_bus().clone())?;
-        Some(tokio::spawn(async move {
-            if let Err(e) = mqtt_client.run().await {
-                error!("MQTT client error: {}", e);
+    
+    // Set up signal handlers
+    let shutdown_engine = engine.clone();
+    tokio::spawn(async move {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                info!("Shutdown signal received");
+                if let Ok(mut eng) = shutdown_engine.write() {
+                    eng.stop();
+                }
             }
-        }))
-    } else {
-        None
-    };
-
-    // Initialize S7 driver if configured
-    #[cfg(feature = "s7-support")]
-    let s7_handle = if let Some(s7_config) = &config.s7 {
-        info!("Connecting to S7 PLC at {}", s7_config.plc_address);
-        
-        let s7_driver = S7Driver::new(s7_config.clone(), engine.signal_bus().clone())?;
-        Some(tokio::spawn(async move {
-            if let Err(e) = s7_driver.run().await {
-                error!("S7 driver error: {}", e);
-            }
-        }))
-    } else {
-        None
-    };
-
-    // Initialize history manager
-    #[cfg(feature = "history")]
-    let history_handle = if let Some(history_config) = &config.history {
-        info!("Starting history manager");
-        
-        let history_manager = HistoryManager::new(
-            history_config.clone(),
-            engine.signal_bus().clone()
-        ).await?;
-        
-        Some(tokio::spawn(async move {
-            if let Err(e) = history_manager.run().await {
-                error!("History manager error: {}", e);
-            }
-        }))
-    } else {
-        None
-    };
-
-    // Initialize alarm manager
-    #[cfg(feature = "alarms")]
-    let alarm_handle = if let Some(alarm_config) = &config.alarms {
-        info!("Starting alarm manager with {} alarms", alarm_config.len());
-        
-        let alarm_manager = AlarmManager::new(
-            alarm_config.clone(),
-            engine.signal_bus().clone()
-        )?;
-        
-        Some(tokio::spawn(async move {
-            if let Err(e) = alarm_manager.run().await {
-                error!("Alarm manager error: {}", e);
-            }
-        }))
-    } else {
-        None
-    };
-
-    // Start metrics server
-    #[cfg(feature = "metrics")]
-    let metrics_handle = {
-        info!("Starting metrics server on {}", args.metrics_addr);
-        
-        let addr: std::net::SocketAddr = args.metrics_addr.parse()?;
-        let builder = PrometheusBuilder::new();
-        let (recorder, exporter) = builder
-            .with_http_listener(addr)
-            .build()
-            .map_err(|e| petra::error::PlcError::Config(format!("Failed to build metrics exporter: {}", e)))?;
-        
-        metrics::set_global_recorder(recorder)
-            .map_err(|e| petra::error::PlcError::Config(format!("Failed to set global metrics recorder: {}", e)))?;
-        
-        Some(tokio::spawn(async move {
-            match exporter.await {
-                Ok(_) => info!("Metrics server stopped normally"),
-                Err(_) => error!("Metrics server encountered an error"),
-            }
-        }))
-    };
-
-    // Start health server
-    #[cfg(feature = "health")]
-    let health_handle = {
-        info!("Starting health server on {}", args.health_addr);
-        
-        let health_server = HealthServer::new(
-            args.health_addr,
-            engine.get_stats_handle()
-        );
-        
-        Some(tokio::spawn(async move {
-            if let Err(e) = health_server.run().await {
-                error!("Health server error: {}", e);
-            }
-        }))
-    };
-
-    // Start the engine
-    info!("Starting automation engine with {} ms scan time", config.scan_time_ms);
-    let engine_handle = tokio::spawn(async move {
-        if let Err(e) = engine.run().await {
-            error!("Engine error: {}", e);
+            Err(e) => error!("Failed to listen for shutdown signal: {}", e),
         }
     });
-
-    // Wait for shutdown signal
-    info!("Petra automation engine is running. Press Ctrl+C to stop.");
     
-    tokio::select! {
-        _ = signal::ctrl_c() => {
-            info!("Received shutdown signal");
+    // Start the engine
+    {
+        let mut eng = engine.write().unwrap();
+        eng.start()?;
+    }
+    
+    // Print startup summary
+    print_startup_summary(&args, &engine);
+    
+    // Run the engine (this blocks)
+    loop {
+        {
+            let eng = engine.read().unwrap();
+            if !eng.is_running() {
+                break;
+            }
         }
-        _ = engine_handle => {
-            info!("Engine stopped");
-        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
-
-    // Cleanup
-    info!("Shutting down...");
-
-    // Cancel all running tasks
-    #[cfg(feature = "mqtt")]
-    if let Some(handle) = mqtt_handle {
-        handle.abort();
-    }
-
-    #[cfg(feature = "s7-support")]
-    if let Some(handle) = s7_handle {
-        handle.abort();
-    }
-
-    #[cfg(feature = "history")]
-    if let Some(handle) = history_handle {
-        handle.abort();
-    }
-
-    #[cfg(feature = "alarms")]
-    if let Some(handle) = alarm_handle {
-        handle.abort();
-    }
-
-    #[cfg(feature = "metrics")]
-    if let Some(handle) = metrics_handle {
-        handle.abort();
-    }
-
-    #[cfg(feature = "health")]
-    if let Some(handle) = health_handle {
-        handle.abort();
-    }
-
-    #[cfg(feature = "profiling")]
-    if let Some(_guard) = _profiler_guard {
-        info!("Saving profiling data to {}", args.profile_output.display());
-    }
-
-    info!("Shutdown complete");
+    
+    info!("Engine stopped");
     Ok(())
 }
 
-fn init_logging(args: &Args) -> Result<()> {
-    let log_level = if args.verbose {
-        "debug"
+fn print_startup_summary(args: &Args, engine: &Arc<RwLock<Engine>>) {
+    let eng = engine.read().unwrap();
+    let stats = eng.get_stats();
+    
+    println!("\n╔════════════════════════════════════════════════════════╗");
+    println!("║              PETRA ENGINE STARTED                      ║");
+    println!("╠════════════════════════════════════════════════════════╣");
+    println!("║ Configuration:                                         ║");
+    println!("║   File: {:45} ║", args.config.display().to_string());
+    println!("║   Signals: {:>5} | Blocks: {:>5}                     ║", 
+        stats.signal_count, stats.block_count);
+    println!("║   Scan Time: {:>4} ms                                  ║", 
+        eng.config.scan_time_ms);
+    
+    if args.hot_reload {
+        println!("║   Hot Reload: ENABLED ({:?} mode)              ║", args.reload_mode);
     } else {
-        &args.log_level
+        println!("║   Hot Reload: DISABLED                                ║");
+    }
+    
+    if args.status_api {
+        println!("║   Status API: http://0.0.0.0:{:>5}                   ║", args.status_port);
+    }
+    
+    #[cfg(feature = "metrics")]
+    println!("║   Metrics: http://0.0.0.0:9090/metrics               ║");
+    
+    if args.realtime {
+        println!("║   Real-time: ENABLED (priority {})                    ║", args.rt_priority);
+    }
+    
+    if args.burn_in {
+        println!("║   Burn-in: SCHEDULED ({}s delay)                     ║", args.burn_in_delay);
+    }
+    
+    println!("╚════════════════════════════════════════════════════════╝\n");
+}
+
+// Platform-specific implementations
+#[cfg(target_os = "linux")]
+fn set_realtime_priority(priority: u8) -> Result<()> {
+    use libc::{sched_param, sched_setscheduler, SCHED_FIFO};
+    use std::os::raw::c_int;
+    
+    let param = sched_param {
+        sched_priority: priority as c_int,
     };
-
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| {
-            format!("petra={},tower_http=warn", log_level).into()
-        });
-
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .with_thread_ids(args.verbose)
-        .with_file(args.verbose)
-        .with_line_number(args.verbose)
-        .init();
-
+    
+    unsafe {
+        if sched_setscheduler(0, SCHED_FIFO, &param) == -1 {
+            return Err(PlcError::Runtime(
+                "Failed to set real-time priority (are you root?)".into()
+            ));
+        }
+    }
+    
+    info!("Set real-time priority to {}", priority);
     Ok(())
 }
 
-#[cfg(feature = "profiling")]
-fn start_profiling(output_path: &PathBuf) -> Result<impl Drop> {
-    use pprof::ProfilerGuardBuilder;
-    
-    let guard = ProfilerGuardBuilder::default()
-        .frequency(1000)
-        .blocklist(&["libc", "libgcc", "pthread", "vdso"])
-        .build()
-        .map_err(|e| petra::error::PlcError::Config(format!("Failed to start profiling: {}", e)))?;
-    
-    Ok(guard)
+#[cfg(not(target_os = "linux"))]
+fn set_realtime_priority(_priority: u8) -> Result<()> {
+    warn!("Real-time priority not supported on this platform");
+    Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-    use std::fs;
-
-    #[test]
-    fn test_args_parsing() {
-        let args = Args::parse_from(&["petra", "config.yaml"]);
-        assert_eq!(args.config, PathBuf::from("config.yaml"));
-        assert_eq!(args.log_level, "info");
-        assert!(!args.verbose);
+#[cfg(target_os = "linux")]
+fn set_cpu_affinity(affinity_str: &str) -> Result<()> {
+    use libc::{cpu_set_t, CPU_SET, CPU_ZERO, sched_setaffinity};
+    use std::mem;
+    
+    let mut cpu_set: cpu_set_t = unsafe { mem::zeroed() };
+    unsafe { CPU_ZERO(&mut cpu_set) };
+    
+    for cpu_str in affinity_str.split(',') {
+        let cpu: usize = cpu_str.trim().parse()
+            .map_err(|_| PlcError::Config(format!("Invalid CPU number: {}", cpu_str)))?;
+        unsafe { CPU_SET(cpu, &mut cpu_set) };
     }
-
-    #[test]
-    fn test_args_with_options() {
-        let args = Args::parse_from(&[
-            "petra",
-            "config.yaml",
-            "--log-level", "debug",
-            "--verbose",
-            "--dry-run",
-        ]);
-        assert_eq!(args.log_level, "debug");
-        assert!(args.verbose);
-        assert!(args.dry_run);
+    
+    unsafe {
+        if sched_setaffinity(0, mem::size_of::<cpu_set_t>(), &cpu_set) == -1 {
+            return Err(PlcError::Runtime("Failed to set CPU affinity".into()));
+        }
     }
+    
+    info!("Set CPU affinity to: {}", affinity_str);
+    Ok(())
+}
 
-    #[cfg(feature = "enhanced-monitoring")]
-    #[test]
-    fn test_enhanced_monitoring_arg() {
-        let args = Args::parse_from(&[
-            "petra",
-            "config.yaml",
-            "--enhanced-monitoring",
-        ]);
-        assert!(args.enhanced_monitoring);
+#[cfg(not(target_os = "linux"))]
+fn set_cpu_affinity(_affinity_str: &str) -> Result<()> {
+    warn!("CPU affinity not supported on this platform");
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn lock_process_memory() -> Result<()> {
+    use libc::{mlockall, MCL_CURRENT, MCL_FUTURE};
+    
+    unsafe {
+        if mlockall(MCL_CURRENT | MCL_FUTURE) == -1 {
+            return Err(PlcError::Runtime(
+                "Failed to lock memory (are you root?)".into()
+            ));
+        }
     }
+    
+    info!("Process memory locked");
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn lock_process_memory() -> Result<()> {
+    warn!("Memory locking not supported on this platform");
+    Ok(())
 }
