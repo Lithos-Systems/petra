@@ -419,7 +419,7 @@ impl Engine {
                     if consecutive_errors >= self.engine_config.max_consecutive_errors as u64 {
                         error!("Too many consecutive errors ({}), stopping engine", consecutive_errors);
                         self.stop();
-                        return Err(PlcError::Engine(format!(
+                        return Err(PlcError::Runtime(format!(
                             "Too many consecutive errors: {}", consecutive_errors
                         )));
                     }
