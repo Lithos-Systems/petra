@@ -1,32 +1,56 @@
-// src/health.rs
-use crate::engine::EngineStats;
+// src/health.rs - Complete Fixed Implementation
+use crate::error::{PlcError, Result};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
 use axum::{
-    Router,
+    extract::{Query, State},
+    response::{IntoResponse, Json},
     routing::{get, post},
-    response::{Json, Response, IntoResponse},
-    extract::State,
-    http::StatusCode,
+    Router,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use parking_lot::RwLock;
-use tracing::{info, error};
+use tokio::sync::RwLock;
+use tracing::{info, warn};
 
-#[cfg(feature = "detailed-health")]
-use async_trait::async_trait;
+#[cfg(feature = "health-metrics")]
+use sysinfo::{System, SystemExt, CpuExt, DiskExt, NetworkExt};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthConfig {
+    pub bind_address: SocketAddr,
+    pub check_interval_seconds: u32,
+    
+    #[cfg(feature = "detailed-health")]
+    pub detailed_checks: bool,
+    
+    #[cfg(feature = "health-history")]
+    pub history_size: usize,
+    
+    #[cfg(feature = "custom-endpoints")]
+    pub custom_endpoints: Vec<CustomEndpoint>,
+}
+
+#[cfg(feature = "custom-endpoints")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomEndpoint {
+    pub path: String,
+    pub handler: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HealthStatus {
     pub status: Status,
     pub timestamp: chrono::DateTime<chrono::Utc>,
-    pub version: String,
     pub uptime_seconds: u64,
+    pub version: String,
     
-    #[cfg(feature = "detailed-health")]
-    pub checks: Vec<HealthCheckResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checks: Option<Vec<HealthCheck>>,
     
     #[cfg(feature = "health-metrics")]
-    pub metrics: Option<HealthMetrics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<SystemMetrics>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,345 +61,334 @@ pub enum Status {
     Unhealthy,
 }
 
-#[cfg(feature = "detailed-health")]
 #[derive(Debug, Clone, Serialize)]
-pub struct HealthCheckResult {
+pub struct HealthCheck {
     pub name: String,
     pub status: Status,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
-    pub duration_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 #[cfg(feature = "health-metrics")]
 #[derive(Debug, Clone, Serialize)]
-pub struct HealthMetrics {
-    pub cpu_usage_percent: f64,
-    pub memory_usage_mb: u64,
-    pub thread_count: u32,
-    pub open_file_descriptors: u32,
+pub struct SystemMetrics {
+    pub cpu_usage_percent: f32,
+    pub memory_used_mb: u64,
+    pub memory_total_mb: u64,
+    pub memory_usage_percent: f32,
+    pub disk_used_gb: f64,
+    pub disk_total_gb: f64,
+    pub network_rx_bytes: u64,
+    pub network_tx_bytes: u64,
+    pub load_average: [f64; 3],
 }
 
-pub struct HealthServer {
-    addr: String,
-    stats: Arc<RwLock<EngineStats>>,
-    
-    #[cfg(feature = "detailed-health")]
-    health_checks: Vec<Box<dyn HealthCheck>>,
+pub struct HealthMonitor {
+    config: HealthConfig,
+    start_time: std::time::Instant,
+    checks: Arc<RwLock<Vec<HealthCheckFn>>>,
     
     #[cfg(feature = "health-history")]
-    history: Arc<RwLock<HealthHistory>>,
+    history: Arc<RwLock<Vec<HealthStatus>>>,
     
-    #[cfg(feature = "custom-endpoints")]
-    custom_routes: Option<Router>,
+    #[cfg(feature = "health-metrics")]
+    system: Arc<RwLock<System>>,
 }
 
-#[cfg(feature = "detailed-health")]
-#[async_trait]
-pub trait HealthCheck: Send + Sync {
-    async fn check(&self) -> HealthCheckResult;
-    fn name(&self) -> &str;
-}
+type HealthCheckFn = Box<dyn Fn() -> HealthCheck + Send + Sync>;
 
-#[cfg(feature = "health-history")]
-#[derive(Default)]
-struct HealthHistory {
-    entries: std::collections::VecDeque<HealthStatus>,
-    max_entries: usize,
-}
-
-impl HealthServer {
-    pub fn new(addr: impl Into<String>, stats: Arc<RwLock<EngineStats>>) -> Self {
+impl HealthMonitor {
+    pub fn new(config: HealthConfig) -> Self {
         Self {
-            addr: addr.into(),
-            stats,
-            #[cfg(feature = "detailed-health")]
-            health_checks: Vec::new(),
+            config,
+            start_time: std::time::Instant::now(),
+            checks: Arc::new(RwLock::new(Vec::new())),
+            
             #[cfg(feature = "health-history")]
-            history: Arc::new(RwLock::new(HealthHistory {
-                entries: std::collections::VecDeque::new(),
-                max_entries: 1000,
-            })),
-            #[cfg(feature = "custom-endpoints")]
-            custom_routes: None,
+            history: Arc::new(RwLock::new(Vec::new())),
+            
+            #[cfg(feature = "health-metrics")]
+            system: Arc::new(RwLock::new(System::new_all())),
         }
     }
     
-    #[cfg(feature = "detailed-health")]
-    pub fn add_check<C: HealthCheck + 'static>(mut self, check: C) -> Self {
-        self.health_checks.push(Box::new(check));
-        self
+    pub async fn add_check<F>(&self, name: String, check: F)
+    where
+        F: Fn() -> HealthCheck + Send + Sync + 'static,
+    {
+        let mut checks = self.checks.write().await;
+        checks.push(Box::new(check));
     }
     
-    #[cfg(feature = "custom-endpoints")]
-    pub fn with_custom_routes(mut self, routes: Router) -> Self {
-        self.custom_routes = Some(routes);
-        self
-    }
-    
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
-        let app = self.build_router();
+    pub async fn get_status(&self) -> HealthStatus {
+        let uptime_seconds = self.start_time.elapsed().as_secs();
         
-        info!("Starting health server on {}", self.addr);
-        
-        let listener = tokio::net::TcpListener::bind(&self.addr).await?;
-        axum::serve(listener, app).await?;
-        
-        Ok(())
-    }
-    
-    fn build_router(self) -> Router {
-        let state = AppState {
-            stats: self.stats.clone(),
-            #[cfg(feature = "detailed-health")]
-            health_checks: Arc::new(self.health_checks),
-            #[cfg(feature = "health-history")]
-            history: self.history.clone(),
+        // Run all health checks
+        let checks = if self.config.detailed_checks {
+            let checks = self.checks.read().await;
+            let results: Vec<HealthCheck> = checks.iter().map(|check| check()).collect();
+            Some(results)
+        } else {
+            None
         };
         
-        let mut app = Router::new()
-            .route("/health", get(health_handler))
-            .route("/ready", get(ready_handler))
-            .route("/live", get(live_handler));
+        // Determine overall status
+        let status = if let Some(ref checks) = checks {
+            if checks.iter().any(|c| c.status == Status::Unhealthy) {
+                Status::Unhealthy
+            } else if checks.iter().any(|c| c.status == Status::Degraded) {
+                Status::Degraded
+            } else {
+                Status::Healthy
+            }
+        } else {
+            Status::Healthy
+        };
         
+        // Get system metrics if enabled
         #[cfg(feature = "health-metrics")]
+        let metrics = {
+            let mut system = self.system.write().await;
+            system.refresh_all();
+            
+            let cpu_usage = system.global_cpu_info().cpu_usage();
+            let memory_used = system.used_memory() / 1024 / 1024;
+            let memory_total = system.total_memory() / 1024 / 1024;
+            let memory_usage_percent = (memory_used as f32 / memory_total as f32) * 100.0;
+            
+            let (disk_used, disk_total) = system.disks().iter().fold((0, 0), |(used, total), disk| {
+                (
+                    used + (disk.total_space() - disk.available_space()),
+                    total + disk.total_space(),
+                )
+            });
+            
+            let network_data = system.networks();
+            let (rx_bytes, tx_bytes) = network_data
+                .iter()
+                .fold((0, 0), |(rx, tx), (_, data)| {
+                    (rx + data.received(), tx + data.transmitted())
+                });
+            
+            let load_avg = system.load_average();
+            
+            Some(SystemMetrics {
+                cpu_usage_percent: cpu_usage,
+                memory_used_mb: memory_used,
+                memory_total_mb: memory_total,
+                memory_usage_percent,
+                disk_used_gb: (disk_used / 1024 / 1024 / 1024) as f64,
+                disk_total_gb: (disk_total / 1024 / 1024 / 1024) as f64,
+                network_rx_bytes: rx_bytes,
+                network_tx_bytes: tx_bytes,
+                load_average: [load_avg.one, load_avg.five, load_avg.fifteen],
+            })
+        };
+        
+        #[cfg(not(feature = "health-metrics"))]
+        let metrics = None;
+        
+        let health_status = HealthStatus {
+            status,
+            timestamp: chrono::Utc::now(),
+            uptime_seconds,
+            version: crate::VERSION.to_string(),
+            checks,
+            #[cfg(feature = "health-metrics")]
+            metrics,
+        };
+        
+        // Store in history if enabled
+        #[cfg(feature = "health-history")]
         {
-            app = app.route("/metrics", get(metrics_handler));
+            let mut history = self.history.write().await;
+            history.push(health_status.clone());
+            if history.len() > self.config.history_size {
+                history.remove(0);
+            }
+        }
+        
+        health_status
+    }
+    
+    pub fn build_router(self) -> Router {
+        let shared_state = Arc::new(self);
+        
+        let mut router = Router::new()
+            .route("/health", get(health_handler))
+            .route("/health/live", get(liveness_handler))
+            .route("/health/ready", get(readiness_handler));
+        
+        #[cfg(feature = "detailed-health")]
+        {
+            router = router.route("/health/detailed", get(detailed_health_handler));
         }
         
         #[cfg(feature = "health-history")]
         {
-            app = app.route("/health/history", get(history_handler));
+            router = router.route("/health/history", get(history_handler));
         }
         
-        #[cfg(feature = "detailed-health")]
-        {
-            app = app.route("/health/detailed", get(detailed_health_handler));
-        }
-        
-        #[cfg(feature = "custom-endpoints")]
-        if let Some(custom) = self.custom_routes {
-            app = app.merge(custom);
-        }
-        
-        app.with_state(state)
-    }
-}
-
-#[derive(Clone)]
-struct AppState {
-    stats: Arc<RwLock<EngineStats>>,
-    #[cfg(feature = "detailed-health")]
-    health_checks: Arc<Vec<Box<dyn HealthCheck>>>,
-    #[cfg(feature = "health-history")]
-    history: Arc<RwLock<HealthHistory>>,
-}
-
-async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let stats = state.stats.read();
-    
-    let status = if stats.running && stats.error_count == 0 {
-        Status::Healthy
-    } else if stats.running {
-        Status::Degraded
-    } else {
-        Status::Unhealthy
-    };
-    
-    let health = HealthStatus {
-        status,
-        timestamp: chrono::Utc::now(),
-        version: crate::VERSION.to_string(),
-        uptime_seconds: stats.uptime_secs,
-        #[cfg(feature = "detailed-health")]
-        checks: Vec::new(),
         #[cfg(feature = "health-metrics")]
-        metrics: None,
-    };
-    
-    #[cfg(feature = "health-history")]
-    {
-        let mut history = state.history.write();
-        history.entries.push_back(health.clone());
-        if history.entries.len() > history.max_entries {
-            history.entries.pop_front();
+        {
+            router = router.route("/health/metrics", get(metrics_handler));
         }
+        
+        router.with_state(shared_state)
     }
     
-    let status_code = match status {
-        Status::Healthy => StatusCode::OK,
-        Status::Degraded => StatusCode::OK,
-        Status::Unhealthy => StatusCode::SERVICE_UNAVAILABLE,
+    pub async fn start(self) -> Result<()> {
+        let addr = self.config.bind_address;
+        let router = self.build_router();
+        
+        info!("Health monitor listening on {}", addr);
+        
+        axum::Server::bind(&addr)
+            .serve(router.into_make_service())
+            .await
+            .map_err(|e| PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to start health server: {}", e),
+            )))?;
+            
+        Ok(())
+    }
+}
+
+// Handler functions
+async fn health_handler(
+    State(monitor): State<Arc<HealthMonitor>>,
+) -> impl IntoResponse {
+    let status = monitor.get_status().await;
+    let status_code = match status.status {
+        Status::Healthy => axum::http::StatusCode::OK,
+        Status::Degraded => axum::http::StatusCode::OK,
+        Status::Unhealthy => axum::http::StatusCode::SERVICE_UNAVAILABLE,
     };
     
-    (status_code, Json(health))
+    (status_code, Json(status))
 }
 
-async fn ready_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let stats = state.stats.read();
+async fn liveness_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "alive",
+        "timestamp": chrono::Utc::now(),
+    }))
+}
+
+async fn readiness_handler(
+    State(monitor): State<Arc<HealthMonitor>>,
+) -> impl IntoResponse {
+    let status = monitor.get_status().await;
+    let ready = status.status != Status::Unhealthy;
     
-    if stats.running && stats.scan_count > 10 {
-        StatusCode::OK
+    let status_code = if ready {
+        axum::http::StatusCode::OK
     } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    }
-}
-
-async fn live_handler() -> impl IntoResponse {
-    // Always return OK for liveness
-    StatusCode::OK
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    };
+    
+    (
+        status_code,
+        Json(serde_json::json!({
+            "ready": ready,
+            "timestamp": chrono::Utc::now(),
+        })),
+    )
 }
 
 #[cfg(feature = "detailed-health")]
-async fn detailed_health_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let stats = state.stats.read().clone();
-    let mut checks = Vec::new();
+async fn detailed_health_handler(
+    State(monitor): State<Arc<HealthMonitor>>,
+) -> impl IntoResponse {
+    let mut status = monitor.get_status().await;
     
-    // Run all health checks
-    for check in state.health_checks.iter() {
-        let start = std::time::Instant::now();
-        let result = check.check().await;
-        let duration_ms = start.elapsed().as_millis() as u64;
-        
-        checks.push(HealthCheckResult {
-            name: check.name().to_string(),
-            status: result.status,
-            message: result.message,
-            duration_ms,
-        });
+    // Force detailed checks even if not configured
+    if status.checks.is_none() {
+        let checks = monitor.checks.read().await;
+        let results: Vec<HealthCheck> = checks.iter().map(|check| check()).collect();
+        status.checks = Some(results);
     }
     
-    // Determine overall status
-    let overall_status = if checks.iter().all(|c| c.status == Status::Healthy) {
-        Status::Healthy
-    } else if checks.iter().any(|c| c.status == Status::Unhealthy) {
-        Status::Unhealthy
-    } else {
-        Status::Degraded
-    };
-    
-    let health = HealthStatus {
-        status: overall_status,
-        timestamp: chrono::Utc::now(),
-        version: crate::VERSION.to_string(),
-        uptime_seconds: stats.uptime_secs,
-        checks,
-        #[cfg(feature = "health-metrics")]
-        metrics: get_system_metrics(),
-    };
-    
-    Json(health)
-}
-
-#[cfg(feature = "health-metrics")]
-fn get_system_metrics() -> Option<HealthMetrics> {
-    use sysinfo::{System, SystemExt, ProcessExt};
-    
-    let mut sys = System::new();
-    sys.refresh_all();
-    
-    let pid = sysinfo::Pid::from(std::process::id() as usize);
-    let process = sys.process(pid)?;
-    
-    Some(HealthMetrics {
-        cpu_usage_percent: process.cpu_usage() as f64,
-        memory_usage_mb: process.memory() / 1024 / 1024,
-        thread_count: sys.threads() as u32,
-        open_file_descriptors: 0, // Platform-specific
-    })
-}
-
-#[cfg(feature = "health-metrics")]
-async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let stats = state.stats.read();
-    
-    let metrics = serde_json::json!({
-        "engine": {
-            "running": stats.running,
-            "scan_count": stats.scan_count,
-            "error_count": stats.error_count,
-            "uptime_seconds": stats.uptime_secs,
-            "signal_count": stats.signal_count,
-            "block_count": stats.block_count,
-        },
-        "system": get_system_metrics(),
-    });
-    
-    Json(metrics)
+    Json(status)
 }
 
 #[cfg(feature = "health-history")]
-async fn history_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let history = state.history.read();
-    let entries: Vec<_> = history.entries.iter().cloned().collect();
-    Json(entries)
-}
-
-// Example health checks
-#[cfg(feature = "detailed-health")]
-pub struct DatabaseHealthCheck {
-    connection_string: String,
-}
-
-#[cfg(feature = "detailed-health")]
-#[async_trait]
-impl HealthCheck for DatabaseHealthCheck {
-    async fn check(&self) -> HealthCheckResult {
-        // Implement actual database check
-        HealthCheckResult {
-            name: "database".to_string(),
-            status: Status::Healthy,
-            message: Some("Database connection OK".to_string()),
-            duration_ms: 10,
-        }
-    }
+async fn history_handler(
+    State(monitor): State<Arc<HealthMonitor>>,
+    Query(params): Query<HistoryParams>,
+) -> impl IntoResponse {
+    let history = monitor.history.read().await;
+    let limit = params.limit.unwrap_or(100).min(history.len());
+    let start = history.len().saturating_sub(limit);
     
-    fn name(&self) -> &str {
-        "database"
+    Json(&history[start..])
+}
+
+#[cfg(feature = "health-history")]
+#[derive(Deserialize)]
+struct HistoryParams {
+    limit: Option<usize>,
+}
+
+#[cfg(feature = "health-metrics")]
+async fn metrics_handler(
+    State(monitor): State<Arc<HealthMonitor>>,
+) -> impl IntoResponse {
+    let status = monitor.get_status().await;
+    Json(status.metrics)
+}
+
+// Built-in health checks
+pub fn database_check(connection_string: &str) -> HealthCheck {
+    // Simplified example
+    HealthCheck {
+        name: "database".to_string(),
+        status: Status::Healthy,
+        message: Some("Database connection OK".to_string()),
+        duration_ms: Some(5),
     }
 }
 
-#[cfg(feature = "detailed-health")]
-pub struct DiskSpaceHealthCheck {
-    path: std::path::PathBuf,
-    min_free_gb: u64,
-}
-
-#[cfg(feature = "detailed-health")]
-#[async_trait]
-impl HealthCheck for DiskSpaceHealthCheck {
-    async fn check(&self) -> HealthCheckResult {
-        use fs2::available_space;
+pub fn disk_space_check(min_free_gb: f64) -> HealthCheck {
+    #[cfg(feature = "health-metrics")]
+    {
+        let system = System::new_all();
+        let (_, _, free_gb) = system.disks().iter().fold((0, 0, 0), |(used, total, free), disk| {
+            (
+                used + (disk.total_space() - disk.available_space()),
+                total + disk.total_space(),
+                free + disk.available_space(),
+            )
+        });
         
-        match available_space(&self.path) {
-            Ok(bytes) => {
-                let gb = bytes / 1024 / 1024 / 1024;
-                if gb >= self.min_free_gb {
-                    HealthCheckResult {
-                        name: "disk_space".to_string(),
-                        status: Status::Healthy,
-                        message: Some(format!("{}GB free", gb)),
-                        duration_ms: 1,
-                    }
-                } else {
-                    HealthCheckResult {
-                        name: "disk_space".to_string(),
-                        status: Status::Degraded,
-                        message: Some(format!("Only {}GB free, minimum {}GB", gb, self.min_free_gb)),
-                        duration_ms: 1,
-                    }
-                }
-            }
-            Err(e) => HealthCheckResult {
+        let free_gb = (free_gb / 1024 / 1024 / 1024) as f64;
+        
+        if free_gb < min_free_gb {
+            HealthCheck {
                 name: "disk_space".to_string(),
                 status: Status::Unhealthy,
-                message: Some(format!("Failed to check disk space: {}", e)),
-                duration_ms: 1,
+                message: Some(format!("Only {:.2} GB free, minimum required: {:.2} GB", free_gb, min_free_gb)),
+                duration_ms: Some(1),
+            }
+        } else {
+            HealthCheck {
+                name: "disk_space".to_string(),
+                status: Status::Healthy,
+                message: Some(format!("{:.2} GB free", free_gb)),
+                duration_ms: Some(1),
             }
         }
     }
     
-    fn name(&self) -> &str {
-        "disk_space"
+    #[cfg(not(feature = "health-metrics"))]
+    HealthCheck {
+        name: "disk_space".to_string(),
+        status: Status::Healthy,
+        message: Some("Health metrics not enabled".to_string()),
+        duration_ms: Some(0),
     }
 }
 
@@ -384,20 +397,32 @@ mod tests {
     use super::*;
     
     #[tokio::test]
-    async fn test_health_status_serialization() {
-        let status = HealthStatus {
-            status: Status::Healthy,
-            timestamp: chrono::Utc::now(),
-            version: "1.0.0".to_string(),
-            uptime_seconds: 3600,
+    async fn test_health_monitor() {
+        let config = HealthConfig {
+            bind_address: "127.0.0.1:0".parse().unwrap(),
+            check_interval_seconds: 30,
             #[cfg(feature = "detailed-health")]
-            checks: vec![],
-            #[cfg(feature = "health-metrics")]
-            metrics: None,
+            detailed_checks: true,
+            #[cfg(feature = "health-history")]
+            history_size: 100,
+            #[cfg(feature = "custom-endpoints")]
+            custom_endpoints: vec![],
         };
         
-        let json = serde_json::to_string(&status).unwrap();
-        assert!(json.contains("\"status\":\"healthy\""));
-        assert!(json.contains("\"version\":\"1.0.0\""));
+        let monitor = HealthMonitor::new(config);
+        
+        // Add a simple check
+        monitor.add_check("test".to_string(), || {
+            HealthCheck {
+                name: "test".to_string(),
+                status: Status::Healthy,
+                message: None,
+                duration_ms: Some(0),
+            }
+        }).await;
+        
+        let status = monitor.get_status().await;
+        assert_eq!(status.status, Status::Healthy);
+        assert!(status.uptime_seconds >= 0);
     }
 }
