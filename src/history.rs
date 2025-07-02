@@ -295,7 +295,7 @@ impl HistoryManager {
         
         #[cfg(not(feature = "parquet"))]
         {
-            let data = tokio::fs::read(path).await?;
+            let data: Vec<u8> = tokio::fs::read(path).await?;
             let entries: Vec<HistoryEntry> = serde_json::from_slice(&data)?;
             Ok(entries)
         }
