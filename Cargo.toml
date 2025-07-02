@@ -161,13 +161,13 @@ security = ["sha2", "base64"]
 
 # Authentication methods
 basic-auth = ["security", "bcrypt"]
-jwt-auth = ["security", "jsonwebtoken", "chrono"]
+jwt-auth = ["security", "jsonwebtoken"]
 
 # Authorization
 rbac = ["security"]
 
 # Security audit logging  
-audit = ["security", "chrono"]
+audit = ["security"]
 
 # Cryptographic signatures
 signing = ["security", "ed25519-dalek"]
@@ -181,7 +181,7 @@ enterprise-security = ["basic-security", "jwt-auth", "rbac", "audit", "signing"]
 # ============================================================================
 
 # Extended value types (String, Binary, Timestamp, Array, Object)
-extended-types = ["serde_with", "chrono"]
+extended-types = ["serde_with"]
 
 # Engineering value types with units
 engineering-types = ["extended-types"]
