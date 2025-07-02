@@ -56,7 +56,7 @@ rust-snap7 = { version = "1.142.2", optional = true }
 # HTTP/Web - minimal features
 axum = { version = "0.7", features = ["tokio"], default-features = false, optional = true }
 tower = { version = "0.4", features = ["tokio"], default-features = false, optional = true }
-tower-http = { version = "0.5", features = ["cors", "compression"], default-features = false, optional = true }
+tower-http = { version = "0.5", features = ["cors"], default-features = false, optional = true }
 hyper = { version = "1.3", optional = true }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false, optional = true }
 
