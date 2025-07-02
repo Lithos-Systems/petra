@@ -1,0 +1,173 @@
+# configs/twilio-example.yaml
+signals:
+  # Process monitoring
+  - name: "high_temp_alarm"
+    type: "bool"
+    initial: false
+  
+  - name: "low_pressure_alarm"
+    type: "bool"
+    initial: false
+  
+  - name: "emergency_stop"
+    type: "bool"
+    initial: false
+  
+  - name: "shift_manager_notified"
+    type: "bool"
+    initial: false
+  
+  - name: "maintenance_called"
+    type: "bool"
+    initial: false
+  
+  - name: "temperature"
+    type: "float"
+    initial: 20.0
+  
+  - name: "pressure"
+    type: "float"
+    initial: 100.0
+  
+  - name: "temp_limit"
+    type: "float"
+    initial: 80.0
+  
+  - name: "pressure_limit"
+    type: "float"
+    initial: 50.0
+
+blocks:
+  # Process monitoring
+  - name: "temp_check"
+    type: "GT"
+    inputs:
+      in1: "temperature"
+      in2: "temp_limit"
+    outputs:
+      out: "high_temp_alarm"
+  
+  - name: "pressure_check"
+    type: "LT"
+    inputs:
+      in1: "pressure"
+      in2: "pressure_limit"
+    outputs:
+      out: "low_pressure_alarm"
+  
+  # Combined alarm logic
+  - name: "any_process_alarm"
+    type: "OR"
+    inputs:
+      in1: "high_temp_alarm"
+      in2: "low_pressure_alarm"
+    outputs:
+      out: "process_alarm"
+  
+  # SMS alert for shift manager
+  - name: "shift_manager_sms"
+    type: "TWILIO"
+    inputs:
+      trigger: "process_alarm"
+    outputs:
+      success: "shift_manager_notified"
+    params:
+      action_type: "sms"
+      to_number: "+1234567890"  # Shift manager
+      content: "Process alarm: Check system immediately. Temp: high_temp_alarm, Pressure: low_pressure_alarm"
+      cooldown_ms: 300000  # 5 minutes
+
+  # Emergency call for critical situations
+  - name: "emergency_voice_call"
+    type: "TWILIO"
+    inputs:
+      trigger: "emergency_stop"
+    outputs:
+      success: "maintenance_called"
+    params:
+      action_type: "call"
+      to_number: "+1234567890"  # Maintenance on-call
+      content: |
+        <Response>
+          <Say voice="alice"
+          content: |
+       <Response>
+         <Say voice="alice" language="en-US">
+           This is an automated emergency alert from the Petra PLC system.
+           Emergency stop has been activated on the production line.
+           Immediate attention required.
+         </Say>
+         <Pause length="2"/>
+         <Say>Press 1 to acknowledge this alert, or press 2 to hear this message again.</Say>
+         <Gather timeout="10" numDigits="1" action="https://your-webhook.com/acknowledge">
+           <Say>Waiting for your response.</Say>
+         </Gather>
+         <Say>No response received. Alert will be escalated.</Say>
+       </Response>
+     cooldown_ms: 600000  # 10 minutes
+     from_number: "+1987654321"  # Override for emergency calls
+
+scan_time_ms: 100
+
+mqtt:
+ broker_host: "mqtt.lithos.systems"
+ broker_port: 1883
+ client_id: "petra-twilio-demo"
+ topic_prefix: "petra/plc"
+ qos: 1
+ publish_on_change: true
+
+# Twilio connector for more complex scenarios
+twilio:
+ # from_number can be omitted if using TWILIO_FROM_NUMBER env var
+ from_number: "+1987654321"
+ poll_interval_ms: 500  # Faster polling for critical alerts
+ status_callback_url: "https://your-webhook.com/twilio-status"
+ actions:
+   # Temperature trending alert
+   - name: "temp_warning_sms"
+     trigger_signal: "temperature"
+     action_type: "sms"
+     to_number: "+1234567890"
+     content: "Warning: Temperature at {{value}}°C approaching limit of 80°C"
+     trigger_value: 
+       float: 75.0  # Trigger at specific value
+     cooldown_seconds: 1800  # 30 minutes
+     result_signal: "temp_warning_sent"
+   
+   # Shift change notification
+   - name: "shift_change_call"
+     trigger_signal: "shift_change"
+     action_type: "call"
+     to_number: "+1234567890"
+     content: |
+       <Response>
+         <Say voice="alice">
+           Shift change reminder: Please complete handover checklist.
+           Current system status: All systems operational.
+         </Say>
+         <Play>https://your-domain.com/shift-change-tone.mp3</Play>
+       </Response>
+     trigger_value:
+       bool: true
+     cooldown_seconds: 28800  # 8 hours
+     from_number: "+1555555555"  # Different number for routine calls
+   
+   # Multi-recipient escalation (using result signals)
+   - name: "escalation_level_1"
+     trigger_signal: "critical_fault"
+     action_type: "sms"
+     to_number: "+1111111111"  # Operator
+     content: "CRITICAL: System fault detected. Please investigate immediately."
+     cooldown_seconds: 300
+     result_signal: "level_1_notified"
+   
+   - name: "escalation_level_2"
+     trigger_signal: "level_1_notified"
+     action_type: "call"
+     to_number: "+2222222222"  # Supervisor
+     content: "Critical system fault requires supervisor attention. Operator has been notified."
+     trigger_value:
+       bool: false  # Trigger if level 1 notification failed
+     cooldown_seconds: 600
+     result_signal: "level_2_notified"

@@ -1,0 +1,79 @@
+# Example PLC configuration
+signals:
+  - name: "start_button"
+    type: "bool"
+    initial: false
+
+  - name: "stop_button"
+    type: "bool"
+    initial: false
+
+  - name: "motor_run"
+    type: "bool"
+    initial: false
+
+  - name: "motor_timer"
+    type: "bool"
+    initial: false
+
+  - name: "temperature"
+    type: "float"
+    initial: 20.0
+
+  - name: "temp_limit"
+    type: "float"
+    initial: 75.0
+
+  - name: "over_temp"
+    type: "bool"
+    initial: false
+
+blocks:
+  - name: "start_trigger"
+    type: "R_TRIG"
+    inputs:
+      clk: "start_button"
+    outputs:
+      q: "start_pulse"
+
+  - name: "motor_latch"
+    type: "SR_LATCH"
+    inputs:
+      set: "start_pulse"
+      reset: "stop_button"
+    outputs:
+      q: "motor_enabled"
+
+  - name: "temp_check"
+    type: "GT"
+    inputs:
+      in1: "temperature"
+      in2: "temp_limit"
+    outputs:
+      out: "over_temp"
+
+  - name: "temp_ok"
+    type: "NOT"
+    inputs:
+      in: "over_temp"
+    outputs:
+      out: "temp_ok_signal"
+
+  - name: "motor_control"
+    type: "AND"
+    inputs:
+      in1: "motor_enabled"
+      in2: "temp_ok_signal"
+    outputs:
+      out: "motor_run"
+
+  - name: "run_timer"
+    type: "TON"
+    inputs:
+      in: "motor_run"
+    outputs:
+      q: "motor_timer"
+    params:
+      preset_ms: 5000
+
+scan_time_ms: 100
