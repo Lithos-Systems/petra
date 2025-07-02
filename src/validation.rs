@@ -1,14 +1,21 @@
-// src/validation.rs
-use crate::{error::*, value::Value};
-use serde::{Deserialize, Serialize};
+// src/validation.rs - Complete validation framework with feature flags
+
+use crate::error::{PlcError, Result};
+use crate::value::Value;
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "regex-validation")]
 use regex::Regex;
 
-#[cfg(feature = "regex-validation")]
-use once_cell::sync::Lazy;
+#[cfg(feature = "schema-validation")]
+use jsonschema::{Draft, JSONSchema};
 
+// ============================================================================
+// CORE VALIDATION TYPES
+// ============================================================================
+
+/// Validation result containing errors and optional warnings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationResult {
     pub valid: bool,
@@ -17,347 +24,650 @@ pub struct ValidationResult {
     pub warnings: Vec<ValidationWarning>,
 }
 
+/// Validation error information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationError {
-    pub field: String,
+    pub path: String,
     pub message: String,
-    pub code: ErrorCode,
+    pub severity: ValidationSeverity,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ErrorCode {
-    OutOfRange,
-    InvalidType,
-    PatternMismatch,
-    Required,
-    TooLong,
-    TooShort,
-    #[cfg(feature = "custom-validation")]
-    Custom(String),
-}
-
+/// Validation warning information
 #[cfg(feature = "validation-warnings")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationWarning {
-    pub field: String,
+    pub path: String,
     pub message: String,
-    pub severity: WarningSeverity,
 }
 
-#[cfg(feature = "validation-warnings")]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum WarningSeverity {
-    Low,
-    Medium,
-    High,
+/// Validation severity levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ValidationSeverity {
+    Error,
+    Critical,
+    Fatal,
 }
 
-// Basic validation functions (always available)
-pub fn validate_range(value: f64, min: Option<f64>, max: Option<f64>) -> ValidationResult {
-    let mut errors = Vec::new();
-    
-    if let Some(min_val) = min {
-        if value < min_val {
-            errors.push(ValidationError {
-                field: "value".to_string(),
-                message: format!("Value {} is less than minimum {}", value, min_val),
-                code: ErrorCode::OutOfRange,
-            });
+/// Base validator trait
+pub trait Validator: Send + Sync {
+    fn validate(&self, value: &Value) -> ValidationResult;
+    fn name(&self) -> &str;
+}
+
+// ============================================================================
+// BASIC VALIDATORS
+// ============================================================================
+
+/// Range validator for numeric values
+pub struct RangeValidator {
+    min: Option<f64>,
+    max: Option<f64>,
+    name: String,
+}
+
+impl RangeValidator {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            min: None,
+            max: None,
+            name: name.into(),
         }
     }
-    
-    if let Some(max_val) = max {
-        if value > max_val {
-            errors.push(ValidationError {
-                field: "value".to_string(),
-                message: format!("Value {} is greater than maximum {}", value, max_val),
-                code: ErrorCode::OutOfRange,
-            });
+
+    pub fn min(mut self, min: f64) -> Self {
+        self.min = Some(min);
+        self
+    }
+
+    pub fn max(mut self, max: f64) -> Self {
+        self.max = Some(max);
+        self
+    }
+}
+
+impl Validator for RangeValidator {
+    fn validate(&self, value: &Value) -> ValidationResult {
+        let num_value = match value {
+            Value::Integer(n) => Some(*n as f64),
+            Value::Float(f) => Some(*f),
+            _ => None,
+        };
+
+        match num_value {
+            Some(n) => {
+                let mut errors = Vec::new();
+                
+                if let Some(min) = self.min {
+                    if n < min {
+                        errors.push(ValidationError {
+                            path: self.name.clone(),
+                            message: format!("Value {} is below minimum {}", n, min),
+                            severity: ValidationSeverity::Error,
+                        });
+                    }
+                }
+                
+                if let Some(max) = self.max {
+                    if n > max {
+                        errors.push(ValidationError {
+                            path: self.name.clone(),
+                            message: format!("Value {} exceeds maximum {}", n, max),
+                            severity: ValidationSeverity::Error,
+                        });
+                    }
+                }
+                
+                ValidationResult {
+                    valid: errors.is_empty(),
+                    errors,
+                    #[cfg(feature = "validation-warnings")]
+                    warnings: Vec::new(),
+                }
+            }
+            None => ValidationResult {
+                valid: false,
+                errors: vec![ValidationError {
+                    path: self.name.clone(),
+                    message: "Value is not numeric".to_string(),
+                    severity: ValidationSeverity::Error,
+                }],
+                #[cfg(feature = "validation-warnings")]
+                warnings: Vec::new(),
+            },
         }
     }
-    
-    ValidationResult {
-        valid: errors.is_empty(),
-        errors,
-        #[cfg(feature = "validation-warnings")]
-        warnings: Vec::new(),
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }
 
-pub fn validate_type(value: &Value, expected_type: &str) -> ValidationResult {
-    let actual_type = value.type_name();
-    let valid = actual_type == expected_type;
-    
-    let errors = if !valid {
-        vec![ValidationError {
-            field: "value".to_string(),
-            message: format!("Expected type '{}', got '{}'", expected_type, actual_type),
-            code: ErrorCode::InvalidType,
-        }]
-    } else {
-        Vec::new()
-    };
-    
-    ValidationResult {
-        valid,
-        errors,
-        #[cfg(feature = "validation-warnings")]
-        warnings: Vec::new(),
+/// String length validator
+pub struct StringLengthValidator {
+    min_length: Option<usize>,
+    max_length: Option<usize>,
+    name: String,
+}
+
+impl StringLengthValidator {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            min_length: None,
+            max_length: None,
+            name: name.into(),
+        }
+    }
+
+    pub fn min_length(mut self, min: usize) -> Self {
+        self.min_length = Some(min);
+        self
+    }
+
+    pub fn max_length(mut self, max: usize) -> Self {
+        self.max_length = Some(max);
+        self
     }
 }
 
-// Regex validation (feature-gated)
+impl Validator for StringLengthValidator {
+    fn validate(&self, value: &Value) -> ValidationResult {
+        match value {
+            Value::String(s) => {
+                let mut errors = Vec::new();
+                let len = s.len();
+                
+                if let Some(min) = self.min_length {
+                    if len < min {
+                        errors.push(ValidationError {
+                            path: self.name.clone(),
+                            message: format!("String length {} is below minimum {}", len, min),
+                            severity: ValidationSeverity::Error,
+                        });
+                    }
+                }
+                
+                if let Some(max) = self.max_length {
+                    if len > max {
+                        errors.push(ValidationError {
+                            path: self.name.clone(),
+                            message: format!("String length {} exceeds maximum {}", len, max),
+                            severity: ValidationSeverity::Error,
+                        });
+                    }
+                }
+                
+                ValidationResult {
+                    valid: errors.is_empty(),
+                    errors,
+                    #[cfg(feature = "validation-warnings")]
+                    warnings: Vec::new(),
+                }
+            }
+            _ => ValidationResult {
+                valid: false,
+                errors: vec![ValidationError {
+                    path: self.name.clone(),
+                    message: "Value is not a string".to_string(),
+                    severity: ValidationSeverity::Error,
+                }],
+                #[cfg(feature = "validation-warnings")]
+                warnings: Vec::new(),
+            },
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// Enum validator for allowed values
+pub struct EnumValidator {
+    allowed_values: Vec<Value>,
+    name: String,
+}
+
+impl EnumValidator {
+    pub fn new(name: impl Into<String>, allowed_values: Vec<Value>) -> Self {
+        Self {
+            allowed_values,
+            name: name.into(),
+        }
+    }
+}
+
+impl Validator for EnumValidator {
+    fn validate(&self, value: &Value) -> ValidationResult {
+        let valid = self.allowed_values.iter().any(|v| v == value);
+        
+        ValidationResult {
+            valid,
+            errors: if valid {
+                Vec::new()
+            } else {
+                vec![ValidationError {
+                    path: self.name.clone(),
+                    message: format!("Value {:?} is not in allowed values", value),
+                    severity: ValidationSeverity::Error,
+                }]
+            },
+            #[cfg(feature = "validation-warnings")]
+            warnings: Vec::new(),
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+// ============================================================================
+// REGEX VALIDATION (feature-gated)
+// ============================================================================
+
 #[cfg(feature = "regex-validation")]
-pub mod regex {
-    use super::*;
-    
-    static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
-    });
-    
-    static PHONE_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"^\+?[1-9]\d{1,14}$").unwrap()
-    });
-    
-    static IP_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$").unwrap()
-    });
-    
-    pub fn validate_pattern(value: &str, pattern: &str) -> Result<ValidationResult> {
-        let re = Regex::new(pattern)
+pub struct RegexValidator {
+    pattern: Regex,
+    name: String,
+    message: String,
+}
+
+#[cfg(feature = "regex-validation")]
+impl RegexValidator {
+    pub fn new(name: impl Into<String>, pattern: &str, message: impl Into<String>) -> Result<Self> {
+        let regex = Regex::new(pattern)
             .map_err(|e| PlcError::Validation(format!("Invalid regex pattern: {}", e)))?;
         
-        let valid = re.is_match(value);
-        let errors = if !valid {
-            vec![ValidationError {
-                field: "value".to_string(),
-                message: format!("Value '{}' does not match pattern '{}'", value, pattern),
-                code: ErrorCode::PatternMismatch,
-            }]
-        } else {
-            Vec::new()
-        };
-        
-        Ok(ValidationResult {
-            valid,
-            errors,
-            #[cfg(feature = "validation-warnings")]
-            warnings: Vec::new(),
+        Ok(Self {
+            pattern: regex,
+            name: name.into(),
+            message: message.into(),
         })
     }
-    
-    pub fn validate_email(email: &str) -> ValidationResult {
-        let valid = EMAIL_REGEX.is_match(email);
-        let errors = if !valid {
-            vec![ValidationError {
-                field: "email".to_string(),
-                message: "Invalid email format".to_string(),
-                code: ErrorCode::PatternMismatch,
-            }]
-        } else {
-            Vec::new()
-        };
-        
-        ValidationResult {
-            valid,
-            errors,
-            #[cfg(feature = "validation-warnings")]
-            warnings: Vec::new(),
+}
+
+#[cfg(feature = "regex-validation")]
+impl Validator for RegexValidator {
+    fn validate(&self, value: &Value) -> ValidationResult {
+        match value {
+            Value::String(s) => {
+                let valid = self.pattern.is_match(s);
+                
+                ValidationResult {
+                    valid,
+                    errors: if valid {
+                        Vec::new()
+                    } else {
+                        vec![ValidationError {
+                            path: self.name.clone(),
+                            message: self.message.clone(),
+                            severity: ValidationSeverity::Error,
+                        }]
+                    },
+                    #[cfg(feature = "validation-warnings")]
+                    warnings: Vec::new(),
+                }
+            }
+            _ => ValidationResult {
+                valid: false,
+                errors: vec![ValidationError {
+                    path: self.name.clone(),
+                    message: "Value is not a string".to_string(),
+                    severity: ValidationSeverity::Error,
+                }],
+                #[cfg(feature = "validation-warnings")]
+                warnings: Vec::new(),
+            },
         }
     }
-    
-    pub fn validate_phone(phone: &str) -> ValidationResult {
-        let valid = PHONE_REGEX.is_match(phone);
-        let errors = if !valid {
-            vec![ValidationError {
-                field: "phone".to_string(),
-                message: "Invalid phone number format".to_string(),
-                code: ErrorCode::PatternMismatch,
-            }]
-        } else {
-            Vec::new()
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+// ============================================================================
+// SCHEMA VALIDATION (feature-gated)
+// ============================================================================
+
+#[cfg(feature = "schema-validation")]
+pub struct SchemaValidator {
+    schema: JSONSchema,
+    name: String,
+}
+
+#[cfg(feature = "schema-validation")]
+impl SchemaValidator {
+    pub fn new(name: impl Into<String>, schema: serde_json::Value) -> Result<Self> {
+        let compiled = JSONSchema::options()
+            .with_draft(Draft::Draft7)
+            .compile(&schema)
+            .map_err(|e| PlcError::Validation(format!("Invalid JSON schema: {}", e)))?;
+        
+        Ok(Self {
+            schema: compiled,
+            name: name.into(),
+        })
+    }
+}
+
+#[cfg(feature = "schema-validation")]
+impl Validator for SchemaValidator {
+    fn validate(&self, value: &Value) -> ValidationResult {
+        // Convert Value to serde_json::Value for schema validation
+        let json_value = match value.to_json() {
+            Ok(v) => v,
+            Err(e) => {
+                return ValidationResult {
+                    valid: false,
+                    errors: vec![ValidationError {
+                        path: self.name.clone(),
+                        message: format!("Failed to convert value to JSON: {}", e),
+                        severity: ValidationSeverity::Error,
+                    }],
+                    #[cfg(feature = "validation-warnings")]
+                    warnings: Vec::new(),
+                };
+            }
         };
         
-        ValidationResult {
-            valid,
-            errors,
-            #[cfg(feature = "validation-warnings")]
-            warnings: Vec::new(),
+        match self.schema.validate(&json_value) {
+            Ok(_) => ValidationResult {
+                valid: true,
+                errors: Vec::new(),
+                #[cfg(feature = "validation-warnings")]
+                warnings: Vec::new(),
+            },
+            Err(errors) => {
+                let validation_errors: Vec<ValidationError> = errors
+                    .map(|e| ValidationError {
+                        path: format!("{}/{}", self.name, e.instance_path),
+                        message: e.to_string(),
+                        severity: ValidationSeverity::Error,
+                    })
+                    .collect();
+                
+                ValidationResult {
+                    valid: false,
+                    errors: validation_errors,
+                    #[cfg(feature = "validation-warnings")]
+                    warnings: Vec::new(),
+                }
+            }
         }
     }
-    
-    pub fn validate_ip_address(ip: &str) -> ValidationResult {
-        let valid = IP_REGEX.is_match(ip);
-        let errors = if !valid {
-            vec![ValidationError {
-                field: "ip_address".to_string(),
-                message: "Invalid IP address format".to_string(),
-                code: ErrorCode::PatternMismatch,
-            }]
-        } else {
-            Vec::new()
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+// ============================================================================
+// COMPOSITE VALIDATION (feature-gated)
+// ============================================================================
+
+#[cfg(feature = "composite-validation")]
+pub struct CompositeValidator {
+    validators: Vec<Box<dyn Validator>>,
+    name: String,
+    mode: CompositeMode,
+}
+
+#[cfg(feature = "composite-validation")]
+#[derive(Debug, Clone, Copy)]
+pub enum CompositeMode {
+    /// All validators must pass
+    All,
+    /// At least one validator must pass
+    Any,
+    /// Exactly one validator must pass
+    One,
+}
+
+#[cfg(feature = "composite-validation")]
+impl CompositeValidator {
+    pub fn new(name: impl Into<String>, mode: CompositeMode) -> Self {
+        Self {
+            validators: Vec::new(),
+            name: name.into(),
+            mode,
+        }
+    }
+
+    pub fn add_validator(mut self, validator: Box<dyn Validator>) -> Self {
+        self.validators.push(validator);
+        self
+    }
+}
+
+#[cfg(feature = "composite-validation")]
+impl Validator for CompositeValidator {
+    fn validate(&self, value: &Value) -> ValidationResult {
+        let results: Vec<ValidationResult> = self.validators
+            .iter()
+            .map(|v| v.validate(value))
+            .collect();
+        
+        let (valid, mut all_errors) = match self.mode {
+            CompositeMode::All => {
+                let valid = results.iter().all(|r| r.valid);
+                let errors = results.into_iter().flat_map(|r| r.errors).collect();
+                (valid, errors)
+            }
+            CompositeMode::Any => {
+                let valid = results.iter().any(|r| r.valid);
+                let errors = if valid {
+                    Vec::new()
+                } else {
+                    results.into_iter().flat_map(|r| r.errors).collect()
+                };
+                (valid, errors)
+            }
+            CompositeMode::One => {
+                let valid_count = results.iter().filter(|r| r.valid).count();
+                let valid = valid_count == 1;
+                let errors = if valid {
+                    Vec::new()
+                } else {
+                    vec![ValidationError {
+                        path: self.name.clone(),
+                        message: format!("Expected exactly one validator to pass, but {} passed", valid_count),
+                        severity: ValidationSeverity::Error,
+                    }]
+                };
+                (valid, errors)
+            }
         };
+        
+        #[cfg(feature = "validation-warnings")]
+        let warnings = results.into_iter().flat_map(|r| r.warnings).collect();
         
         ValidationResult {
             valid,
-            errors,
+            errors: all_errors,
             #[cfg(feature = "validation-warnings")]
-            warnings: Vec::new(),
+            warnings,
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+// ============================================================================
+// CROSS-FIELD VALIDATION (feature-gated)
+// ============================================================================
+
+#[cfg(feature = "cross-field-validation")]
+pub struct CrossFieldValidator {
+    name: String,
+    validation_fn: Box<dyn Fn(&HashMap<String, Value>) -> ValidationResult + Send + Sync>,
+}
+
+#[cfg(feature = "cross-field-validation")]
+impl CrossFieldValidator {
+    pub fn new<F>(name: impl Into<String>, validation_fn: F) -> Self
+    where
+        F: Fn(&HashMap<String, Value>) -> ValidationResult + Send + Sync + 'static,
+    {
+        Self {
+            name: name.into(),
+            validation_fn: Box::new(validation_fn),
+        }
+    }
+
+    pub fn validate_fields(&self, fields: &HashMap<String, Value>) -> ValidationResult {
+        (self.validation_fn)(fields)
+    }
+}
+
+// ============================================================================
+// VALIDATION BUILDER
+// ============================================================================
+
+/// Builder for creating complex validation rules
+pub struct ValidationBuilder {
+    validators: HashMap<String, Box<dyn Validator>>,
+    #[cfg(feature = "cross-field-validation")]
+    cross_field_validators: Vec<CrossFieldValidator>,
+}
+
+impl ValidationBuilder {
+    pub fn new() -> Self {
+        Self {
+            validators: HashMap::new(),
+            #[cfg(feature = "cross-field-validation")]
+            cross_field_validators: Vec::new(),
+        }
+    }
+
+    pub fn add_validator(mut self, field: impl Into<String>, validator: Box<dyn Validator>) -> Self {
+        self.validators.insert(field.into(), validator);
+        self
+    }
+
+    pub fn add_range(self, field: impl Into<String>, min: Option<f64>, max: Option<f64>) -> Self {
+        let field_name = field.into();
+        let mut validator = RangeValidator::new(field_name.clone());
+        
+        if let Some(min) = min {
+            validator = validator.min(min);
+        }
+        if let Some(max) = max {
+            validator = validator.max(max);
+        }
+        
+        self.add_validator(field_name, Box::new(validator))
+    }
+
+    pub fn add_string_length(self, field: impl Into<String>, min: Option<usize>, max: Option<usize>) -> Self {
+        let field_name = field.into();
+        let mut validator = StringLengthValidator::new(field_name.clone());
+        
+        if let Some(min) = min {
+            validator = validator.min_length(min);
+        }
+        if let Some(max) = max {
+            validator = validator.max_length(max);
+        }
+        
+        self.add_validator(field_name, Box::new(validator))
+    }
+
+    pub fn add_enum(self, field: impl Into<String>, allowed_values: Vec<Value>) -> Self {
+        let field_name = field.into();
+        let validator = EnumValidator::new(field_name.clone(), allowed_values);
+        self.add_validator(field_name, Box::new(validator))
+    }
+
+    #[cfg(feature = "regex-validation")]
+    pub fn add_regex(self, field: impl Into<String>, pattern: &str, message: impl Into<String>) -> Result<Self> {
+        let field_name = field.into();
+        let validator = RegexValidator::new(field_name.clone(), pattern, message)?;
+        Ok(self.add_validator(field_name, Box::new(validator)))
+    }
+
+    #[cfg(feature = "schema-validation")]
+    pub fn add_schema(self, field: impl Into<String>, schema: serde_json::Value) -> Result<Self> {
+        let field_name = field.into();
+        let validator = SchemaValidator::new(field_name.clone(), schema)?;
+        Ok(self.add_validator(field_name, Box::new(validator)))
+    }
+
+    #[cfg(feature = "cross-field-validation")]
+    pub fn add_cross_field_validator<F>(mut self, name: impl Into<String>, validator: F) -> Self
+    where
+        F: Fn(&HashMap<String, Value>) -> ValidationResult + Send + Sync + 'static,
+    {
+        self.cross_field_validators.push(CrossFieldValidator::new(name, validator));
+        self
+    }
+
+    pub fn build(self) -> ValidationEngine {
+        ValidationEngine {
+            validators: self.validators,
+            #[cfg(feature = "cross-field-validation")]
+            cross_field_validators: self.cross_field_validators,
         }
     }
 }
 
-// Schema validation (feature-gated)
-#[cfg(feature = "schema-validation")]
-pub mod schema {
-    use super::*;
-    use jsonschema::{JSONSchema, Draft};
-    use serde_json;
-    
-    pub struct SchemaValidator {
-        schema: JSONSchema,
+impl Default for ValidationBuilder {
+    fn default() -> Self {
+        Self::new()
     }
-    
-    impl SchemaValidator {
-        pub fn new(schema: serde_json::Value) -> Result<Self> {
-            let compiled = JSONSchema::options()
-                .with_draft(Draft::Draft7)
-                .compile(&schema)
-                .map_err(|e| PlcError::Validation(format!("Invalid schema: {}", e)))?;
-            
-            Ok(Self { schema: compiled })
-        }
-        
-        pub fn validate(&self, value: &serde_json::Value) -> ValidationResult {
-            let result = self.schema.validate(value);
-            
-            let errors = if let Err(validation_errors) = result {
-                validation_errors
-                    .map(|error| ValidationError {
-                        field: error.instance_path.to_string(),
-                        message: error.to_string(),
-                        code: ErrorCode::PatternMismatch,
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            
+}
+
+// ============================================================================
+// VALIDATION ENGINE
+// ============================================================================
+
+/// Main validation engine that orchestrates all validators
+pub struct ValidationEngine {
+    validators: HashMap<String, Box<dyn Validator>>,
+    #[cfg(feature = "cross-field-validation")]
+    cross_field_validators: Vec<CrossFieldValidator>,
+}
+
+impl ValidationEngine {
+    pub fn validate_field(&self, field: &str, value: &Value) -> ValidationResult {
+        if let Some(validator) = self.validators.get(field) {
+            validator.validate(value)
+        } else {
             ValidationResult {
-                valid: errors.is_empty(),
-                errors,
+                valid: true,
+                errors: Vec::new(),
                 #[cfg(feature = "validation-warnings")]
                 warnings: Vec::new(),
             }
         }
     }
-}
 
-// Custom validation trait (feature-gated)
-#[cfg(feature = "custom-validation")]
-pub trait CustomValidator: Send + Sync {
-    fn validate(&self, value: &Value) -> Result<ValidationResult>;
-    fn name(&self) -> &str;
-}
-
-#[cfg(feature = "custom-validation")]
-pub struct ValidatorChain {
-    validators: Vec<Box<dyn CustomValidator>>,
-}
-
-#[cfg(feature = "custom-validation")]
-impl ValidatorChain {
-    pub fn new() -> Self {
-        Self {
-            validators: Vec::new(),
-        }
-    }
-    
-    pub fn add<V: CustomValidator + 'static>(mut self, validator: V) -> Self {
-        self.validators.push(Box::new(validator));
-        self
-    }
-    
-    pub fn validate(&self, value: &Value) -> Result<ValidationResult> {
+    pub fn validate_all(&self, fields: &HashMap<String, Value>) -> ValidationResult {
         let mut all_errors = Vec::new();
         #[cfg(feature = "validation-warnings")]
         let mut all_warnings = Vec::new();
-        
-        for validator in &self.validators {
-            let result = validator.validate(value)?;
-            all_errors.extend(result.errors);
-            #[cfg(feature = "validation-warnings")]
-            all_warnings.extend(result.warnings);
-        }
-        
-        Ok(ValidationResult {
-            valid: all_errors.is_empty(),
-            errors: all_errors,
-            #[cfg(feature = "validation-warnings")]
-            warnings: all_warnings,
-        })
-    }
-}
 
-// Composite validator for complex validation scenarios
-#[cfg(feature = "composite-validation")]
-pub struct CompositeValidator {
-    field_validators: HashMap<String, Box<dyn Fn(&Value) -> ValidationResult + Send + Sync>>,
-    #[cfg(feature = "cross-field-validation")]
-    cross_field_validators: Vec<Box<dyn Fn(&HashMap<String, Value>) -> ValidationResult + Send + Sync>>,
-}
-
-#[cfg(feature = "composite-validation")]
-impl CompositeValidator {
-    pub fn new() -> Self {
-        Self {
-            field_validators: HashMap::new(),
-            #[cfg(feature = "cross-field-validation")]
-            cross_field_validators: Vec::new(),
-        }
-    }
-    
-    pub fn add_field_validator<F>(mut self, field: String, validator: F) -> Self
-    where
-        F: Fn(&Value) -> ValidationResult + Send + Sync + 'static,
-    {
-        self.field_validators.insert(field, Box::new(validator));
-        self
-    }
-    
-    #[cfg(feature = "cross-field-validation")]
-    pub fn add_cross_field_validator<F>(mut self, validator: F) -> Self
-    where
-        F: Fn(&HashMap<String, Value>) -> ValidationResult + Send + Sync + 'static,
-    {
-        self.cross_field_validators.push(Box::new(validator));
-        self
-    }
-    
-    pub fn validate_fields(&self, fields: &HashMap<String, Value>) -> ValidationResult {
-        let mut all_errors = Vec::new();
-        #[cfg(feature = "validation-warnings")]
-        let mut all_warnings = Vec::new();
-        
         // Validate individual fields
         for (field_name, value) in fields {
-            if let Some(validator) = self.field_validators.get(field_name) {
-                let result = validator(value);
+            if let Some(validator) = self.validators.get(field_name) {
+                let result = validator.validate(value);
                 all_errors.extend(result.errors);
                 #[cfg(feature = "validation-warnings")]
                 all_warnings.extend(result.warnings);
             }
         }
-        
+
         // Cross-field validation
         #[cfg(feature = "cross-field-validation")]
         for validator in &self.cross_field_validators {
-            let result = validator(fields);
+            let result = validator.validate_fields(fields);
             all_errors.extend(result.errors);
             #[cfg(feature = "validation-warnings")]
             all_warnings.extend(result.warnings);
         }
-        
+
         ValidationResult {
             valid: all_errors.is_empty(),
             errors: all_errors,
@@ -367,296 +677,258 @@ impl CompositeValidator {
     }
 }
 
-// Validation presets for common use cases
-#[cfg(feature = "validation-presets")]
+// ============================================================================
+// VALIDATION PRESETS
+// ============================================================================
+
+/// Common validation presets for typical use cases
 pub mod presets {
     use super::*;
-    
-    pub fn temperature_celsius() -> impl Fn(&Value) -> ValidationResult {
-        move |value| {
-            if let Some(temp) = value.as_float() {
-               let mut errors = Vec::new();
-               #[cfg(feature = "validation-warnings")]
-               let mut warnings = Vec::new();
-               
-               if temp < -273.15 {
-                   errors.push(ValidationError {
-                       field: "temperature".to_string(),
-                       message: "Temperature below absolute zero".to_string(),
-                       code: ErrorCode::OutOfRange,
-                   });
-               } else if temp > 1000.0 {
-                   #[cfg(feature = "validation-warnings")]
-                   warnings.push(ValidationWarning {
-                       field: "temperature".to_string(),
-                       message: "Unusually high temperature".to_string(),
-                       severity: WarningSeverity::High,
-                   });
-               }
-               
-               ValidationResult {
-                   valid: errors.is_empty(),
-                   errors,
-                   #[cfg(feature = "validation-warnings")]
-                   warnings,
-               }
-           } else {
-               ValidationResult {
-                   valid: false,
-                   errors: vec![ValidationError {
-                       field: "temperature".to_string(),
-                       message: "Expected numeric value".to_string(),
-                       code: ErrorCode::InvalidType,
-                   }],
-                   #[cfg(feature = "validation-warnings")]
-                   warnings: Vec::new(),
-               }
-           }
-       }
-   }
-   
-   pub fn pressure_bar() -> impl Fn(&Value) -> ValidationResult {
-       move |value| {
-           if let Some(pressure) = value.as_float() {
-               validate_range(pressure, Some(0.0), Some(1000.0))
-           } else {
-               ValidationResult {
-                   valid: false,
-                   errors: vec![ValidationError {
-                       field: "pressure".to_string(),
-                       message: "Expected numeric value".to_string(),
-                       code: ErrorCode::InvalidType,
-                   }],
-                   #[cfg(feature = "validation-warnings")]
-                   warnings: Vec::new(),
-               }
-           }
-       }
-   }
-   
-   pub fn percentage() -> impl Fn(&Value) -> ValidationResult {
-       move |value| {
-           if let Some(pct) = value.as_float() {
-               validate_range(pct, Some(0.0), Some(100.0))
-           } else {
-               ValidationResult {
-                   valid: false,
-                   errors: vec![ValidationError {
-                       field: "percentage".to_string(),
-                       message: "Expected numeric value".to_string(),
-                       code: ErrorCode::InvalidType,
-                   }],
-                   #[cfg(feature = "validation-warnings")]
-                   warnings: Vec::new(),
-               }
-           }
-       }
-   }
-   
-   pub fn ph_value() -> impl Fn(&Value) -> ValidationResult {
-       move |value| {
-           if let Some(ph) = value.as_float() {
-               validate_range(ph, Some(0.0), Some(14.0))
-           } else {
-               ValidationResult {
-                   valid: false,
-                   errors: vec![ValidationError {
-                       field: "ph".to_string(),
-                       message: "Expected numeric value".to_string(),
-                       code: ErrorCode::InvalidType,
-                   }],
-                   #[cfg(feature = "validation-warnings")]
-                   warnings: Vec::new(),
-               }
-           }
-       }
-   }
+
+    /// Email validation preset
+    #[cfg(feature = "regex-validation")]
+    pub fn email_validator(field_name: impl Into<String>) -> Result<Box<dyn Validator>> {
+        Ok(Box::new(RegexValidator::new(
+            field_name,
+            r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+            "Invalid email format",
+        )?))
+    }
+
+    /// IP address validation preset
+    #[cfg(feature = "regex-validation")]
+    pub fn ip_address_validator(field_name: impl Into<String>) -> Result<Box<dyn Validator>> {
+        Ok(Box::new(RegexValidator::new(
+            field_name,
+            r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
+            "Invalid IP address format",
+        )?))
+    }
+
+    /// Percentage validation preset (0-100)
+    pub fn percentage_validator(field_name: impl Into<String>) -> Box<dyn Validator> {
+        Box::new(RangeValidator::new(field_name).min(0.0).max(100.0))
+    }
+
+    /// Temperature validation preset (in Celsius)
+    pub fn temperature_celsius_validator(field_name: impl Into<String>) -> Box<dyn Validator> {
+        Box::new(RangeValidator::new(field_name).min(-273.15).max(1000.0))
+    }
+
+    /// Pressure validation preset (in kPa, 0-10000)
+    pub fn pressure_validator(field_name: impl Into<String>) -> Box<dyn Validator> {
+        Box::new(RangeValidator::new(field_name).min(0.0).max(10000.0))
+    }
+
+    /// PLC tag name validation
+    #[cfg(feature = "regex-validation")]
+    pub fn plc_tag_validator(field_name: impl Into<String>) -> Result<Box<dyn Validator>> {
+        Ok(Box::new(RegexValidator::new(
+            field_name,
+            r"^[a-zA-Z][a-zA-Z0-9_]{0,39}$",
+            "Invalid PLC tag name (must start with letter, max 40 chars, alphanumeric and underscore only)",
+        )?))
+    }
 }
 
-// Validation context for stateful validation
-#[cfg(feature = "stateful-validation")]
-pub struct ValidationContext {
-   previous_values: HashMap<String, Value>,
-   statistics: ValidationStatistics,
-}
-
-#[cfg(feature = "stateful-validation")]
-#[derive(Default)]
-struct ValidationStatistics {
-   total_validations: u64,
-   failed_validations: u64,
-   warnings_generated: u64,
-}
-
-#[cfg(feature = "stateful-validation")]
-impl ValidationContext {
-   pub fn new() -> Self {
-       Self {
-           previous_values: HashMap::new(),
-           statistics: ValidationStatistics::default(),
-       }
-   }
-   
-   pub fn validate_with_history(
-       &mut self,
-       field: &str,
-       value: &Value,
-       validator: impl Fn(&Value, Option<&Value>) -> ValidationResult,
-   ) -> ValidationResult {
-       let previous = self.previous_values.get(field);
-       let result = validator(value, previous);
-       
-       self.statistics.total_validations += 1;
-       if !result.valid {
-           self.statistics.failed_validations += 1;
-       }
-       #[cfg(feature = "validation-warnings")]
-       {
-           self.statistics.warnings_generated += result.warnings.len() as u64;
-       }
-       
-       self.previous_values.insert(field.to_string(), value.clone());
-       result
-   }
-   
-   pub fn get_statistics(&self) -> &ValidationStatistics {
-       &self.statistics
-   }
-}
-
-// Async validation support
-#[cfg(feature = "async-validation")]
-#[async_trait::async_trait]
-pub trait AsyncValidator: Send + Sync {
-   async fn validate_async(&self, value: &Value) -> Result<ValidationResult>;
-}
-
-#[cfg(feature = "async-validation")]
-pub struct AsyncValidatorChain {
-   validators: Vec<Box<dyn AsyncValidator>>,
-}
-
-#[cfg(feature = "async-validation")]
-impl AsyncValidatorChain {
-   pub fn new() -> Self {
-       Self {
-           validators: Vec::new(),
-       }
-   }
-   
-   pub fn add<V: AsyncValidator + 'static>(mut self, validator: V) -> Self {
-       self.validators.push(Box::new(validator));
-       self
-   }
-   
-   pub async fn validate(&self, value: &Value) -> Result<ValidationResult> {
-       let mut all_errors = Vec::new();
-       #[cfg(feature = "validation-warnings")]
-       let mut all_warnings = Vec::new();
-       
-       for validator in &self.validators {
-           let result = validator.validate_async(value).await?;
-           all_errors.extend(result.errors);
-           #[cfg(feature = "validation-warnings")]
-           all_warnings.extend(result.warnings);
-       }
-       
-       Ok(ValidationResult {
-           valid: all_errors.is_empty(),
-           errors: all_errors,
-           #[cfg(feature = "validation-warnings")]
-           warnings: all_warnings,
-       })
-   }
-}
+// ============================================================================
+// TESTS
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
-   use super::*;
-   
-   #[test]
-   fn test_range_validation() {
-       let result = validate_range(50.0, Some(0.0), Some(100.0));
-       assert!(result.valid);
-       assert!(result.errors.is_empty());
-       
-       let result = validate_range(150.0, Some(0.0), Some(100.0));
-       assert!(!result.valid);
-       assert_eq!(result.errors.len(), 1);
-       assert_eq!(result.errors[0].code, ErrorCode::OutOfRange);
-   }
-   
-   #[test]
-   fn test_type_validation() {
-       let value = Value::Int(42);
-       let result = validate_type(&value, "int");
-       assert!(result.valid);
-       
-       let result = validate_type(&value, "float");
-       assert!(!result.valid);
-       assert_eq!(result.errors[0].code, ErrorCode::InvalidType);
-   }
-   
-   #[cfg(feature = "regex-validation")]
-   #[test]
-   fn test_email_validation() {
-       let result = regex::validate_email("test@example.com");
-       assert!(result.valid);
-       
-       let result = regex::validate_email("invalid-email");
-       assert!(!result.valid);
-   }
-   
-   #[cfg(feature = "validation-presets")]
-   #[test]
-   fn test_temperature_preset() {
-       let validator = presets::temperature_celsius();
-       
-       let result = validator(&Value::Float(25.0));
-       assert!(result.valid);
-       
-       let result = validator(&Value::Float(-300.0));
-       assert!(!result.valid);
-   }
-   
-   #[cfg(feature = "custom-validation")]
-   #[test]
-   fn test_validator_chain() {
-       struct RangeValidator {
-           min: f64,
-           max: f64,
-       }
-       
-       impl CustomValidator for RangeValidator {
-           fn validate(&self, value: &Value) -> Result<ValidationResult> {
-               if let Some(v) = value.as_float() {
-                   Ok(validate_range(v, Some(self.min), Some(self.max)))
-               } else {
-                   Ok(ValidationResult {
-                       valid: false,
-                       errors: vec![ValidationError {
-                           field: "value".to_string(),
-                           message: "Expected float".to_string(),
-                           code: ErrorCode::InvalidType,
-                       }],
-                       #[cfg(feature = "validation-warnings")]
-                       warnings: Vec::new(),
-                   })
-               }
-           }
-           
-           fn name(&self) -> &str {
-               "RangeValidator"
-           }
-       }
-       
-       let chain = ValidatorChain::new()
-           .add(RangeValidator { min: 0.0, max: 100.0 });
-       
-       let result = chain.validate(&Value::Float(50.0)).unwrap();
-       assert!(result.valid);
-       
-       let result = chain.validate(&Value::Float(150.0)).unwrap();
-       assert!(!result.valid);
-   }
+    use super::*;
+
+    #[test]
+    fn test_range_validator() {
+        let validator = RangeValidator::new("test").min(0.0).max(100.0);
+        
+        // Valid values
+        assert!(validator.validate(&Value::Integer(50)).valid);
+        assert!(validator.validate(&Value::Float(50.5)).valid);
+        assert!(validator.validate(&Value::Integer(0)).valid);
+        assert!(validator.validate(&Value::Integer(100)).valid);
+        
+        // Invalid values
+        assert!(!validator.validate(&Value::Integer(-1)).valid);
+        assert!(!validator.validate(&Value::Float(100.1)).valid);
+        assert!(!validator.validate(&Value::String("not a number".to_string())).valid);
+    }
+
+    #[test]
+    fn test_string_length_validator() {
+        let validator = StringLengthValidator::new("test").min_length(3).max_length(10);
+        
+        // Valid values
+        assert!(validator.validate(&Value::String("hello".to_string())).valid);
+        assert!(validator.validate(&Value::String("abc".to_string())).valid);
+        assert!(validator.validate(&Value::String("1234567890".to_string())).valid);
+        
+        // Invalid values
+        assert!(!validator.validate(&Value::String("ab".to_string())).valid);
+        assert!(!validator.validate(&Value::String("12345678901".to_string())).valid);
+        assert!(!validator.validate(&Value::Integer(42)).valid);
+    }
+
+    #[test]
+    fn test_enum_validator() {
+        let allowed = vec![
+            Value::String("start".to_string()),
+            Value::String("stop".to_string()),
+            Value::String("pause".to_string()),
+        ];
+        let validator = EnumValidator::new("test", allowed);
+        
+        // Valid values
+        assert!(validator.validate(&Value::String("start".to_string())).valid);
+        assert!(validator.validate(&Value::String("stop".to_string())).valid);
+        
+        // Invalid values
+        assert!(!validator.validate(&Value::String("resume".to_string())).valid);
+        assert!(!validator.validate(&Value::Integer(42)).valid);
+    }
+
+    #[cfg(feature = "regex-validation")]
+    #[test]
+    fn test_regex_validator() {
+        let validator = RegexValidator::new("test", r"^\d{3}-\d{3}-\d{4}$", "Invalid phone number format").unwrap();
+        
+        // Valid values
+        assert!(validator.validate(&Value::String("123-456-7890".to_string())).valid);
+        
+        // Invalid values
+        assert!(!validator.validate(&Value::String("1234567890".to_string())).valid);
+        assert!(!validator.validate(&Value::String("123-45-6789".to_string())).valid);
+        assert!(!validator.validate(&Value::Integer(42)).valid);
+    }
+
+    #[cfg(feature = "composite-validation")]
+    #[test]
+    fn test_composite_validator() {
+        // Test ALL mode
+        let validator = CompositeValidator::new("test", CompositeMode::All)
+            .add_validator(Box::new(RangeValidator::new("range").min(0.0).max(100.0)))
+            .add_validator(Box::new(StringLengthValidator::new("length").max_length(5)));
+        
+        // This should fail ALL mode (can't be both number and string)
+        assert!(!validator.validate(&Value::Integer(50)).valid);
+        assert!(!validator.validate(&Value::String("abc".to_string())).valid);
+        
+        // Test ANY mode
+        let validator = CompositeValidator::new("test", CompositeMode::Any)
+            .add_validator(Box::new(RangeValidator::new("range").min(0.0).max(100.0)))
+            .add_validator(Box::new(StringLengthValidator::new("length").max_length(5)));
+        
+        // These should pass ANY mode
+        assert!(validator.validate(&Value::Integer(50)).valid);
+        assert!(validator.validate(&Value::String("abc".to_string())).valid);
+        assert!(!validator.validate(&Value::String("too long string".to_string())).valid);
+    }
+
+    #[cfg(feature = "cross-field-validation")]
+    #[test]
+    fn test_cross_field_validation() {
+        let builder = ValidationBuilder::new()
+            .add_range("min", None, Some(100.0))
+            .add_range("max", Some(0.0), None)
+            .add_cross_field_validator("min_max_check", |fields| {
+                let min = fields.get("min").and_then(|v| match v {
+                    Value::Integer(n) => Some(*n as f64),
+                    Value::Float(f) => Some(*f),
+                    _ => None,
+                });
+                
+                let max = fields.get("max").and_then(|v| match v {
+                    Value::Integer(n) => Some(*n as f64),
+                    Value::Float(f) => Some(*f),
+                    _ => None,
+                });
+                
+                match (min, max) {
+                    (Some(min_val), Some(max_val)) => {
+                        if min_val >= max_val {
+                            ValidationResult {
+                                valid: false,
+                                errors: vec![ValidationError {
+                                    path: "min_max_check".to_string(),
+                                    message: "Min value must be less than max value".to_string(),
+                                    severity: ValidationSeverity::Error,
+                                }],
+                                #[cfg(feature = "validation-warnings")]
+                                warnings: Vec::new(),
+                            }
+                        } else {
+                            ValidationResult {
+                                valid: true,
+                                errors: Vec::new(),
+                                #[cfg(feature = "validation-warnings")]
+                                warnings: Vec::new(),
+                            }
+                        }
+                    }
+                    _ => ValidationResult {
+                        valid: true,
+                        errors: Vec::new(),
+                        #[cfg(feature = "validation-warnings")]
+                        warnings: Vec::new(),
+                    },
+                }
+            });
+        
+        let engine = builder.build();
+        
+        // Test valid case
+        let mut fields = HashMap::new();
+        fields.insert("min".to_string(), Value::Integer(10));
+        fields.insert("max".to_string(), Value::Integer(50));
+        assert!(engine.validate_all(&fields).valid);
+        
+        // Test invalid case
+        fields.insert("min".to_string(), Value::Integer(60));
+        fields.insert("max".to_string(), Value::Integer(50));
+        assert!(!engine.validate_all(&fields).valid);
+    }
+
+    #[test]
+    fn test_validation_builder() {
+        let engine = ValidationBuilder::new()
+            .add_range("temperature", Some(-50.0), Some(150.0))
+            .add_string_length("name", Some(1), Some(50))
+            .add_enum("status", vec![
+                Value::String("active".to_string()),
+                Value::String("inactive".to_string()),
+            ])
+            .build();
+        
+        // Test temperature
+        assert!(engine.validate_field("temperature", &Value::Float(25.0)).valid);
+        assert!(!engine.validate_field("temperature", &Value::Float(200.0)).valid);
+        
+        // Test name
+        assert!(engine.validate_field("name", &Value::String("John Doe".to_string())).valid);
+        assert!(!engine.validate_field("name", &Value::String("".to_string())).valid);
+        
+        // Test status
+        assert!(engine.validate_field("status", &Value::String("active".to_string())).valid);
+        assert!(!engine.validate_field("status", &Value::String("pending".to_string())).valid);
+    }
+
+    #[cfg(feature = "regex-validation")]
+    #[test]
+    fn test_presets() {
+        // Test email validator
+        let email_validator = presets::email_validator("email").unwrap();
+        assert!(email_validator.validate(&Value::String("user@example.com".to_string())).valid);
+        assert!(!email_validator.validate(&Value::String("invalid-email".to_string())).valid);
+        
+        // Test IP validator
+        let ip_validator = presets::ip_address_validator("ip").unwrap();
+        assert!(ip_validator.validate(&Value::String("192.168.1.1".to_string())).valid);
+        assert!(!ip_validator.validate(&Value::String("256.256.256.256".to_string())).valid);
+        
+        // Test percentage validator
+        let percent_validator = presets::percentage_validator("percent");
+        assert!(percent_validator.validate(&Value::Float(50.0)).valid);
+        assert!(!percent_validator.validate(&Value::Float(150.0)).valid);
+    }
 }
