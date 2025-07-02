@@ -22,7 +22,9 @@ chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 async-trait = "0.1"
 parking_lot = { version = "0.12", optional = true }
+dashmap = "5.5"
 uuid = { version = "1.11", features = ["v4", "serde"] }
+ringbuffer = { version = "0.15", optional = true }
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "env"] }
 
@@ -111,7 +113,7 @@ default = ["mqtt", "basic-blocks", "alarms", "enhanced-monitoring", "hot-swap"]
 # Core feature sets
 basic-features = ["validation", "metrics"]
 standard-monitoring = []
-enhanced-monitoring = []
+enhanced-monitoring = ["ringbuffer"]
 optimized = ["parking_lot"]
 
 # Storage features
@@ -131,7 +133,7 @@ mqtt-statistics = ["mqtt"]
 
 # Web features
 web = ["axum", "tower", "hyper", "reqwest"]
-metrics = ["dep:metrics", "metrics-exporter-prometheus"]
+metrics = ["dep:metrics", "metrics-exporter-prometheus", "axum"]
 web-api = ["web"]
 
 # Hot reload and status API features
