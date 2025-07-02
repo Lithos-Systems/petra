@@ -365,9 +365,8 @@ impl Engine {
     /// Start the engine main loop
     pub async fn run(&mut self) -> Result<()> {
         self.running.store(true, Ordering::Relaxed);
+        info!("Starting PETRA engine with scan time: {}ms", self.config.engine.scan_time_ms);
         
-        info!("Starting PETRA engine with scan time: {}ms", self.config.scan_time_ms);
-
         #[cfg(feature = "metrics")]
         if self.engine_config.metrics_enabled {
             gauge!("petra_engine_running").set(1.0);
