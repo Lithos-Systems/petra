@@ -19,7 +19,7 @@ serde_yaml = "0.9"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-chrono = { version = "0.4", features = ["serde"], optional = true }
+chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 async-trait = "0.1"
 uuid = { version = "1.11", features = ["v4", "serde"] }
