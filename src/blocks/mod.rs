@@ -903,7 +903,7 @@ pub fn get_bool_parameter(
     default: Option<bool>,
 ) -> Result<bool> {
     match config.parameters.get(param_name) {
-        Some(serde_yaml::Value::Bool(b)) => Ok(*b),
+        Some(serde_yaml::Value::Bool(b)) => Ok(b),
         Some(serde_yaml::Value::String(s)) => {
             match s.to_lowercase().as_str() {
                 "true" | "yes" | "on" | "1" => Ok(true),
