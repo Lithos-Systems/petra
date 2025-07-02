@@ -1,5 +1,6 @@
 // src/error.rs
 use thiserror::Error;
+
 #[cfg(feature = "metrics")]
 use metrics::SetRecorderError;
 
@@ -38,9 +39,12 @@ pub enum PlcError {
     #[error("Not found: {0}")]
     NotFound(String),
     
-    /// Type mismatch error
-    #[error("Type mismatch: {0}")]
-    TypeMismatch(String),
+    /// Type mismatch error - Fixed to use struct format
+    #[error("Type mismatch: expected {expected}, got {actual}")]
+    TypeMismatch {
+        expected: String,
+        actual: String,
+    },
     
     /// Runtime error
     #[error("Runtime error: {0}")]
@@ -61,6 +65,18 @@ pub enum PlcError {
     /// Validation error
     #[error("Validation error: {0}")]
     Validation(String),
+
+    /// Protocol error
+    #[error("Protocol error: {0}")]
+    Protocol(String),
+
+    /// Block error
+    #[error("Block error: {0}")]
+    Block(String),
+
+    /// Signal error
+    #[error("Signal error: {0}")]
+    Signal(String),
     
     /// Metrics error (for Prometheus)
     #[cfg(feature = "metrics")]
@@ -107,6 +123,10 @@ pub enum PlcError {
     #[cfg(feature = "email")]
     #[error("Email error: {0}")]
     Email(String),
+
+    #[cfg(feature = "quality-codes")]
+    #[error("Signal quality error: {0}")]
+    SignalQuality(String),
     
     // Enhanced error information
     #[cfg(feature = "enhanced-errors")]
@@ -183,30 +203,62 @@ impl ErrorRecovery for PlcError {
         match self {
             PlcError::SignalNotFound(name) => vec![
                 format!("Check if signal '{}' is defined in configuration", name),
-                "Verify signal name spelling and case".to_string(),
+                "Verify signal name spelling".to_string(),
+                "Ensure signal is initialized before use".to_string(),
             ],
             PlcError::Config(msg) => vec![
-                "Validate configuration file syntax".to_string(),
+                "Check YAML syntax".to_string(),
+                "Validate configuration against schema".to_string(),
                 format!("Error details: {}", msg),
             ],
-            #[cfg(feature = "s7-support")]
-            PlcError::S7(msg) => vec![
-                "Check PLC connection and network".to_string(),
-                "Verify PLC is powered on and accessible".to_string(),
-                format!("S7 error: {}", msg),
+            PlcError::TypeMismatch { expected, actual } => vec![
+                format!("Convert {} to {} type", actual, expected),
+                "Check signal type in configuration".to_string(),
+                "Use appropriate conversion method".to_string(),
             ],
-            _ => vec!["Check logs for more details".to_string()],
+            #[cfg(feature = "circuit-breaker")]
+            PlcError::CircuitOpen => vec![
+                "Wait for circuit breaker to reset".to_string(),
+                "Check system health".to_string(),
+                "Review error logs for root cause".to_string(),
+            ],
+            _ => vec!["Review error message for details".to_string()],
         }
     }
     
     fn is_recoverable(&self) -> bool {
-        match self {
-            PlcError::Config(_) => false,
-            PlcError::SignalNotFound(_) => false,
-            PlcError::TypeMismatch(_) => false,
-            #[cfg(feature = "circuit-breaker")]
-            PlcError::CircuitOpen => true,
-            _ => true,
-        }
+        !matches!(
+            self,
+            PlcError::Config(_) | PlcError::Io(_) | PlcError::Security(_)
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let err = PlcError::SignalNotFound("test_signal".to_string());
+        assert_eq!(err.to_string(), "Signal not found: test_signal");
+    }
+
+    #[test]
+    fn test_type_mismatch() {
+        let err = PlcError::TypeMismatch {
+            expected: "bool".to_string(),
+            actual: "int".to_string(),
+        };
+        assert_eq!(err.to_string(), "Type mismatch: expected bool, got int");
+    }
+
+    #[cfg(feature = "error-recovery")]
+    #[test]
+    fn test_recovery_suggestions() {
+        let err = PlcError::SignalNotFound("missing".to_string());
+        let suggestions = err.recovery_suggestions();
+        assert!(!suggestions.is_empty());
+        assert!(err.is_recoverable());
     }
 }
