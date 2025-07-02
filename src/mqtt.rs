@@ -258,7 +258,7 @@ impl MqttClient {
         }
         
         // Start publication handler
-        let publish_handle = self.start_publisher();
+        self.start_publisher();
         
         // Main event loop
         #[cfg(feature = "mqtt-reconnect")]
