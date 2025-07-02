@@ -8,7 +8,7 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/lithos-systems/petra"
 keywords = ["automation", "plc", "scada", "industrial", "iot"]
 categories = ["embedded", "network-programming"]
-build = "build.rs"
+build = "src/build.rs"
 
 [dependencies]
 # Core dependencies (always included)
@@ -19,13 +19,13 @@ serde_yaml = "0.9"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"], optional = true }
 futures = "0.3"
 async-trait = "0.1"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "env"] }
-base64 = "0.22"
+base64 = { version = "0.22", optional = true }
 
 # Optional core dependencies
 parking_lot = { version = "0.12", optional = true }
@@ -36,7 +36,7 @@ rumqttc = { version = "0.24", optional = true }
 tokio-util = { version = "0.7", optional = true }
 rust-snap7 = { version = "1.0", optional = true }
 tokio-modbus = { version = "0.15", optional = true }
-tokio-serial = { version = "0.11", optional = true }
+tokio-serial = { version = "5.4.5", optional = true }
 opcua = { version = "0.12", optional = true }
 
 # Storage dependencies
@@ -117,14 +117,14 @@ realtime = []
 # ============================================================================
 
 # MQTT protocol support
-mqtt = ["rumqttc", "tokio", "tokio-util"]
+mqtt = ["rumqttc", "tokio-util"]
 mqtt-persistence = ["mqtt"]
 mqtt-statistics = ["mqtt", "metrics"]
 
 # Industrial automation protocols
-s7-support = ["rust-snap7", "tokio"]
-modbus-support = ["tokio-modbus", "tokio-serial", "tokio"]
-opcua-support = ["opcua", "tokio"]
+s7-support = ["rust-snap7"]
+modbus-support = ["tokio-modbus", "tokio-serial"]
+opcua-support = ["opcua"]
 
 # Protocol feature groups
 industrial = ["s7-support", "modbus-support", "opcua-support"]
@@ -164,10 +164,10 @@ basic-auth = ["security", "bcrypt"]
 jwt-auth = ["security", "jsonwebtoken", "chrono"]
 
 # Authorization
-rbac = ["security", "serde_json"]
+rbac = ["security"]
 
 # Security audit logging  
-audit = ["security", "chrono", "serde_json"]
+audit = ["security", "chrono"]
 
 # Cryptographic signatures
 signing = ["security", "ed25519-dalek"]
@@ -222,7 +222,7 @@ full-validation = ["advanced-validation", "cross-field-validation"]
 # ============================================================================
 
 # Base alarm management
-alarms = ["chrono", "serde_json"]
+alarms = ["chrono"]
 
 # Notification channels
 email = ["alarms", "lettre"]
@@ -237,7 +237,7 @@ full-alarms = ["basic-alarms", "twilio"]
 # ============================================================================
 
 # Web interface support
-web = ["axum", "tower", "tower-http", "hyper", "tokio"]
+web = ["axum", "tower", "tower-http", "hyper"]
 
 # Health monitoring
 health = ["axum", "tower", "tower-http", "sysinfo"]
@@ -267,7 +267,7 @@ profiling = []
 pprof = ["dep:pprof", "profiling"]
 
 # Schema generation
-json-schema = ["jsonschema", "serde_json"]
+json-schema = ["jsonschema"]
 
 # Development feature groups
 dev-tools = ["examples", "hot-swap", "json-schema"]

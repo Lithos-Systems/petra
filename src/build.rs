@@ -64,7 +64,7 @@ fn validate_mutually_exclusive_features(features: &HashSet<String>) -> Result<()
         "enhanced-monitoring",
     ]
     .iter()
-    .filter(|f| features.contains(*f))
+    .filter(|f| features.contains(&f.to_string()))
     .collect();
     
     if monitoring_features.len() > 1 {
@@ -246,7 +246,7 @@ fn print_build_summary(features: &HashSet<String>) {
     // Print enabled protocols
     let protocols: Vec<_> = ["mqtt", "s7-support", "modbus-support", "opcua-support"]
         .iter()
-        .filter(|p| features.contains(*p))
+        .filter(|p| features.contains(&p.to_string()))
         .map(|p| match *p {
             "mqtt" => "MQTT",
             "s7-support" => "S7",
@@ -324,7 +324,7 @@ fn determine_config_type(features: &HashSet<String>) -> &'static str {
 /// Count features in a specific category
 fn count_features_in_category(features: &HashSet<String>, category_features: &[&str]) -> usize {
     category_features.iter()
-        .filter(|f| features.contains(*f))
+        .filter(|f| features.contains(&f.to_string()))
         .count()
 }
 
