@@ -283,9 +283,9 @@ impl From<crate::config::MqttConfig> for MqttConfig {
             persistence_path: cfg.persistence.map(|p| p.path),
             #[cfg(any(feature = "security", feature = "mqtt-tls"))]
             tls: cfg.tls.map(|t| TlsConfig {
-                ca_cert: t.ca_path,
-                client_cert: Some(t.cert_path),
-                client_key: Some(t.key_path),
+                ca_cert: t.ca_cert.clone(),
+                client_cert: t.client_cert.clone(),
+                client_key: t.client_key.clone(),
                 alpn_protocols: None,
                 insecure: false,
             }),
