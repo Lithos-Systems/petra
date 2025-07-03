@@ -5,6 +5,7 @@ use petra::config::{BlockConfig, SignalConfig, Config};
 use petra::{Engine, SignalBus, Value};
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio::runtime::Runtime;
 
 fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
     let mut signals = Vec::new();
@@ -15,7 +16,7 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
         signals.push(SignalConfig {
             name: format!("signal_{}", i),
             signal_type: "float".to_string(),
-            description: format!("Test signal {}", i),
+            description: Some(format!("Test signal {}", i)),
             initial: Some(serde_yaml::Value::from(0.0f64)),
             metadata: HashMap::new(),
             tags: vec![],
@@ -40,7 +41,7 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
         blocks.push(BlockConfig {
             name: format!("block_{}", i),
             block_type: "AND".to_string(),
-            description: format!("Test AND block {}", i),
+            description: Some(format!("Test AND block {}", i)),
             inputs,
             outputs,
             params: HashMap::new(),
@@ -74,6 +75,9 @@ fn benchmark_scan_performance(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(10));
     group.warm_up_time(Duration::from_secs(3));
 
+    // Create runtime for async operations
+    let rt = Runtime::new().unwrap();
+
     // Test different scales
     for (num_signals, num_blocks) in &[(100, 10), (1000, 100), (10000, 1000)] {
         let config = create_benchmark_config(*num_signals, *num_blocks);
@@ -88,7 +92,10 @@ fn benchmark_scan_performance(c: &mut Criterion) {
             &(*num_signals, *num_blocks),
             |b, _| {
                 b.iter(|| {
-                    black_box(engine.scan_once());
+                    // Use block_on since execute_scan_cycle is async
+                    rt.block_on(async {
+                        black_box(engine.execute_scan_cycle().await);
+                    });
                 });
             },
         );
@@ -135,7 +142,7 @@ fn benchmark_signal_bus_operations(c: &mut Criterion) {
 
         // Pre-populate
         for i in 0..100 {
-            bus.set(&format!("counter_{}", i), Value::Integer(0))
+            bus.set(&format!("counter_{}", i), Value::Int(0))
                 .unwrap();
         }
 
@@ -143,8 +150,8 @@ fn benchmark_signal_bus_operations(c: &mut Criterion) {
             for i in 0..100 {
                 bus.update(&format!("counter_{}", i), |old| {
                     match old {
-                        Some(Value::Integer(n)) => Value::Integer(n + 1),
-                        _ => Value::Integer(1),
+                        Some(Value::Int(n)) => Value::Int(n + 1),
+                        _ => Value::Int(1),
                     }
                 })
                 .unwrap();
@@ -219,7 +226,7 @@ fn benchmark_block_execution(c: &mut Criterion) {
     let and_config = BlockConfig {
         name: "test_and".to_string(),
         block_type: "AND".to_string(),
-        description: "Test AND block".to_string(),
+        description: Some("Test AND block".to_string()),
         inputs: HashMap::from([
             ("in1".to_string(), "input1".to_string()),
             ("in2".to_string(), "input2".to_string()),
@@ -241,7 +248,7 @@ fn benchmark_block_execution(c: &mut Criterion) {
     let math_config = BlockConfig {
         name: "test_math".to_string(),
         block_type: "MUL".to_string(),  // Use MUL instead of Math
-        description: "Test multiplication block".to_string(),
+        description: Some("Test multiplication block".to_string()),
         inputs: HashMap::from([
             ("in1".to_string(), "float_in".to_string()),
             ("in2".to_string(), "float_in".to_string()),
