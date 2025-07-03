@@ -1,83 +1,91 @@
+# docker-compose.yml
+# Main production Docker Compose file for Petra
 version: '3.8'
 
 services:
   petra:
-    build: .
-    container_name: petra-engine
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: petra
+    restart: unless-stopped
     ports:
-      - "9090:9090"  # Metrics
-      - "8080:8080"  # Health checks
+      - "9090:9090"      # Metrics endpoint
+      - "8080:8080"      # Health API endpoint
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-      - ./logs:/app/logs
+      - ./configs:/app/configs:ro
+      - petra-data:/data
     environment:
       - RUST_LOG=petra=info
-      - PETRA_METRICS_ADDR=0.0.0.0:9090
-      - PETRA_HEALTH_ADDR=0.0.0.0:8080
-    restart: unless-stopped
+      - PETRA_CONFIG=/app/configs/production.yaml
     depends_on:
-      - prometheus
-      - grafana
+      - clickhouse
+      - mqtt
     networks:
       - petra-network
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/petra", "--health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: petra-prometheus
-    ports:
-      - "9091:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: petra-clickhouse
     restart: unless-stopped
-    networks:
-      - petra-network
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: petra-grafana
     ports:
-      - "3000:3000"
+      - "8123:8123"      # HTTP interface
+      - "9000:9000"      # Native TCP protocol
     volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    restart: unless-stopped
-    depends_on:
-      - prometheus
+      - CLICKHOUSE_USER=petra
+      - CLICKHOUSE_PASSWORD=secure_password
+      - CLICKHOUSE_DB=petra_history
     networks:
       - petra-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
-  # Optional: MQTT Broker for testing
-  mosquitto:
-    image: eclipse-mosquitto:2
-    container_name: petra-mosquitto
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - mosquitto_data:/mosquitto/data
-      - mosquitto_logs:/mosquitto/log
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: petra-mqtt
     restart: unless-stopped
+    ports:
+      - "1883:1883"      # MQTT protocol
+      - "9001:9001"      # WebSocket
+    volumes:
+      - ./configs/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt-data:/mosquitto/data
+      - mqtt-logs:/mosquitto/log
     networks:
       - petra-network
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "test", "-m", "health_check"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
-  prometheus_data:
-  grafana_data:
-  mosquitto_data:
-  mosquitto_logs:
+  petra-data:
+    driver: local
+  clickhouse-data:
+    driver: local
+  clickhouse-logs:
+    driver: local
+  mqtt-data:
+    driver: local
+  mqtt-logs:
+    driver: local
 
 networks:
   petra-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
