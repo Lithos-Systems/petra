@@ -1,23 +1,14 @@
-// src/config.rs - Updated configuration structures with burn-in support
-
+// src/config.rs - Configuration structures for PETRA
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use crate::error::{PlcError, Result};
 
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
-
-// ============================================================================
-// MAIN CONFIGURATION
-// ============================================================================
-
-/// Main PETRA configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+/// Main configuration structure for PETRA
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
-    /// Engine configuration
-    #[serde(default)]
-    pub engine: EngineConfig,
+    /// Scan cycle time in milliseconds
+    pub scan_time_ms: u64,
     
     /// Signal definitions
     pub signals: Vec<SignalConfig>,
@@ -25,654 +16,770 @@ pub struct Config {
     /// Block definitions
     pub blocks: Vec<BlockConfig>,
     
-    /// MQTT configuration
-    #[serde(default)]
+    /// MQTT configuration (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mqtt: Option<MqttConfig>,
     
-    /// S7 configuration
-    #[serde(default)]
-    pub s7: Option<S7Config>,
-    
-    /// Alarm configuration
-    #[serde(default)]
-    pub alarms: Option<AlarmConfig>,
-    
-    /// Security configuration
-    #[serde(default)]
+    /// Security configuration (optional)
+    #[cfg(feature = "security")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
     
-    #[cfg(feature = "web")]
-    /// Twilio configuration
-    #[serde(default)]
-    pub twilio: Option<TwilioConfig>,
-    
+    /// History configuration (optional)
     #[cfg(feature = "history")]
-    /// History configuration
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub history: Option<HistoryConfig>,
     
-    #[cfg(feature = "advanced-storage")]
-    /// Storage configuration
-    #[serde(default)]
-    pub storage: Option<StorageConfig>,
+    /// Alarm configuration (optional)
+    #[cfg(feature = "alarms")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alarms: Option<AlarmConfig>,
     
-    #[cfg(feature = "opcua-support")]
-    /// OPC UA configuration
-    #[serde(default)]
-    pub opcua: Option<OpcUaConfig>,
+    /// Web server configuration (optional)
+    #[cfg(feature = "web")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub web: Option<WebConfig>,
     
-    #[cfg(feature = "modbus-support")]
-    /// Modbus configuration
-    #[serde(default)]
-    pub modbus: Option<ModbusConfig>,
+    /// Protocol configurations (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocols: Option<HashMap<String, ProtocolConfig>>,
 }
 
-// ============================================================================
-// ENGINE CONFIGURATION
-// ============================================================================
-
-/// Engine runtime configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct EngineConfig {
-    /// Target scan time in milliseconds
-    #[serde(default = "default_scan_time")]
-    pub scan_time_ms: u64,
-    
-    /// Maximum jitter percentage
-    #[serde(default = "default_max_jitter")]
-    pub max_jitter_percent: f64,
-    
-    /// Enable performance monitoring
-    #[serde(default = "default_true")]
-    pub performance_monitoring: bool,
-    
-    /// Thread pool size (None = auto)
-    #[serde(default)]
-    pub thread_pool_size: Option<usize>,
-    
-    /// Priority levels
-    #[serde(default)]
-    pub priorities: PriorityConfig,
-    
-    /// Burn-in configuration
-    #[serde(default)]
-    pub burn_in: BurnInConfig,
-    
-    /// Hot-swap configuration
-    #[serde(default)]
-    pub hot_swap: HotSwapConfig,
-}
-
-impl Default for EngineConfig {
-    fn default() -> Self {
-        Self {
-            scan_time_ms: default_scan_time(),
-            max_jitter_percent: default_max_jitter(),
-            performance_monitoring: default_true(),
-            thread_pool_size: None,
-            priorities: PriorityConfig::default(),
-            burn_in: BurnInConfig::default(),
-            hot_swap: HotSwapConfig::default(),
-        }
-    }
-}
-
-/// Burn-in configuration for performance optimization
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct BurnInConfig {
-    /// Enable burn-in optimization
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    
-    /// Number of cycles before burn-in
-    #[serde(default = "default_burn_in_cycles")]
-    pub cycles: u64,
-    
-    /// Lock signal paths after burn-in
-    #[serde(default = "default_true")]
-    pub lock_paths: bool,
-    
-    /// Optimize memory layout after burn-in
-    #[serde(default = "default_true")]
-    pub optimize_memory: bool,
-}
-
-impl Default for BurnInConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_true(),
-            cycles: default_burn_in_cycles(),
-            lock_paths: default_true(),
-            optimize_memory: default_true(),
-        }
-    }
-}
-
-/// Hot-swap configuration for runtime changes
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct HotSwapConfig {
-    /// Enable hot-swap functionality
-    #[serde(default)]
-    pub enabled: bool,
-    
-    /// Allow block hot-swap
-    #[serde(default)]
-    pub blocks: bool,
-    
-    /// Allow signal hot-swap
-    #[serde(default)]
-    pub signals: bool,
-    
-    /// Require burn-in reset after hot-swap
-    #[serde(default = "default_true")]
-    pub reset_burn_in: bool,
-}
-
-impl Default for HotSwapConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            blocks: false,
-            signals: false,
-            reset_burn_in: default_true(),
-        }
-    }
-}
-
-/// Priority configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct PriorityConfig {
-    /// Enable priority scheduling
-    #[serde(default)]
-    pub enabled: bool,
-    
-    /// High priority scan divisor
-    #[serde(default = "default_high_priority")]
-    pub high: u32,
-    
-    /// Medium priority scan divisor
-    #[serde(default = "default_medium_priority")]
-    pub medium: u32,
-    
-    /// Low priority scan divisor
-    #[serde(default = "default_low_priority")]
-    pub low: u32,
-}
-
-impl Default for PriorityConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            high: default_high_priority(),
-            medium: default_medium_priority(),
-            low: default_low_priority(),
-        }
-    }
-}
-
-// ============================================================================
-// BLOCK CONFIGURATION
-// ============================================================================
-
-/// Individual block configuration with flexible I/O mapping
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct BlockConfig {
-    /// Block name (unique identifier)
-    pub name: String,
-    
-    /// Block type (AND, OR, TIMER_ON, etc.)
-    pub block_type: String,
-    
-    /// Block description
-    #[serde(default)]
-    pub description: Option<String>,
-    
-    /// Input signal mappings (port_name -> signal_name)
-    /// During burn-in, these can be optimized to direct references
-    #[serde(default)]
-    pub inputs: HashMap<String, String>,
-    
-    /// Output signal mappings (port_name -> signal_name)
-    /// During burn-in, these can be optimized to direct references
-    #[serde(default)]
-    pub outputs: HashMap<String, String>,
-    
-    /// Block-specific parameters
-    #[serde(default)]
-    pub parameters: HashMap<String, serde_yaml::Value>,
-    
-    /// Execution priority
-    #[serde(default)]
-    pub priority: Priority,
-    
-    /// Enable/disable block
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    
-    /// Tags for categorization
-    #[serde(default)]
-    pub tags: Vec<String>,
-    
-    /// Hot-swap configuration
-    #[serde(default)]
-    pub hot_swap: BlockHotSwapConfig,
-}
-
-/// Block-specific hot-swap configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct BlockHotSwapConfig {
-    /// Allow this block to be hot-swapped
-    #[serde(default)]
-    pub allow: bool,
-    
-    /// Preserve state during hot-swap
-    #[serde(default)]
-    pub preserve_state: bool,
-    
-    /// Custom state mapping for hot-swap
-    #[serde(default)]
-    pub state_mapping: HashMap<String, String>,
-}
-
-/// Execution priority levels
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[serde(rename_all = "lowercase")]
-pub enum Priority {
-    High,
-    Medium,
-    Low,
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Medium
-    }
-}
-
-// ============================================================================
-// SIGNAL CONFIGURATION
-// ============================================================================
-
-/// Signal configuration with burn-in optimization support
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+/// Signal configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SignalConfig {
-    /// Signal name (unique identifier)
+    /// Signal name (must be unique)
     pub name: String,
     
     /// Signal type (bool, int, float, etc.)
+    #[serde(rename = "type")]
     pub signal_type: String,
     
-    /// Initial value
-    #[serde(default)]
+    /// Initial value (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub initial: Option<serde_yaml::Value>,
     
-    /// Signal description
-    #[serde(default)]
+    /// Description (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     
-    /// Tags for categorization
+    /// Tags for organization
     #[serde(default)]
     pub tags: Vec<String>,
     
-    /// Engineering units
+    /// Engineering units (requires engineering-types feature)
     #[cfg(feature = "engineering-types")]
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<String>,
     
-    /// Enable quality tracking
+    /// Quality code support (requires quality-codes feature)
     #[cfg(feature = "quality-codes")]
     #[serde(default)]
     pub quality_enabled: bool,
     
-    /// Validation rules
+    /// Validation rules (requires validation feature)
     #[cfg(feature = "validation")]
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub validation: Option<ValidationConfig>,
     
-    /// Custom metadata
-    #[serde(default)]
+    /// Additional metadata
+    #[serde(flatten)]
     pub metadata: HashMap<String, serde_yaml::Value>,
-    
-    /// Burn-in optimization hints
-    #[serde(default)]
-    pub optimization: SignalOptimizationConfig,
 }
 
-/// Signal optimization configuration for burn-in
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct SignalOptimizationConfig {
-    /// Pin in memory during burn-in
-    #[serde(default)]
-    pub pin_memory: bool,
+/// Block configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BlockConfig {
+    /// Block name (must be unique)
+    pub name: String,
     
-    /// Cache line alignment hint
-    #[serde(default)]
-    pub cache_align: bool,
+    /// Block type (AND, OR, NOT, etc.)
+    #[serde(rename = "type")]
+    pub block_type: String,
     
-    /// Access frequency hint (0-100)
+    /// Input signal mappings
     #[serde(default)]
-    pub access_frequency: u8,
+    pub inputs: HashMap<String, String>,
+    
+    /// Output signal mappings
+    #[serde(default)]
+    pub outputs: HashMap<String, String>,
+    
+    /// Block parameters (using 'params' to match your blocks/mod.rs)
+    #[serde(default)]
+    pub params: HashMap<String, serde_yaml::Value>,
+    
+    /// Description (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    
+    /// Tags for organization
+    #[serde(default)]
+    pub tags: Vec<String>,
+    
+    /// Enhanced error handling configuration
+    #[cfg(feature = "enhanced-errors")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_handling: Option<ErrorHandlingConfig>,
+    
+    /// Circuit breaker configuration
+    #[cfg(feature = "circuit-breaker")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub circuit_breaker: Option<CircuitBreakerConfig>,
 }
-
-// ============================================================================
-// STORAGE CONFIGURATION
-// ============================================================================
-
-#[cfg(feature = "advanced-storage")]
-/// Storage configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct StorageConfig {
-    /// Storage path
-    pub path: PathBuf,
-    
-    /// Write-ahead log settings
-    #[serde(default)]
-    pub wal: WalConfig,
-    
-    /// Compression settings
-    #[serde(default)]
-    pub compression: CompressionConfig,
-    
-    /// Cache settings
-    #[serde(default)]
-    pub cache: CacheConfig,
-}
-
-#[cfg(feature = "advanced-storage")]
-/// Write-ahead log configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct WalConfig {
-    /// Enable WAL
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    
-    /// Sync mode
-    #[serde(default)]
-    pub sync_mode: WalSyncMode,
-    
-    /// Size limit in MB
-    #[serde(default = "default_wal_size")]
-    pub size_limit_mb: u64,
-}
-
-#[cfg(feature = "advanced-storage")]
-impl Default for WalConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_true(),
-            sync_mode: WalSyncMode::default(),
-            size_limit_mb: default_wal_size(),
-        }
-    }
-}
-
-#[cfg(feature = "advanced-storage")]
-/// WAL sync modes
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[serde(rename_all = "lowercase")]
-pub enum WalSyncMode {
-    None,
-    Normal,
-    Full,
-}
-
-#[cfg(feature = "advanced-storage")]
-impl Default for WalSyncMode {
-    fn default() -> Self {
-        WalSyncMode::Normal
-    }
-}
-
-// ============================================================================
-// MQTT CONFIGURATION
-// ============================================================================
 
 /// MQTT configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MqttConfig {
-    /// Broker configuration
-    pub broker: MqttBrokerConfig,
-    
-    /// Client ID
-    #[serde(default = "default_mqtt_client_id")]
+    pub host: String,
+    pub port: u16,
     pub client_id: String,
     
-    /// Username
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
     
-    /// Password
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     
-    /// Keep alive in seconds
-    #[serde(default = "default_mqtt_keepalive")]
+    #[serde(default = "default_qos")]
+    pub qos: u8,
+    
+    #[serde(default = "default_keepalive")]
     pub keepalive_secs: u64,
     
-    /// Clean session
-    #[serde(default = "default_true")]
-    pub clean_session: bool,
-    
-    /// QoS level
     #[serde(default)]
-    pub qos: MqttQos,
+    pub topics: Vec<MqttTopicConfig>,
     
-    /// TLS configuration
-    #[serde(default)]
-    pub tls: Option<MqttTlsConfig>,
-    
-    /// Topics configuration
-    #[serde(default)]
-    pub topics: MqttTopicsConfig,
+    #[cfg(feature = "mqtt-tls")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tls: Option<TlsConfig>,
 }
 
-/// MQTT broker configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct MqttBrokerConfig {
-    /// Broker host
-    pub host: String,
+fn default_qos() -> u8 {
+    1
+}
+
+fn default_keepalive() -> u64 {
+    60
+}
+
+/// MQTT topic configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MqttTopicConfig {
+    pub topic: String,
+    pub signal: String,
+    pub direction: MqttDirection,
     
-    /// Broker port
-    #[serde(default = "default_mqtt_port")]
-    pub port: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
 }
 
-impl Default for MqttBrokerConfig {
-    fn default() -> Self {
-        Self {
-            host: "localhost".to_string(),
-            port: default_mqtt_port(),
-        }
-    }
-}
-
-/// MQTT QoS levels
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+/// MQTT communication direction
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum MqttQos {
-    AtMostOnce,
-    AtLeastOnce,
-    ExactlyOnce,
-}
-
-impl Default for MqttQos {
-    fn default() -> Self {
-        MqttQos::AtLeastOnce
-    }
-}
-
-/// MQTT TLS configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct MqttTlsConfig {
-    /// CA certificate path
-    pub ca_cert: PathBuf,
-    
-    /// Client certificate path
-    #[serde(default)]
-    pub client_cert: Option<PathBuf>,
-    
-    /// Client key path
-    #[serde(default)]
-    pub client_key: Option<PathBuf>,
-}
-
-/// MQTT topics configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct MqttTopicsConfig {
-    /// Subscribe topics
-    #[serde(default)]
-    pub subscribe: Vec<MqttSubscription>,
-    
-    /// Publish topics
-    #[serde(default)]
-    pub publish: Vec<MqttPublication>,
-}
-
-/// MQTT subscription configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct MqttSubscription {
-    /// Topic pattern
-    pub topic: String,
-    
-    /// Target signal
-    pub signal: String,
-    
-    /// Value path (for JSON payloads)
-    #[serde(default)]
-    pub path: Option<String>,
-}
-
-/// MQTT publication configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct MqttPublication {
-    /// Topic
-    pub topic: String,
-    
-    /// Source signal
-    pub signal: String,
-    
-    /// Publish interval in milliseconds
-    #[serde(default)]
-    pub interval_ms: Option<u64>,
-    
-    /// Only publish on change
-    #[serde(default)]
-    pub on_change: bool,
-}
-
-// ============================================================================
-// DEFAULT VALUE FUNCTIONS
-// ============================================================================
-
-fn default_scan_time() -> u64 { 100 }
-fn default_max_jitter() -> f64 { 10.0 }
-fn default_true() -> bool { true }
-fn default_burn_in_cycles() -> u64 { 1000 }
-fn default_high_priority() -> u32 { 1 }
-fn default_medium_priority() -> u32 { 5 }
-fn default_low_priority() -> u32 { 10 }
-fn default_mqtt_client_id() -> String { "petra".to_string() }
-fn default_mqtt_keepalive() -> u64 { 60 }
-fn default_mqtt_port() -> u16 { 1883 }
-#[cfg(feature = "advanced-storage")]
-fn default_wal_size() -> u64 { 100 }
-
-// ============================================================================
-// OTHER CONFIGURATIONS (S7, Alarms, etc.)
-// ============================================================================
-
-/// S7 configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct S7Config {
-    // Add S7 specific fields
-}
-
-/// Alarm configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct AlarmConfig {
-    // Add alarm specific fields
+pub enum MqttDirection {
+    Read,
+    Write,
+    ReadWrite,
 }
 
 /// Security configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg(feature = "security")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SecurityConfig {
-    // Add security specific fields
+    pub enabled: bool,
+    
+    #[cfg(feature = "basic-auth")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub basic_auth: Option<BasicAuthConfig>,
+    
+    #[cfg(feature = "jwt-auth")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jwt_auth: Option<JwtAuthConfig>,
+    
+    #[cfg(feature = "rbac")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rbac: Option<RbacConfig>,
 }
 
-#[cfg(feature = "web")]
-/// Twilio configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct TwilioConfig {
-    // Add Twilio specific fields
+/// Basic authentication configuration
+#[cfg(feature = "basic-auth")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BasicAuthConfig {
+    pub realm: String,
+    pub users: Vec<UserConfig>,
 }
 
-#[cfg(feature = "history")]
+/// User configuration
+#[cfg(feature = "basic-auth")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UserConfig {
+    pub username: String,
+    pub password_hash: String,
+    pub roles: Vec<String>,
+}
+
+/// JWT authentication configuration
+#[cfg(feature = "jwt-auth")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct JwtAuthConfig {
+    pub secret: String,
+    pub issuer: String,
+    pub audience: String,
+    pub expiry_hours: u64,
+}
+
+/// Role-based access control configuration
+#[cfg(feature = "rbac")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RbacConfig {
+    pub roles: HashMap<String, RoleConfig>,
+}
+
+/// Role configuration
+#[cfg(feature = "rbac")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RoleConfig {
+    pub permissions: Vec<String>,
+    pub inherits: Vec<String>,
+}
+
 /// History configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg(feature = "history")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HistoryConfig {
-    // Add history specific fields
+    pub enabled: bool,
+    pub data_dir: PathBuf,
+    pub retention_days: u32,
+    pub batch_size: usize,
+    
+    #[cfg(feature = "compression")]
+    pub compression: CompressionType,
+    
+    #[serde(default)]
+    pub signals: Vec<HistorySignalConfig>,
 }
 
-#[cfg(feature = "opcua-support")]
-/// OPC UA configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct OpcUaConfig {
-    // Add OPC UA specific fields
+/// History signal configuration
+#[cfg(feature = "history")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HistorySignalConfig {
+    pub signal: String,
+    pub interval_ms: u64,
+    pub deadband: Option<f64>,
 }
 
-#[cfg(feature = "modbus-support")]
+/// Compression type
+#[cfg(feature = "compression")]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CompressionType {
+    None,
+    Zstd,
+    Lz4,
+    Snappy,
+}
+
+/// Alarm configuration
+#[cfg(feature = "alarms")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AlarmConfig {
+    pub enabled: bool,
+    pub alarms: Vec<AlarmDefinition>,
+}
+
+/// Alarm definition
+#[cfg(feature = "alarms")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AlarmDefinition {
+    pub name: String,
+    pub signal: String,
+    pub condition: AlarmCondition,
+    pub severity: AlarmSeverity,
+    pub message: String,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delay_ms: Option<u64>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_ack: Option<bool>,
+}
+
+/// Alarm condition
+#[cfg(feature = "alarms")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlarmCondition {
+    High(f64),
+    Low(f64),
+    Equal(serde_yaml::Value),
+    NotEqual(serde_yaml::Value),
+    InRange(f64, f64),
+    OutOfRange(f64, f64),
+}
+
+/// Alarm severity
+#[cfg(feature = "alarms")]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlarmSeverity {
+    Info,
+    Warning,
+    Error,
+    Critical,
+}
+
+/// Web server configuration
+#[cfg(feature = "web")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WebConfig {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub static_dir: Option<PathBuf>,
+    
+    #[cfg(feature = "web-tls")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tls: Option<TlsConfig>,
+}
+
+/// TLS configuration
+#[cfg(any(feature = "mqtt-tls", feature = "web-tls"))]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TlsConfig {
+    pub cert_file: PathBuf,
+    pub key_file: PathBuf,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ca_file: Option<PathBuf>,
+    
+    #[serde(default)]
+    pub verify_peer: bool,
+}
+
+/// Protocol configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum ProtocolConfig {
+    #[cfg(feature = "modbus-support")]
+    Modbus(ModbusConfig),
+    
+    #[cfg(feature = "s7-support")]
+    S7(S7Config),
+    
+    #[cfg(feature = "opcua-support")]
+    OpcUa(OpcUaConfig),
+}
+
 /// Modbus configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg(feature = "modbus-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModbusConfig {
-    // Add Modbus specific fields
+    pub mode: ModbusMode,
+    pub slave_id: u8,
+    pub mappings: Vec<ModbusMapping>,
 }
 
-#[cfg(feature = "validation")]
+/// Modbus mode
+#[cfg(feature = "modbus-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModbusMode {
+    Tcp { host: String, port: u16 },
+    Rtu { port: String, baud_rate: u32 },
+}
+
+/// Modbus mapping
+#[cfg(feature = "modbus-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ModbusMapping {
+    pub signal: String,
+    pub register_type: ModbusRegisterType,
+    pub address: u16,
+    pub count: u16,
+    pub data_type: ModbusDataType,
+}
+
+/// Modbus register type
+#[cfg(feature = "modbus-support")]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModbusRegisterType {
+    Coil,
+    DiscreteInput,
+    HoldingRegister,
+    InputRegister,
+}
+
+/// Modbus data type
+#[cfg(feature = "modbus-support")]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModbusDataType {
+    Bool,
+    U16,
+    I16,
+    U32,
+    I32,
+    F32,
+}
+
+/// S7 configuration
+#[cfg(feature = "s7-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct S7Config {
+    pub host: String,
+    pub rack: u16,
+    pub slot: u16,
+    pub mappings: Vec<S7Mapping>,
+}
+
+/// S7 mapping
+#[cfg(feature = "s7-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct S7Mapping {
+    pub signal: String,
+    pub area: S7Area,
+    pub db_number: u16,
+    pub offset: u32,
+    pub data_type: S7DataType,
+}
+
+/// S7 area
+#[cfg(feature = "s7-support")]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "uppercase")]
+pub enum S7Area {
+    PE,
+    PA,
+    MK,
+    DB,
+    CT,
+    TM,
+}
+
+/// S7 data type
+#[cfg(feature = "s7-support")]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum S7DataType {
+    Bool,
+    Byte,
+    Word,
+    DWord,
+    Int,
+    DInt,
+    Real,
+}
+
+/// OPC-UA configuration
+#[cfg(feature = "opcua-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OpcUaConfig {
+    pub endpoint: String,
+    pub namespace: u16,
+    pub mappings: Vec<OpcUaMapping>,
+}
+
+/// OPC-UA mapping
+#[cfg(feature = "opcua-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OpcUaMapping {
+    pub signal: String,
+    pub node_id: String,
+    pub direction: OpcUaDirection,
+}
+
+/// OPC-UA direction
+#[cfg(feature = "opcua-support")]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OpcUaDirection {
+    Read,
+    Write,
+    Subscribe,
+}
+
 /// Validation configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct ValidationConfig {
-    // Add validation specific fields
+#[cfg(feature = "validation")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum ValidationConfig {
+    Range { min: f64, max: f64 },
+    Enum { values: Vec<serde_yaml::Value> },
+    Pattern { regex: String },
+    Custom { validator: String },
 }
 
-#[cfg(feature = "advanced-storage")]
-/// Compression configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct CompressionConfig {
-    // Add compression specific fields
+/// Error handling configuration
+#[cfg(feature = "enhanced-errors")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ErrorHandlingConfig {
+    pub retry: Option<RetryConfig>,
+    pub fallback_value: Option<serde_yaml::Value>,
+    pub log_errors: bool,
 }
 
-#[cfg(feature = "advanced-storage")]
-/// Cache configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct CacheConfig {
-    // Add cache specific fields
+/// Retry configuration
+#[cfg(feature = "enhanced-errors")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RetryConfig {
+    pub max_attempts: u32,
+    pub initial_delay_ms: u64,
+    pub max_delay_ms: u64,
+    pub exponential_backoff: bool,
+}
+
+/// Circuit breaker configuration
+#[cfg(feature = "circuit-breaker")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CircuitBreakerConfig {
+    pub max_failures: u32,
+    pub reset_timeout_ms: u64,
+    pub half_open_max_calls: u32,
+}
+
+impl Config {
+    /// Load configuration from a YAML file
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let contents = std::fs::read_to_string(path)?;
+        let config: Config = serde_yaml::from_str(&contents)?;
+        config.validate()?;
+        Ok(config)
+    }
+    
+    /// Load configuration from a YAML string
+    pub fn from_yaml(yaml: &str) -> Result<Self> {
+        let config: Config = serde_yaml::from_str(yaml)?;
+        config.validate()?;
+        Ok(config)
+    }
+    
+    /// Validate the configuration
+    pub fn validate(&self) -> Result<()> {
+        // Validate scan time
+        if self.scan_time_ms == 0 {
+            return Err(PlcError::Config("Scan time must be greater than 0".to_string()));
+        }
+        
+        // Validate signals
+        let mut signal_names = std::collections::HashSet::new();
+        for signal in &self.signals {
+            if !signal_names.insert(&signal.name) {
+                return Err(PlcError::Config(format!(
+                    "Duplicate signal name: '{}'", signal.name
+                )));
+            }
+            signal.validate()?;
+        }
+        
+        // Validate blocks
+        let mut block_names = std::collections::HashSet::new();
+        for block in &self.blocks {
+            if !block_names.insert(&block.name) {
+                return Err(PlcError::Config(format!(
+                    "Duplicate block name: '{}'", block.name
+                )));
+            }
+            block.validate(&signal_names)?;
+        }
+        
+        // Validate optional configurations
+        if let Some(mqtt) = &self.mqtt {
+            mqtt.validate()?;
+        }
+        
+        #[cfg(feature = "security")]
+        if let Some(security) = &self.security {
+            security.validate()?;
+        }
+        
+        Ok(())
+    }
+}
+
+impl SignalConfig {
+    fn validate(&self) -> Result<()> {
+        if self.name.is_empty() {
+            return Err(PlcError::Config("Signal name cannot be empty".to_string()));
+        }
+        
+        // Validate signal type
+        match self.signal_type.as_str() {
+            "bool" | "int" | "float" => Ok(()),
+            #[cfg(feature = "extended-types")]
+            "string" | "binary" | "timestamp" | "array" | "object" => Ok(()),
+            _ => Err(PlcError::Config(format!(
+                "Invalid signal type: '{}'", self.signal_type
+            ))),
+        }
+    }
+}
+
+impl BlockConfig {
+    fn validate(&self, available_signals: &std::collections::HashSet<&String>) -> Result<()> {
+        if self.name.is_empty() {
+            return Err(PlcError::Config("Block name cannot be empty".to_string()));
+        }
+        
+        if self.block_type.is_empty() {
+            return Err(PlcError::Config("Block type cannot be empty".to_string()));
+        }
+        
+        // Validate signal references
+        for signal in self.inputs.values() {
+            if !available_signals.contains(signal) {
+                return Err(PlcError::Config(format!(
+                    "Block '{}' references unknown input signal '{}'",
+                    self.name, signal
+                )));
+            }
+        }
+        
+        for signal in self.outputs.values() {
+            if !available_signals.contains(signal) {
+                return Err(PlcError::Config(format!(
+                    "Block '{}' references unknown output signal '{}'",
+                    self.name, signal
+                )));
+            }
+        }
+        
+        Ok(())
+    }
+}
+
+impl MqttConfig {
+    fn validate(&self) -> Result<()> {
+        if self.host.is_empty() {
+            return Err(PlcError::Config("MQTT host cannot be empty".to_string()));
+        }
+        
+        if self.port == 0 {
+            return Err(PlcError::Config("MQTT port cannot be 0".to_string()));
+        }
+        
+        if self.client_id.is_empty() {
+            return Err(PlcError::Config("MQTT client ID cannot be empty".to_string()));
+        }
+        
+        if self.qos > 2 {
+            return Err(PlcError::Config("MQTT QoS must be 0, 1, or 2".to_string()));
+        }
+        
+        Ok(())
+    }
+}
+
+#[cfg(feature = "security")]
+impl SecurityConfig {
+    fn validate(&self) -> Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
+        
+        #[cfg(feature = "basic-auth")]
+        if let Some(basic_auth) = &self.basic_auth {
+            if basic_auth.users.is_empty() {
+                return Err(PlcError::Config(
+                    "Basic auth enabled but no users configured".to_string()
+                ));
+            }
+        }
+        
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_config_validation() {
+        let config = Config {
+            scan_time_ms: 100,
+            signals: vec![
+                SignalConfig {
+                    name: "input1".to_string(),
+                    signal_type: "bool".to_string(),
+                    initial: Some(serde_yaml::Value::Bool(false)),
+                    description: None,
+                    tags: vec![],
+                    metadata: HashMap::new(),
+                },
+            ],
+            blocks: vec![
+                BlockConfig {
+                    name: "not1".to_string(),
+                    block_type: "NOT".to_string(),
+                    inputs: {
+                        let mut map = HashMap::new();
+                        map.insert("in".to_string(), "input1".to_string());
+                        map
+                    },
+                    outputs: HashMap::new(),
+                    params: HashMap::new(),
+                    description: None,
+                    tags: vec![],
+                },
+            ],
+            mqtt: None,
+            #[cfg(feature = "security")]
+            security: None,
+            #[cfg(feature = "history")]
+            history: None,
+            #[cfg(feature = "alarms")]
+            alarms: None,
+            #[cfg(feature = "web")]
+            web: None,
+            protocols: None,
+        };
+        
+        assert!(config.validate().is_ok());
+    }
+    
+    #[test]
+    fn test_duplicate_signal_names() {
+        let config = Config {
+            scan_time_ms: 100,
+            signals: vec![
+                SignalConfig {
+                    name: "signal1".to_string(),
+                    signal_type: "bool".to_string(),
+                    initial: None,
+                    description: None,
+                    tags: vec![],
+                    metadata: HashMap::new(),
+                },
+                SignalConfig {
+                    name: "signal1".to_string(), // Duplicate!
+                    signal_type: "int".to_string(),
+                    initial: None,
+                    description: None,
+                    tags: vec![],
+                    metadata: HashMap::new(),
+                },
+            ],
+            blocks: vec![],
+            mqtt: None,
+            #[cfg(feature = "security")]
+            security: None,
+            #[cfg(feature = "history")]
+            history: None,
+            #[cfg(feature = "alarms")]
+            alarms: None,
+            #[cfg(feature = "web")]
+            web: None,
+            protocols: None,
+        };
+        
+        let result = config.validate();
+        assert!(result.is_err());
+        if let Err(PlcError::Config(msg)) = result {
+            assert!(msg.contains("Duplicate signal name"));
+        }
+    }
 }
