@@ -28,7 +28,7 @@ anyhow = "1.0"
 
 # Logging - minimal
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], default-features = false }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"], default-features = false }
 
 # MQTT - production ready
 rumqttc = { version = "0.24", default-features = false, features = ["use-rustls"] }
@@ -76,7 +76,7 @@ metrics-exporter-prometheus = { version = "0.15", default-features = false, opti
 arrow = { version = "55.1", default-features = false, optional = true }
 arrow-array = { version = "55.1", default-features = false, optional = true }
 arrow-schema = { version = "55.1", default-features = false, optional = true }
-parquet = { version = "55.1", default-features = false, optional = true }
+parquet = { version = "55.2.0", features = ["arrow"], default-features = false, optional = true }
 rocksdb = { version = "0.21", default-features = false, optional = true }
 clickhouse = { version = "0.12", default-features = false, features = ["lz4"], optional = true }
 
@@ -321,6 +321,16 @@ required-features = ["gui"]
 name = "twilio_test"
 path = "src/bin/twilio_test.rs"
 required-features = ["twilio"]
+
+[[bin]]
+name = "s7_test"
+path = "src/bin/s7_test.rs"
+required-features = ["s7-support"]
+
+[[bin]]
+name = "simple_s7_test"
+path = "src/bin/simple_s7_test.rs"
+required-features = ["s7-support"]
 
 [profile.release]
 opt-level = 3

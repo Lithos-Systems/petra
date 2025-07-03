@@ -218,7 +218,7 @@ async fn test_read(
     // Do one read cycle
     connector.read_mapping(&mapping).await?;
     
-    let value = bus.get("test_signal")?;
+    let value = bus.get("test_signal").ok_or("Signal not found")?;
     info!("✓ Read value: {}", value);
     
     Ok(())
@@ -240,7 +240,7 @@ async fn test_write(
     let value = match type_enum {
         S7DataType::Bool => Value::Bool(value_str.parse::<bool>()?),
         S7DataType::Real => Value::Float(value_str.parse::<f64>()?),
-        _ => Value::Int(value_str.parse::<i32>()?),
+        _ => Value::Int(value_str.parse::<i64>()?),
     };
     
     info!("Writing {} = {} to {}{}:{} bit {}", 
@@ -293,12 +293,13 @@ async fn monitor_values(
     let config_str = std::fs::read_to_string(&config_file)?;
     let config: petra::Config = serde_yaml::from_str(&config_str)?;
     
-    if config.s7.is_none() {
-        error!("No S7 configuration found in file");
-        return Ok(());
-    }
-    
-    let mut s7_config = config.s7.unwrap();
+    let mut s7_config = match config.protocols.and_then(|p| p.s7) {
+        Some(cfg) => cfg,
+        None => {
+            error!("No S7 configuration found in file");
+            return Ok(());
+        }
+    };
     s7_config.ip = cli.ip.clone();
     s7_config.rack = cli.rack;
     s7_config.slot = cli.slot;
@@ -341,9 +342,9 @@ async fn monitor_values(
         print!("\x1B[{}A", s7_config.mappings.len()); // Move cursor up
         
         for mapping in &s7_config.mappings {
-            if let Ok(value) = bus.get(&mapping.signal) {
-                println!("{:<20} {:<10} {:<15}", 
-                    mapping.signal, 
+            if let Some(value) = bus.get(&mapping.signal) {
+                println!("{:<20} {:<10} {:<15}",
+                    mapping.signal,
                     format!("{:?}", mapping.data_type),
                     value
                 );
