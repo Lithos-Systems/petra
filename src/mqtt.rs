@@ -255,37 +255,22 @@ pub enum BridgeDirection {
 impl From<crate::config::MqttConfig> for MqttConfig {
     fn from(cfg: crate::config::MqttConfig) -> Self {
         Self {
-            broker_host: cfg.broker.host.clone(),
-                .split(':').next().unwrap_or("localhost").to_string(),
-            broker_port: cfg.broker.port,
+            broker_host: cfg.host.clone(),
+            broker_port: cfg.port,
             client_id: cfg.client_id,
             username: cfg.username,
             password: cfg.password,
             keep_alive_secs: cfg.keepalive_secs,
-            clean_session: true, // Default for new config
-            subscriptions: cfg.subscriptions.into_iter().map(|s| MqttSubscription {
-                topic: s.topic,
-                signal: s.signal,
-                qos: s.qos,
-                #[cfg(feature = "validation")]
-                transform: None,
-            }).collect(),
-            publications: cfg.publications.into_iter().map(|p| MqttPublication {
-                signal: p.signal,
-                topic: p.topic,
-                qos: p.qos,
-                retain: p.retain,
-                interval_ms: p.interval_ms,
-                #[cfg(feature = "validation")]
-                transform: None,
-            }).collect(),
+            clean_session: cfg.clean_session,
+            subscriptions: Vec::new(), // Would need to be configured separately
+            publications: Vec::new(),  // Would need to be configured separately
             #[cfg(feature = "mqtt-persistence")]
-            persistence_path: cfg.persistence.map(|p| p.path),
+            persistence_path: None,
             #[cfg(any(feature = "security", feature = "mqtt-tls"))]
             tls: cfg.tls.map(|t| TlsConfig {
-                ca_cert: t.ca_cert.clone(),
-                client_cert: t.client_cert.clone(),
-                client_key: t.client_key.clone(),
+                ca_cert: t.ca_cert,
+                client_cert: t.client_cert,
+                client_key: t.client_key,
                 alpn_protocols: None,
                 insecure: false,
             }),
