@@ -9,7 +9,7 @@ use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, QoS, Packet};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug, trace};
+use tracing::{info, error, debug, trace};
 
 #[cfg(feature = "mqtt-persistence")]
 use std::path::PathBuf;
@@ -536,13 +536,13 @@ impl MqttClient {
     }
     
     /// Parse MQTT payload into a PETRA Value - FIXED VERSION
-    fn parse_payload(&self, payload: &[u8], sub: &MqttSubscription) -> Result<Value> {
+    fn parse_payload(&self, payload: &[u8], _sub: &MqttSubscription) -> Result<Value> {
         let text = std::str::from_utf8(payload)
             .map_err(|e| PlcError::Mqtt(format!("Invalid UTF-8 in payload: {}", e)))?;
         
         // Apply data transformation if configured
         #[cfg(feature = "validation")]
-        if let Some(transform) = &sub.transform {
+        if let Some(transform) = &_sub.transform {
             return self.apply_transform(text, transform);
         }
         

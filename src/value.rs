@@ -175,7 +175,6 @@ impl Value {
             Value::QualityValue { value, quality, .. } if quality.is_good() => {
                 value.as_bool()
             }
-            _ => None,
         }
     }
     
@@ -197,7 +196,6 @@ impl Value {
             Value::QualityValue { value, quality, .. } if quality.is_good() => {
                 value.as_int()
             }
-            _ => None,
         }
     }
     
@@ -215,7 +213,6 @@ impl Value {
             Value::QualityValue { value, quality, .. } if quality.is_good() => {
                 value.as_float()
             }
-            _ => None,
         }
     }
     
