@@ -1,13 +1,12 @@
-// src/history.rs - Complete Fixed Implementation
-use futures::future::BoxFuture;
-use futures::FutureExt;
+// src/history.rs - Fixed with proper imports and BoxFuture handling
 use crate::{error::{PlcError, Result}, value::Value};
 use chrono::{DateTime, Utc, Duration};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
 use serde::{Serialize, Deserialize};
-use futures::FutureExt;
+use futures::future::BoxFuture;  // Added import
+use futures::FutureExt;          // Added import
 
 #[cfg(feature = "parquet")]
 use parquet::{
@@ -69,7 +68,6 @@ pub struct HistoryManager {
     config: HistoryConfig,
     buffer: Arc<RwLock<Vec<HistoryEntry>>>,
     tx: mpsc::Sender<HistoryCommand>,
-    rx: mpsc::Receiver<HistoryCommand>,
     #[cfg(feature = "parquet")]
     writer_props: WriterProperties,
 }
@@ -99,143 +97,110 @@ impl HistoryManager {
         #[cfg(feature = "parquet")]
         let writer_props = WriterProperties::builder()
             .set_compression(match config.compression {
+                CompressionType::None => parquet::basic::Compression::UNCOMPRESSED,
                 #[cfg(feature = "compression")]
                 CompressionType::Zstd => parquet::basic::Compression::ZSTD,
                 #[cfg(feature = "compression")]
                 CompressionType::Lz4 => parquet::basic::Compression::LZ4,
                 #[cfg(feature = "compression")]
                 CompressionType::Snappy => parquet::basic::Compression::SNAPPY,
-                _ => parquet::basic::Compression::UNCOMPRESSED,
             })
             .build();
         
-        Ok(Self {
+        let mut manager = Self {
             config,
             buffer: Arc::new(RwLock::new(Vec::new())),
             tx,
-            rx,
             #[cfg(feature = "parquet")]
             writer_props,
-        })
-    }
-    
-    pub async fn start(mut self) -> Result<()> {
-        // Start background cleanup task
-        let config = self.config.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
-            loop {
-                interval.tick().await;
-                if let Err(e) = Self::cleanup_old_files(&config).await {
-                    tracing::error!("Failed to cleanup old files: {}", e);
-                }
-            }
-        });
+        };
         
-        // Main event loop
-        while let Some(cmd) = self.rx.recv().await {
-            match cmd {
-                HistoryCommand::Write(entry) => {
-                    self.handle_write(entry).await?;
-                }
-                HistoryCommand::Flush => {
-                    self.flush_buffer().await?;
-                }
-                HistoryCommand::Compact(days) => {
-                    self.compact(days).await?;
-                }
-                HistoryCommand::Query(query, response_tx) => {
-                    let result = self.handle_query(query).await;
-                    let _ = response_tx.send(result).await;
-                }
-            }
-        }
+        // Start background task
+        tokio::spawn(manager.background_task(rx));
         
-        Ok(())
+        Ok(manager)
     }
     
     pub async fn write(&self, entry: HistoryEntry) -> Result<()> {
         self.tx.send(HistoryCommand::Write(entry)).await
-            .map_err(|_| PlcError::Runtime("History manager channel closed".to_string()))
+            .map_err(|e| PlcError::Runtime(format!("Failed to send write command: {}", e)))
     }
     
     pub async fn flush(&self) -> Result<()> {
         self.tx.send(HistoryCommand::Flush).await
-            .map_err(|_| PlcError::Runtime("History manager channel closed".to_string()))
+            .map_err(|e| PlcError::Runtime(format!("Failed to send flush command: {}", e)))
     }
     
     pub async fn query(&self, query: HistoryQuery) -> Result<Vec<HistoryEntry>> {
         let (response_tx, mut response_rx) = mpsc::channel(1);
+        
         self.tx.send(HistoryCommand::Query(query, response_tx)).await
-            .map_err(|_| PlcError::Runtime("History manager channel closed".to_string()))?;
+            .map_err(|e| PlcError::Runtime(format!("Failed to send query command: {}", e)))?;
         
         response_rx.recv().await
-            .ok_or_else(|| PlcError::Runtime("Failed to receive query response".to_string()))?
+            .ok_or_else(|| PlcError::Runtime("No response from history manager".into()))?
     }
     
-    async fn handle_write(&mut self, entry: HistoryEntry) -> Result<()> {
+    pub async fn compact(&self, days: u32) -> Result<()> {
+        self.tx.send(HistoryCommand::Compact(days)).await
+            .map_err(|e| PlcError::Runtime(format!("Failed to send compact command: {}", e)))
+    }
+    
+    async fn background_task(&self, mut rx: mpsc::Receiver<HistoryCommand>) {
+        while let Some(command) = rx.recv().await {
+            match command {
+                HistoryCommand::Write(entry) => {
+                    if let Err(e) = self.handle_write(entry).await {
+                        tracing::error!("Failed to write history entry: {}", e);
+                    }
+                }
+                HistoryCommand::Flush => {
+                    if let Err(e) = self.handle_flush().await {
+                        tracing::error!("Failed to flush history buffer: {}", e);
+                    }
+                }
+                HistoryCommand::Query(query, response_tx) => {
+                    let result = self.handle_query(query).await;
+                    if let Err(_) = response_tx.send(result).await {
+                        tracing::warn!("Failed to send query response");
+                    }
+                }
+                HistoryCommand::Compact(days) => {
+                    if let Err(e) = self.handle_compact(days).await {
+                        tracing::error!("Failed to compact history: {}", e);
+                    }
+                }
+            }
+        }
+    }
+    
+    async fn handle_write(&self, entry: HistoryEntry) -> Result<()> {
         let mut buffer = self.buffer.write().await;
         buffer.push(entry);
         
         if buffer.len() >= self.config.max_batch_size {
-            drop(buffer);
-            self.flush_buffer().await?;
+            let entries = std::mem::take(&mut *buffer);
+            drop(buffer); // Release lock
+            self.write_batch(entries).await?;
         }
         
         Ok(())
     }
     
-    async fn flush_buffer(&mut self) -> Result<()> {
+    async fn handle_flush(&self) -> Result<()> {
         let mut buffer = self.buffer.write().await;
-        if buffer.is_empty() {
-            return Ok(());
+        if !buffer.is_empty() {
+            let entries = std::mem::take(&mut *buffer);
+            drop(buffer); // Release lock
+            self.write_batch(entries).await?;
         }
-        
-        let entries: Vec<_> = buffer.drain(..).collect();
-        drop(buffer);
-        
-        self.write_batch(entries).await
-    }
-    
-    async fn write_batch(&self, entries: Vec<HistoryEntry>) -> Result<()> {
-        if entries.is_empty() {
-            return Ok(());
-        }
-        
-        let timestamp = entries[0].timestamp;
-        let filename = format!(
-            "{}.parquet",
-            timestamp.format("%Y%m%d_%H%M%S")
-        );
-        let path = self.config.data_dir.join(&filename);
-        
-        #[cfg(feature = "parquet")]
-        {
-            self.write_parquet(&path, entries).await?;
-        }
-        
-        #[cfg(not(feature = "parquet"))]
-        {
-            // Fallback to JSON if parquet feature not enabled
-            let json_data = serde_json::to_vec(&entries)?;
-            tokio::fs::write(&path, json_data).await?;
-        }
-        
-        Ok(())
-    }
-    
-    #[cfg(feature = "parquet")]
-    async fn write_parquet(&self, path: &Path, entries: Vec<HistoryEntry>) -> Result<()> {
-        // Implementation for parquet writing
-        // This is simplified - real implementation would be more complex
-        tracing::info!("Writing {} entries to {}", entries.len(), path.display());
         Ok(())
     }
     
     async fn handle_query(&self, query: HistoryQuery) -> Result<Vec<HistoryEntry>> {
+        // First check in-memory buffer
         let mut results = Vec::new();
         
-        // Check in-memory buffer first
         let buffer = self.buffer.read().await;
         for entry in buffer.iter() {
             if query_matches(entry, &query) {
@@ -247,14 +212,21 @@ impl HistoryManager {
                 }
             }
         }
-        drop(buffer);
+        drop(buffer); // Release lock
         
-        // Then check files
-        let remaining_limit = query.limit.map(|l| l - results.len());
-        let file_results = self.query_files(query, remaining_limit).await?;
+        // Query files
+        let file_results = self.query_files(query, query.limit.map(|l| l.saturating_sub(results.len()))).await?;
         results.extend(file_results);
         
         Ok(results)
+    }
+    
+    async fn handle_compact(&self, days: u32) -> Result<()> {
+        let cutoff = Utc::now() - Duration::days(days as i64);
+        tracing::info!("Compacting history older than {} days", days);
+        
+        // Walk through data directory and compact old files
+        self.compact_directory(&self.config.data_dir, cutoff).await
     }
     
     async fn query_files(&self, query: HistoryQuery, limit: Option<usize>) -> Result<Vec<HistoryEntry>> {
@@ -297,20 +269,43 @@ impl HistoryManager {
         
         #[cfg(not(feature = "parquet"))]
         {
-            let data: Vec<u8> = tokio::fs::read(path).await?;
+            let data = tokio::fs::read(path).await?;
             let entries: Vec<HistoryEntry> = serde_json::from_slice(&data)?;
             Ok(entries)
         }
     }
     
-    async fn compact(&self, days: u32) -> Result<()> {
-        let cutoff = Utc::now() - Duration::days(days as i64);
-        tracing::info!("Compacting history older than {} days", days);
+    async fn write_batch(&self, entries: Vec<HistoryEntry>) -> Result<()> {
+        let filename = format!("history_{}.json", Utc::now().timestamp());
+        let filepath = self.config.data_dir.join(&filename);
         
-        // Walk through data directory and compact old files
-        self.compact_directory(&self.config.data_dir, cutoff).await
+        #[cfg(feature = "parquet")]
+        {
+            // Write as parquet file
+            self.write_parquet(&filepath, &entries).await?;
+        }
+        
+        #[cfg(not(feature = "parquet"))]
+        {
+            // Write as JSON file
+            let data = serde_json::to_vec(&entries)?;
+            tokio::fs::write(&filepath, data).await?;
+        }
+        
+        tracing::debug!("Wrote {} entries to {}", entries.len(), filepath.display());
+        Ok(())
     }
     
+    #[cfg(feature = "parquet")]
+    async fn write_parquet(&self, path: &Path, entries: &[HistoryEntry]) -> Result<()> {
+        // Simplified parquet writing - in a real implementation,
+        // you'd convert HistoryEntry to Arrow RecordBatch
+        let data = serde_json::to_vec(entries)?;
+        tokio::fs::write(path, data).await?;
+        Ok(())
+    }
+    
+    // Fixed recursive async function using BoxFuture
     fn compact_directory<'a>(
         &'a self,
         dir: &'a Path,
@@ -324,13 +319,13 @@ impl HistoryManager {
                 let metadata = entry.metadata().await?;
                 
                 if metadata.is_dir() {
+                    // Recursive call - boxed for async recursion
                     self.compact_directory(&path, cutoff).await?;
                 } else if metadata.is_file() {
                     if let Ok(modified) = metadata.modified() {
                         let modified_time: DateTime<Utc> = modified.into();
                         if modified_time < cutoff {
                             tracing::info!("Archiving old file: {}", path.display());
-                            // Archive or delete old file
                             self.archive_file(&path).await?;
                         }
                     }
@@ -338,7 +333,7 @@ impl HistoryManager {
             }
             
             Ok(())
-        }.boxed()
+        }.boxed()  // Box the future for recursion
     }
     
     async fn archive_file(&self, path: &Path) -> Result<()> {
@@ -481,13 +476,17 @@ mod tests {
         for i in 0..5 {
             let entry = HistoryEntry {
                 timestamp: Utc::now(),
-                signal_name: format!("signal_{}", i),
+                signal_name: format!("test_signal_{}", i),
                 value: Value::Float(i as f64),
-                quality: Some(192),
+                quality: None,
                 metadata: None,
             };
+            
             manager.write(entry).await.unwrap();
         }
+        
+        // Flush to ensure everything is written
+        manager.flush().await.unwrap();
         
         // Query all entries
         let query = HistoryQuery {
@@ -499,5 +498,52 @@ mod tests {
         
         let results = manager.query(query).await.unwrap();
         assert_eq!(results.len(), 5);
+    }
+    
+    #[tokio::test]
+    async fn test_history_query_with_filter() {
+        let dir = tempdir().unwrap();
+        let config = HistoryConfig {
+            data_dir: dir.path().to_path_buf(),
+            retention_days: 30,
+            max_batch_size: 10,
+            max_memory_entries: 100,
+            compression: CompressionType::None,
+            compact_after_days: 7,
+            enable_index: false,
+            sync_writes: false,
+        };
+        
+        let manager = Arc::new(HistoryManager::new(config).unwrap());
+        
+        // Write entries with different signal names
+        for i in 0..10 {
+            let entry = HistoryEntry {
+                timestamp: Utc::now(),
+                signal_name: if i % 2 == 0 { "even".to_string() } else { "odd".to_string() },
+                value: Value::Int(i),
+                quality: None,
+                metadata: None,
+            };
+            
+            manager.write(entry).await.unwrap();
+        }
+        
+        manager.flush().await.unwrap();
+        
+        // Query only "even" signals
+        let query = HistoryQuery {
+            signal_name: Some("even".to_string()),
+            start_time: None,
+            end_time: None,
+            limit: None,
+        };
+        
+        let results = manager.query(query).await.unwrap();
+        assert_eq!(results.len(), 5);
+        
+        for result in results {
+            assert_eq!(result.signal_name, "even");
+        }
     }
 }
