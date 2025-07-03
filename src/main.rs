@@ -83,7 +83,7 @@ use petra::security::SecurityManager;
      \n\
      Features:\n\
      • Real-time deterministic execution with microsecond precision\n\
-     • 80+ optional features for lean deployments\n\
+     • Optional features for lean deployments\n\
      • Industrial protocol support (Modbus, S7, OPC-UA, MQTT)\n\
      • Enterprise data storage with compression and WAL\n\
      • Advanced alarm management with SMS/email notifications\n\
