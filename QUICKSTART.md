@@ -5,17 +5,17 @@
 ### Option 1: Docker (Fastest)
 ```bash
 # Download and run the quick start script
-curl -sSL https://raw.githubusercontent.com/your-org/petra/main/quick-start.sh | bash
+curl -sSL https://raw.githubusercontent.com/lithos-systems/petra/main/quick-start.sh | bash
 
 # Or clone and run locally
-git clone https://github.com/your-org/petra && cd petra
+git clone https://github.com/lithos-systems/petra && cd petra
 ./quick-start.sh
 ```
 
 ### Option 2: Pre-built Binary
 ```bash
 # Download latest release
-curl -sSL https://github.com/your-org/petra/releases/latest/download/petra-linux-x64 -o petra
+curl -sSL https://github.com/lithos-systems/petra/releases/latest/download/petra-linux-x64 -o petra
 chmod +x petra
 
 # Run with example config
@@ -25,7 +25,7 @@ chmod +x petra
 ### Option 3: Build from Source
 ```bash
 # Clone repository
-git clone https://github.com/your-org/petra && cd petra
+git clone https://github.com/lithos-systems/petra && cd petra
 
 # Build with default features
 cargo build --release
@@ -39,7 +39,7 @@ cargo build --release
 ### First Time Setup
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/petra
+git clone https://github.com/lithos-systems/petra
 cd petra
 
 # Run the cleanup script to organize project structure
@@ -224,8 +224,8 @@ newgrp docker
 
 - Check the [documentation](docs/)
 - Review [example configurations](configs/examples/)
-- Open an [issue](https://github.com/your-org/petra/issues)
-- Join our [Discord](https://discord.gg/petra)
+- Open an [issue](https://github.com/lithos-systems/petra/issues)
+- Join our [Discord](https://discord.gg/DeR9UYGU))
 
 ## Next Steps
 
@@ -234,5 +234,3 @@ newgrp docker
 3. Try connecting to a real PLC or MQTT broker
 4. Build your own custom blocks
 5. Set up monitoring and alerts
-
-Happy automating! 🚀
