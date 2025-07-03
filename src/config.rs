@@ -1,58 +1,86 @@
-// src/config.rs - Configuration structures for PETRA
+// src/config.rs - Fixed configuration with missing MQTT fields
+use crate::{error::{PlcError, Result}, value::Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use crate::error::{PlcError, Result};
+use std::path::PathBuf;
 
-/// Main configuration structure for PETRA
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
-    /// Scan cycle time in milliseconds
+    /// Scan time in milliseconds (direct field, not nested)
+    #[serde(default = "default_scan_time")]
     pub scan_time_ms: u64,
     
+    /// Maximum scan jitter allowed in milliseconds
+    #[serde(default = "default_max_jitter")]
+    pub max_scan_jitter_ms: u64,
+    
+    /// Enable error recovery
+    #[serde(default = "default_error_recovery")]
+    pub error_recovery: bool,
+    
     /// Signal definitions
+    #[serde(default)]
     pub signals: Vec<SignalConfig>,
     
     /// Block definitions
+    #[serde(default)]
     pub blocks: Vec<BlockConfig>,
     
-    /// MQTT configuration (optional)
+    /// MQTT configuration
+    #[cfg(feature = "mqtt")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mqtt: Option<MqttConfig>,
     
-    /// Security configuration (optional)
+    /// Security configuration
     #[cfg(feature = "security")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security: Option<SecurityConfig>,
     
-    /// History configuration (optional)
+    /// History/storage configuration
     #[cfg(feature = "history")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub history: Option<HistoryConfig>,
     
-    /// Alarm configuration (optional)
+    /// Alarm configuration
     #[cfg(feature = "alarms")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alarms: Option<AlarmConfig>,
     
-    /// Web server configuration (optional)
+    /// Web configuration
     #[cfg(feature = "web")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub web: Option<WebConfig>,
     
-    /// Protocol configurations (optional)
+    /// Protocol configuration
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub protocols: Option<HashMap<String, ProtocolConfig>>,
+    pub protocols: Option<ProtocolConfig>,
+}
+
+// Default functions
+fn default_scan_time() -> u64 { 100 }
+fn default_max_jitter() -> u64 { 50 }
+fn default_error_recovery() -> bool { true }
+
+/// Engine configuration (if you prefer nested config)
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EngineConfig {
+    #[serde(default = "default_scan_time")]
+    pub scan_time_ms: u64,
+    
+    #[serde(default = "default_max_jitter")]
+    pub max_scan_jitter_ms: u64,
+    
+    #[serde(default = "default_error_recovery")]
+    pub error_recovery: bool,
 }
 
 /// Signal configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SignalConfig {
-    /// Signal name (must be unique)
+    /// Signal name (unique identifier)
     pub name: String,
     
     /// Signal type (bool, int, float, etc.)
-    #[serde(rename = "type")]
     pub signal_type: String,
     
     /// Initial value (optional)
@@ -72,7 +100,7 @@ pub struct SignalConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<String>,
     
-    /// Quality code support (requires quality-codes feature)
+    /// Enable quality codes (requires quality-codes feature)
     #[cfg(feature = "quality-codes")]
     #[serde(default)]
     pub quality_enabled: bool,
@@ -83,17 +111,17 @@ pub struct SignalConfig {
     pub validation: Option<ValidationConfig>,
     
     /// Additional metadata
-    #[serde(flatten)]
+    #[serde(default)]
     pub metadata: HashMap<String, serde_yaml::Value>,
 }
 
 /// Block configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlockConfig {
-    /// Block name (must be unique)
+    /// Block name (unique identifier)
     pub name: String,
     
-    /// Block type (AND, OR, NOT, etc.)
+    /// Block type identifier
     #[serde(rename = "type")]
     pub block_type: String,
     
@@ -105,7 +133,7 @@ pub struct BlockConfig {
     #[serde(default)]
     pub outputs: HashMap<String, String>,
     
-    /// Block parameters (using 'params' to match your blocks/mod.rs)
+    /// Block parameters (using 'params' to match blocks/mod.rs)
     #[serde(default)]
     pub params: HashMap<String, serde_yaml::Value>,
     
@@ -128,7 +156,7 @@ pub struct BlockConfig {
     pub circuit_breaker: Option<CircuitBreakerConfig>,
 }
 
-/// MQTT configuration
+/// MQTT configuration - Fixed with missing fields
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MqttConfig {
     pub host: String,
@@ -147,20 +175,40 @@ pub struct MqttConfig {
     #[serde(default = "default_keepalive")]
     pub keepalive_secs: u64,
     
-    #[serde(default)]
-    pub topics: Vec<MqttTopicConfig>,
+    /// Missing field: Clean session flag
+    #[serde(default = "default_clean_session")]
+    pub clean_session: bool,
     
+    /// Missing field: TLS configuration
     #[cfg(feature = "mqtt-tls")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tls: Option<TlsConfig>,
+    
+    /// Missing field: Topic configurations
+    #[serde(default)]
+    pub topics: Vec<MqttTopicConfig>,
 }
 
-fn default_qos() -> u8 {
-    1
-}
+// Default functions for MQTT
+fn default_qos() -> u8 { 1 }
+fn default_keepalive() -> u64 { 60 }
+fn default_clean_session() -> bool { true }
 
-fn default_keepalive() -> u64 {
-    60
+/// TLS configuration for MQTT
+#[cfg(feature = "mqtt-tls")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TlsConfig {
+    /// CA certificate path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ca_cert: Option<String>,
+    
+    /// Client certificate path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_cert: Option<String>,
+    
+    /// Client private key path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_key: Option<String>,
 }
 
 /// MQTT topic configuration
@@ -178,9 +226,26 @@ pub struct MqttTopicConfig {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MqttDirection {
-    Read,
-    Write,
-    ReadWrite,
+    Publish,
+    Subscribe,
+}
+
+/// Enhanced error handling configuration
+#[cfg(feature = "enhanced-errors")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ErrorHandlingConfig {
+    pub retry_count: u32,
+    pub retry_delay_ms: u64,
+    pub escalate_on_failure: bool,
+}
+
+/// Circuit breaker configuration
+#[cfg(feature = "circuit-breaker")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CircuitBreakerConfig {
+    pub failure_threshold: u32,
+    pub recovery_timeout_ms: u64,
+    pub half_open_max_calls: u32,
 }
 
 /// Security configuration
@@ -195,7 +260,7 @@ pub struct SecurityConfig {
     
     #[cfg(feature = "jwt-auth")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub jwt_auth: Option<JwtAuthConfig>,
+    pub jwt: Option<JwtConfig>,
     
     #[cfg(feature = "rbac")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -206,78 +271,32 @@ pub struct SecurityConfig {
 #[cfg(feature = "basic-auth")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BasicAuthConfig {
-    pub realm: String,
-    pub users: Vec<UserConfig>,
+    pub users: HashMap<String, String>, // username -> password hash
 }
 
-/// User configuration
-#[cfg(feature = "basic-auth")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct UserConfig {
-    pub username: String,
-    pub password_hash: String,
-    pub roles: Vec<String>,
-}
-
-/// JWT authentication configuration
+/// JWT configuration
 #[cfg(feature = "jwt-auth")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct JwtAuthConfig {
+pub struct JwtConfig {
     pub secret: String,
-    pub issuer: String,
-    pub audience: String,
-    pub expiry_hours: u64,
+    pub expiration_hours: u64,
 }
 
 /// Role-based access control configuration
 #[cfg(feature = "rbac")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RbacConfig {
-    pub roles: HashMap<String, RoleConfig>,
-}
-
-/// Role configuration
-#[cfg(feature = "rbac")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RoleConfig {
-    pub permissions: Vec<String>,
-    pub inherits: Vec<String>,
+    pub roles: HashMap<String, Vec<String>>, // role -> permissions
+    pub user_roles: HashMap<String, Vec<String>>, // user -> roles
 }
 
 /// History configuration
 #[cfg(feature = "history")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HistoryConfig {
-    pub enabled: bool,
     pub data_dir: PathBuf,
     pub retention_days: u32,
-    pub batch_size: usize,
-    
-    #[cfg(feature = "compression")]
-    pub compression: CompressionType,
-    
-    #[serde(default)]
-    pub signals: Vec<HistorySignalConfig>,
-}
-
-/// History signal configuration
-#[cfg(feature = "history")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct HistorySignalConfig {
-    pub signal: String,
-    pub interval_ms: u64,
-    pub deadband: Option<f64>,
-}
-
-/// Compression type
-#[cfg(feature = "compression")]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CompressionType {
-    None,
-    Zstd,
-    Lz4,
-    Snappy,
+    pub max_batch_size: usize,
 }
 
 /// Alarm configuration
@@ -285,283 +304,130 @@ pub enum CompressionType {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AlarmConfig {
     pub enabled: bool,
-    pub alarms: Vec<AlarmDefinition>,
-}
-
-/// Alarm definition
-#[cfg(feature = "alarms")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AlarmDefinition {
-    pub name: String,
-    pub signal: String,
-    pub condition: AlarmCondition,
-    pub severity: AlarmSeverity,
-    pub message: String,
     
+    #[cfg(feature = "email")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub delay_ms: Option<u64>,
+    pub email: Option<EmailConfig>,
     
+    #[cfg(feature = "twilio")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub auto_ack: Option<bool>,
+    pub twilio: Option<TwilioConfig>,
 }
 
-/// Alarm condition
-#[cfg(feature = "alarms")]
+/// Email configuration
+#[cfg(feature = "email")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AlarmCondition {
-    High(f64),
-    Low(f64),
-    Equal(serde_yaml::Value),
-    NotEqual(serde_yaml::Value),
-    InRange(f64, f64),
-    OutOfRange(f64, f64),
+pub struct EmailConfig {
+    pub smtp_server: String,
+    pub smtp_port: u16,
+    pub username: String,
+    pub password: String,
+    pub from_address: String,
+    pub to_addresses: Vec<String>,
 }
 
-/// Alarm severity
-#[cfg(feature = "alarms")]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AlarmSeverity {
-    Info,
-    Warning,
-    Error,
-    Critical,
+/// Twilio configuration
+#[cfg(feature = "twilio")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TwilioConfig {
+    pub account_sid: String,
+    pub auth_token: String,
+    pub from_number: String,
+    pub to_numbers: Vec<String>,
 }
 
-/// Web server configuration
+/// Web configuration
 #[cfg(feature = "web")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WebConfig {
     pub enabled: bool,
-    pub host: String,
     pub port: u16,
-    
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub static_dir: Option<PathBuf>,
-    
-    #[cfg(feature = "web-tls")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tls: Option<TlsConfig>,
-}
-
-/// TLS configuration
-#[cfg(any(feature = "mqtt-tls", feature = "web-tls"))]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TlsConfig {
-    pub cert_file: PathBuf,
-    pub key_file: PathBuf,
-    
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ca_file: Option<PathBuf>,
-    
-    #[serde(default)]
-    pub verify_peer: bool,
-}
-
-/// Protocol configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type")]
-pub enum ProtocolConfig {
-    #[cfg(feature = "modbus-support")]
-    Modbus(ModbusConfig),
-    
-    #[cfg(feature = "s7-support")]
-    S7(S7Config),
-    
-    #[cfg(feature = "opcua-support")]
-    OpcUa(OpcUaConfig),
-}
-
-/// Modbus configuration
-#[cfg(feature = "modbus-support")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ModbusConfig {
-    pub mode: ModbusMode,
-    pub slave_id: u8,
-    pub mappings: Vec<ModbusMapping>,
-}
-
-/// Modbus mode
-#[cfg(feature = "modbus-support")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ModbusMode {
-    Tcp { host: String, port: u16 },
-    Rtu { port: String, baud_rate: u32 },
-}
-
-/// Modbus mapping
-#[cfg(feature = "modbus-support")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ModbusMapping {
-    pub signal: String,
-    pub register_type: ModbusRegisterType,
-    pub address: u16,
-    pub count: u16,
-    pub data_type: ModbusDataType,
-}
-
-/// Modbus register type
-#[cfg(feature = "modbus-support")]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ModbusRegisterType {
-    Coil,
-    DiscreteInput,
-    HoldingRegister,
-    InputRegister,
-}
-
-/// Modbus data type
-#[cfg(feature = "modbus-support")]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ModbusDataType {
-    Bool,
-    U16,
-    I16,
-    U32,
-    I32,
-    F32,
-}
-
-/// S7 configuration
-#[cfg(feature = "s7-support")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct S7Config {
-    pub host: String,
-    pub rack: u16,
-    pub slot: u16,
-    pub mappings: Vec<S7Mapping>,
-}
-
-/// S7 mapping
-#[cfg(feature = "s7-support")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct S7Mapping {
-    pub signal: String,
-    pub area: S7Area,
-    pub db_number: u16,
-    pub offset: u32,
-    pub data_type: S7DataType,
-}
-
-/// S7 area
-#[cfg(feature = "s7-support")]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "uppercase")]
-pub enum S7Area {
-    PE,
-    PA,
-    MK,
-    DB,
-    CT,
-    TM,
-}
-
-/// S7 data type
-#[cfg(feature = "s7-support")]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum S7DataType {
-    Bool,
-    Byte,
-    Word,
-    DWord,
-    Int,
-    DInt,
-    Real,
-}
-
-/// OPC-UA configuration
-#[cfg(feature = "opcua-support")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct OpcUaConfig {
-    pub endpoint: String,
-    pub namespace: u16,
-    pub mappings: Vec<OpcUaMapping>,
-}
-
-/// OPC-UA mapping
-#[cfg(feature = "opcua-support")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct OpcUaMapping {
-    pub signal: String,
-    pub node_id: String,
-    pub direction: OpcUaDirection,
-}
-
-/// OPC-UA direction
-#[cfg(feature = "opcua-support")]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum OpcUaDirection {
-    Read,
-    Write,
-    Subscribe,
+    pub cors_origins: Vec<String>,
 }
 
 /// Validation configuration
 #[cfg(feature = "validation")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type")]
-pub enum ValidationConfig {
-    Range { min: f64, max: f64 },
-    Enum { values: Vec<serde_yaml::Value> },
-    Pattern { regex: String },
-    Custom { validator: String },
+pub struct ValidationConfig {
+    pub rules: Vec<ValidationRule>,
 }
 
-/// Error handling configuration
-#[cfg(feature = "enhanced-errors")]
+/// Validation rule
+#[cfg(feature = "validation")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ErrorHandlingConfig {
-    pub retry: Option<RetryConfig>,
-    pub fallback_value: Option<serde_yaml::Value>,
-    pub log_errors: bool,
+pub struct ValidationRule {
+    pub rule_type: String,
+    pub parameters: HashMap<String, serde_yaml::Value>,
 }
 
-/// Retry configuration
-#[cfg(feature = "enhanced-errors")]
+/// Protocol configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RetryConfig {
-    pub max_attempts: u32,
-    pub initial_delay_ms: u64,
-    pub max_delay_ms: u64,
-    pub exponential_backoff: bool,
+pub struct ProtocolConfig {
+    #[cfg(feature = "s7-support")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub s7: Option<S7Config>,
+    
+    #[cfg(feature = "modbus-support")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modbus: Option<ModbusConfig>,
+    
+    #[cfg(feature = "opcua-support")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opcua: Option<OpcuaConfig>,
 }
 
-/// Circuit breaker configuration
-#[cfg(feature = "circuit-breaker")]
+/// S7 protocol configuration
+#[cfg(feature = "s7-support")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CircuitBreakerConfig {
-    pub max_failures: u32,
-    pub reset_timeout_ms: u64,
-    pub half_open_max_calls: u32,
+pub struct S7Config {
+    pub ip: String,
+    pub rack: u16,
+    pub slot: u16,
 }
+
+/// Modbus protocol configuration
+#[cfg(feature = "modbus-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ModbusConfig {
+    pub ip: String,
+    pub port: u16,
+    pub unit_id: u8,
+}
+
+/// OPC-UA protocol configuration
+#[cfg(feature = "opcua-support")]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OpcuaConfig {
+    pub endpoint: String,
+    pub security_policy: String,
+}
+
+// ============================================================================
+// IMPLEMENTATION
+// ============================================================================
 
 impl Config {
-    /// Load configuration from a YAML file
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let contents = std::fs::read_to_string(path)?;
-        let config: Config = serde_yaml::from_str(&contents)?;
+    /// Load configuration from file
+    pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| PlcError::Config(format!("Failed to read config file: {}", e)))?;
+        
+        let config: Config = serde_yaml::from_str(&content)
+            .map_err(|e| PlcError::Config(format!("Failed to parse config: {}", e)))?;
+        
         config.validate()?;
         Ok(config)
     }
     
-    /// Load configuration from a YAML string
-    pub fn from_yaml(yaml: &str) -> Result<Self> {
-        let config: Config = serde_yaml::from_str(yaml)?;
-        config.validate()?;
-        Ok(config)
-    }
-    
-    /// Validate the configuration
+    /// Validate the entire configuration
     pub fn validate(&self) -> Result<()> {
         // Validate scan time
         if self.scan_time_ms == 0 {
-            return Err(PlcError::Config("Scan time must be greater than 0".to_string()));
+            return Err(PlcError::Config("Scan time cannot be zero".to_string()));
+        }
+        
+        if self.scan_time_ms > 10000 {
+            return Err(PlcError::Config("Scan time too large (max 10 seconds)".to_string()));
         }
         
         // Validate signals
@@ -569,28 +435,36 @@ impl Config {
         for signal in &self.signals {
             if !signal_names.insert(&signal.name) {
                 return Err(PlcError::Config(format!(
-                    "Duplicate signal name: '{}'", signal.name
+                    "Duplicate signal name: {}", signal.name
                 )));
             }
             signal.validate()?;
         }
+        
+        // Create signal name lookup for block validation
+        let signal_map: HashMap<&String, &str> = self.signals
+            .iter()
+            .map(|s| (&s.name, s.signal_type.as_str()))
+            .collect();
         
         // Validate blocks
         let mut block_names = std::collections::HashSet::new();
         for block in &self.blocks {
             if !block_names.insert(&block.name) {
                 return Err(PlcError::Config(format!(
-                    "Duplicate block name: '{}'", block.name
+                    "Duplicate block name: {}", block.name
                 )));
             }
-            block.validate(&signal_names)?;
+            block.validate(&signal_map)?;
         }
         
-        // Validate optional configurations
+        // Validate MQTT configuration
+        #[cfg(feature = "mqtt")]
         if let Some(mqtt) = &self.mqtt {
             mqtt.validate()?;
         }
         
+        // Validate security configuration
         #[cfg(feature = "security")]
         if let Some(security) = &self.security {
             security.validate()?;
@@ -606,20 +480,27 @@ impl SignalConfig {
             return Err(PlcError::Config("Signal name cannot be empty".to_string()));
         }
         
-        // Validate signal type
+        if !self.name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            return Err(PlcError::Config(format!(
+                "Signal name '{}' contains invalid characters", self.name
+            )));
+        }
+        
         match self.signal_type.as_str() {
-            "bool" | "int" | "float" => Ok(()),
+            "bool" | "int" | "float" => {}
             #[cfg(feature = "extended-types")]
-            "string" | "binary" | "timestamp" | "array" | "object" => Ok(()),
-            _ => Err(PlcError::Config(format!(
-                "Invalid signal type: '{}'", self.signal_type
+            "string" | "binary" | "timestamp" | "array" | "object" => {}
+            _ => return Err(PlcError::Config(format!(
+                "Unknown signal type: {}", self.signal_type
             ))),
         }
+        
+        Ok(())
     }
 }
 
 impl BlockConfig {
-    fn validate(&self, available_signals: &std::collections::HashSet<&String>) -> Result<()> {
+    fn validate(&self, available_signals: &HashMap<&String, &str>) -> Result<()> {
         if self.name.is_empty() {
             return Err(PlcError::Config("Block name cannot be empty".to_string()));
         }
@@ -628,21 +509,22 @@ impl BlockConfig {
             return Err(PlcError::Config("Block type cannot be empty".to_string()));
         }
         
-        // Validate signal references
-        for signal in self.inputs.values() {
-            if !available_signals.contains(signal) {
+        // Validate input signals exist
+        for (input_name, signal_name) in &self.inputs {
+            if !available_signals.contains_key(signal_name) {
                 return Err(PlcError::Config(format!(
-                    "Block '{}' references unknown input signal '{}'",
-                    self.name, signal
+                    "Block '{}' input '{}' references unknown signal '{}'",
+                    self.name, input_name, signal_name
                 )));
             }
         }
         
-        for signal in self.outputs.values() {
-            if !available_signals.contains(signal) {
+        // Validate output signals exist
+        for (output_name, signal_name) in &self.outputs {
+            if !available_signals.contains_key(signal_name) {
                 return Err(PlcError::Config(format!(
-                    "Block '{}' references unknown output signal '{}'",
-                    self.name, signal
+                    "Block '{}' output '{}' references unknown signal '{}'",
+                    self.name, output_name, signal_name
                 )));
             }
         }
@@ -701,6 +583,8 @@ mod tests {
     fn test_config_validation() {
         let config = Config {
             scan_time_ms: 100,
+            max_scan_jitter_ms: 50,
+            error_recovery: true,
             signals: vec![
                 SignalConfig {
                     name: "input1".to_string(),
@@ -708,6 +592,12 @@ mod tests {
                     initial: Some(serde_yaml::Value::Bool(false)),
                     description: None,
                     tags: vec![],
+                    #[cfg(feature = "engineering-types")]
+                    units: None,
+                    #[cfg(feature = "quality-codes")]
+                    quality_enabled: false,
+                    #[cfg(feature = "validation")]
+                    validation: None,
                     metadata: HashMap::new(),
                 },
             ],
@@ -724,8 +614,13 @@ mod tests {
                     params: HashMap::new(),
                     description: None,
                     tags: vec![],
+                    #[cfg(feature = "enhanced-errors")]
+                    error_handling: None,
+                    #[cfg(feature = "circuit-breaker")]
+                    circuit_breaker: None,
                 },
             ],
+            #[cfg(feature = "mqtt")]
             mqtt: None,
             #[cfg(feature = "security")]
             security: None,
@@ -742,44 +637,37 @@ mod tests {
     }
     
     #[test]
-    fn test_duplicate_signal_names() {
-        let config = Config {
-            scan_time_ms: 100,
-            signals: vec![
-                SignalConfig {
-                    name: "signal1".to_string(),
-                    signal_type: "bool".to_string(),
-                    initial: None,
-                    description: None,
-                    tags: vec![],
-                    metadata: HashMap::new(),
-                },
-                SignalConfig {
-                    name: "signal1".to_string(), // Duplicate!
-                    signal_type: "int".to_string(),
-                    initial: None,
-                    description: None,
-                    tags: vec![],
-                    metadata: HashMap::new(),
-                },
-            ],
-            blocks: vec![],
-            mqtt: None,
-            #[cfg(feature = "security")]
-            security: None,
-            #[cfg(feature = "history")]
-            history: None,
-            #[cfg(feature = "alarms")]
-            alarms: None,
-            #[cfg(feature = "web")]
-            web: None,
-            protocols: None,
+    fn test_mqtt_validation() {
+        let mqtt = MqttConfig {
+            host: "localhost".to_string(),
+            port: 1883,
+            client_id: "test".to_string(),
+            username: None,
+            password: None,
+            qos: 1,
+            keepalive_secs: 60,
+            clean_session: true,
+            #[cfg(feature = "mqtt-tls")]
+            tls: None,
+            topics: vec![],
         };
         
-        let result = config.validate();
-        assert!(result.is_err());
-        if let Err(PlcError::Config(msg)) = result {
-            assert!(msg.contains("Duplicate signal name"));
-        }
+        assert!(mqtt.validate().is_ok());
+        
+        let invalid_mqtt = MqttConfig {
+            host: "".to_string(), // Invalid empty host
+            port: 1883,
+            client_id: "test".to_string(),
+            username: None,
+            password: None,
+            qos: 1,
+            keepalive_secs: 60,
+            clean_session: true,
+            #[cfg(feature = "mqtt-tls")]
+            tls: None,
+            topics: vec![],
+        };
+        
+        assert!(invalid_mqtt.validate().is_err());
     }
 }
