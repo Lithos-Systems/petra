@@ -15,7 +15,7 @@ opt-level = 2
 
 # Use faster linker (if available)
 [target.x86_64-unknown-linux-gnu]
-linker = "clang"
+linker = "clang++"
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [target.x86_64-pc-windows-msvc]
