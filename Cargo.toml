@@ -312,15 +312,7 @@ name = "twilio_test"
 path = "src/bin/twilio_test.rs"
 required-features = ["twilio"]
 
-[profile.release]rror: failed to parse manifest at `/home/nathan/Documents/GitHub/petra/Cargo.toml`
-
-Caused by:rror: failed to parse manifest at `/home/nathan/Documents/GitHub/petra/Cargo.toml`
-
-Caused by:
-  optional dependency `twilio` is not included in any feature
-  Make sure that `dep:twilio` is included in one of features in the [features] table.
-  optional dependency `twilio` is not included in any feature
-  Make sure that `dep:twilio` is included in one of features in the [features] table.
+[profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
