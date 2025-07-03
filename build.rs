@@ -5,6 +5,7 @@
 
 use std::env;
 use std::collections::HashSet;
+use std::process::Command;
 
 fn main() {
     // Only run validation in non-test builds
@@ -13,6 +14,9 @@ fn main() {
     }
     
     println!("cargo:rerun-if-changed=Cargo.toml");
+    
+    // Set build environment variables FIRST
+    set_build_env_vars();
     
     // Collect enabled features
     let enabled_features = collect_enabled_features();
@@ -24,6 +28,45 @@ fn main() {
     
     // Print build summary
     print_build_summary(&enabled_features);
+}
+
+/// Set build environment variables that the code expects
+fn set_build_env_vars() {
+    // Set build timestamp
+    println!("cargo:rustc-env=BUILD_TIMESTAMP={}", chrono::Utc::now().to_rfc3339());
+    
+    // Get and set Rust compiler version
+    let rustc_version = Command::new("rustc")
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=RUSTC_VERSION={}", rustc_version);
+    
+    // Set target (this is already available)
+    let target = env::var("TARGET").unwrap_or_else(|_| "unknown".to_string());
+    println!("cargo:rustc-env=TARGET={}", target);
+    
+    // Set profile
+    let profile = env::var("PROFILE").unwrap_or_else(|_| "unknown".to_string());
+    println!("cargo:rustc-env=PROFILE={}", profile);
+    
+    // Optionally set git hash if in a git repository
+    if let Ok(output) = Command::new("git").args(&["rev-parse", "HEAD"]).output() {
+        if let Ok(git_hash) = String::from_utf8(output.stdout) {
+            println!("cargo:rustc-env=GIT_HASH={}", git_hash.trim());
+        } else {
+            println!("cargo:rustc-env=GIT_HASH=unknown");
+        }
+    } else {
+        println!("cargo:rustc-env=GIT_HASH=unknown");
+    }
+    
+    // Set other useful build info
+    println!("cargo:rustc-env=PKG_NAME={}", env!("CARGO_PKG_NAME"));
+    println!("cargo:rustc-env=PKG_VERSION={}", env!("CARGO_PKG_VERSION"));
 }
 
 /// Collect all enabled feature flags from environment variables
@@ -102,29 +145,28 @@ fn validate_feature_dependencies(features: &HashSet<String>) -> Result<(), Strin
         ("cross-field-validation", vec!["composite-validation"]),
         
         // Type dependencies
+        ("engineering-types", vec!["extended-types"]),
+        ("quality-codes", vec!["extended-types"]),
+        ("value-arithmetic", vec!["extended-types"]),
         ("unit-conversion", vec!["engineering-types"]),
         
         // Alarm dependencies
-        ("twilio", vec!["web"]),
         ("email", vec!["alarms"]),
+        ("twilio", vec!["alarms", "web"]),
         
-        // Health dependencies
-        ("health-metrics", vec!["health"]),
-        ("health-history", vec!["health"]),
-        ("custom-endpoints", vec!["health"]),
-        ("detailed-health", vec!["health"]),
-        
-        // Development dependencies
-        ("burn-in", vec!["examples"]),
+        // Web dependencies
+        ("health-metrics", vec!["health", "metrics"]),
+        ("health-history", vec!["health", "history"]),
+        ("detailed-health", vec!["health", "metrics"]),
     ];
     
-    for (feature, required_features) in dependencies {
+    for (feature, deps) in dependencies {
         if features.contains(feature) {
-            for required in required_features {
-                if !features.contains(required) {
+            for dep in deps {
+                if !features.contains(dep) {
                     return Err(format!(
                         "Feature '{}' requires '{}' to be enabled",
-                        feature, required
+                        feature, dep
                     ));
                 }
             }
@@ -134,43 +176,33 @@ fn validate_feature_dependencies(features: &HashSet<String>) -> Result<(), Strin
     Ok(())
 }
 
-/// Validate bundle feature consistency
+/// Validate bundle consistency
 fn validate_bundle_consistency(features: &HashSet<String>) -> Result<(), String> {
-    // If 'edge' bundle is used, warn about conflicting features
-    if features.contains("edge") {
-        let conflicting_edge_features = [
-            "s7-support",
-            "modbus-support", 
-            "opcua-support",
-            "advanced-storage",
-            "enhanced-monitoring",
-        ];
-        
-        for conflicting in conflicting_edge_features {
-            if features.contains(conflicting) {
-                eprintln!(
-                    "cargo:warning=Edge bundle includes '{}' which may increase binary size",
-                    conflicting
-                );
+    // Check if bundles include their expected features
+    if features.contains("scada") {
+        let expected = ["mqtt", "industrial", "enterprise-storage", "enterprise-security", "enhanced-monitoring", "basic-alarms"];
+        for feature in expected {
+            if !features.contains(feature) {
+                eprintln!("Warning: SCADA bundle expects '{}' to be enabled", feature);
             }
         }
     }
     
-    // If 'scada' bundle is used, ensure industrial protocols are present
-    if features.contains("scada") {
-        let industrial_protocols = [
-            "s7-support",
-            "modbus-support",
-            "opcua-support",
-        ];
-        
-        let has_industrial = industrial_protocols.iter()
-            .any(|p| features.contains(*p));
-        
-        if !has_industrial {
-            eprintln!(
-                "cargo:warning=SCADA bundle should include at least one industrial protocol"
-            );
+    if features.contains("production") {
+        let expected = ["mqtt", "optimized", "enterprise-storage", "enterprise-security", "standard-monitoring", "metrics", "health"];
+        for feature in expected {
+            if !features.contains(feature) {
+                eprintln!("Warning: Production bundle expects '{}' to be enabled", feature);
+            }
+        }
+    }
+    
+    if features.contains("enterprise") {
+        let expected = ["mqtt", "industrial", "enterprise-storage", "enterprise-security", "enhanced-monitoring", "metrics", "full-alarms", "full-web", "full-types", "full-validation"];
+        for feature in expected {
+            if !features.contains(feature) {
+                eprintln!("Warning: Enterprise bundle expects '{}' to be enabled", feature);
+            }
         }
     }
     
@@ -179,205 +211,64 @@ fn validate_bundle_consistency(features: &HashSet<String>) -> Result<(), String>
 
 /// Validate platform-specific features
 fn validate_platform_features(features: &HashSet<String>) -> Result<(), String> {
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target = env::var("TARGET").unwrap_or_default();
     
-    // Real-time features are Linux-specific
-    if features.contains("realtime") && target_os != "linux" {
-        eprintln!(
-            "cargo:warning=Real-time features are only supported on Linux, current target: {}",
-            target_os
-        );
+    // Check realtime feature on non-Linux platforms
+    if features.contains("realtime") && !target.contains("linux") {
+        return Err(format!(
+            "Feature 'realtime' is only supported on Linux targets, but target is '{}'",
+            target
+        ));
     }
     
-    // S7 support platform warnings
+    // Check S7 support requirements
     if features.contains("s7-support") {
-        match target_os.as_str() {
-            "windows" => {
-                eprintln!("cargo:warning=S7 support on Windows requires snap7.dll in PATH");
-            },
-            "macos" => {
-                eprintln!("cargo:warning=S7 support on macOS requires libsnap7.dylib");
-            },
-            _ => {}
+        if target.contains("windows") {
+            eprintln!("Warning: S7 support on Windows requires snap7.dll in PATH");
+        } else if target.contains("apple") {
+            eprintln!("Warning: S7 support on macOS requires libsnap7.dylib");
         }
     }
     
     Ok(())
 }
 
-/// Print build configuration summary
+/// Print build summary
 fn print_build_summary(features: &HashSet<String>) {
-    println!("cargo:warning=PETRA Build Configuration:");
+    let feature_count = features.len();
     
-    // Determine build profile
-    let profile = env::var("PROFILE").unwrap_or_default();
-    let optimization = if profile == "release" { "Optimized" } else { "Debug" };
-    
-    // Determine configuration type
-    let config_type = determine_config_type(features);
-    println!("cargo:warning=  Profile: {} ({})", config_type, optimization);
-    
-    // Count features by category
-    let core_features = count_features_in_category(features, &[
-        "standard-monitoring", "enhanced-monitoring", "optimized", "metrics", "realtime"
-    ]);
-    
-    let protocol_features = count_features_in_category(features, &[
-        "mqtt", "s7-support", "modbus-support", "opcua-support"
-    ]);
-    
-    let storage_features = count_features_in_category(features, &[
-        "history", "advanced-storage", "compression", "wal"
-    ]);
-    
-    let security_features = count_features_in_category(features, &[
-        "security", "basic-auth", "jwt-auth", "rbac", "audit"
-    ]);
-    
-    println!("cargo:warning=  Features: {} core, {} protocol, {} storage, {} security",
-        core_features, protocol_features, storage_features, security_features);
-    
-    // Warn about large builds
-    let total_features = features.len();
-    if total_features > 20 {
-        println!("cargo:warning=  Large build detected ({} features) - consider using bundles", total_features);
+    if feature_count == 0 {
+        println!("cargo:warning=No features enabled - building minimal configuration");
+        return;
     }
     
-    // Print enabled protocols
-    let protocols: Vec<_> = ["mqtt", "s7-support", "modbus-support", "opcua-support"]
-        .iter()
-        .filter(|p| features.contains(&p.to_string()))
-        .map(|p| match *p {
-            "mqtt" => "MQTT",
-            "s7-support" => "S7",
-            "modbus-support" => "Modbus", 
-            "opcua-support" => "OPC-UA",
-            _ => p,
-        })
-        .collect();
+    println!("cargo:warning=Building PETRA with {} features enabled", feature_count);
     
-    if !protocols.is_empty() {
-        println!("cargo:warning=  Protocols: {}", protocols.join(", "));
-    }
-    
-    // Print storage configuration
-    let storage_config = if features.contains("advanced-storage") {
-        "Enterprise"
-    } else if features.contains("history") {
-        "Basic"
-    } else {
-        "Memory-only"
-    };
-    println!("cargo:warning=  Storage: {}", storage_config);
-    
-    // Print security level
-    let security_level = if features.contains("rbac") {
-        "Enterprise (RBAC)"
-    } else if features.contains("jwt-auth") {
-        "Advanced (JWT)"
-    } else if features.contains("security") {
-        "Basic"
-    } else {
-        "None"
-    };
-    println!("cargo:warning=  Security: {}", security_level);
-}
-
-/// Determine the configuration type based on enabled features
-fn determine_config_type(features: &HashSet<String>) -> &'static str {
-    // Check for bundle features first
-    if features.contains("development") || features.contains("dev") {
-        return "Development";
-    }
-    if features.contains("edge") {
-        return "Edge Device";
-    }
-    if features.contains("scada") {
-        return "SCADA System";
-    }
-    if features.contains("production") {
-        return "Production Server";
-    }
+    // Identify the bundle being used
     if features.contains("enterprise") {
-        return "Enterprise";
+        println!("cargo:warning=Configuration: Enterprise (full-featured)");
+    } else if features.contains("scada") {
+        println!("cargo:warning=Configuration: SCADA (industrial automation)");
+    } else if features.contains("production") {
+        println!("cargo:warning=Configuration: Production (optimized server)");
+    } else if features.contains("edge") {
+        println!("cargo:warning=Configuration: Edge (minimal footprint)");
+    } else if features.contains("development") {
+        println!("cargo:warning=Configuration: Development (testing)");
+    } else {
+        println!("cargo:warning=Configuration: Custom feature set");
     }
     
-    // Infer from feature combinations
-    let has_industrial = features.contains("s7-support") || 
-                        features.contains("modbus-support") || 
-                        features.contains("opcua-support");
-    
-    let has_mqtt_only = features.contains("mqtt") && !has_industrial;
-    let has_security = features.contains("security");
-    let has_advanced_storage = features.contains("advanced-storage");
-    let is_optimized = features.contains("optimized");
-    
-    match (has_industrial, has_mqtt_only, has_security, has_advanced_storage, is_optimized) {
-        (true, _, true, true, _) => "SCADA System",
-        (false, true, false, false, _) => "Edge Device", 
-        (_, _, true, _, true) => "Production Server",
-        (_, _, _, true, _) => "Enterprise",
-        _ => "Custom Configuration",
-    }
-}
-
-/// Count features in a specific category
-fn count_features_in_category(features: &HashSet<String>, category_features: &[&str]) -> usize {
-    category_features.iter()
-        .filter(|f| features.contains(&f.to_string()))
-        .count()
-}
-
-/// Generate feature compatibility warnings
-fn check_feature_compatibility(features: &HashSet<String>) {
-    // Warn about potential performance impacts
-    if features.contains("enhanced-monitoring") && !features.contains("optimized") {
-        println!("cargo:warning=Enhanced monitoring without optimization may impact performance");
+    // Warn about potentially problematic combinations
+    if features.contains("enhanced-monitoring") && features.contains("optimized") {
+        println!("cargo:warning=Enhanced monitoring may impact performance even with optimizations");
     }
     
-    // Warn about security implications
-    if features.contains("web") && !features.contains("security") {
-        println!("cargo:warning=Web interface enabled without security features");
+    if features.contains("realtime") && !features.contains("optimized") {
+        println!("cargo:warning=Realtime feature works best with optimized feature enabled");
     }
     
-    // Warn about storage consistency
-    if features.contains("advanced-storage") && !features.contains("wal") {
-        println!("cargo:warning=Advanced storage without WAL may risk data loss");
-    }
-    
-    // Warn about incomplete feature sets
-    if features.contains("alarms") && !features.contains("email") && !features.contains("twilio") {
-        println!("cargo:warning=Alarms enabled but no notification methods configured");
-    }
-}
-
-/// Set conditional compilation flags based on features
-fn set_conditional_compilation_flags(features: &HashSet<String>) {
-    // Set flags for optimized builds
-    if features.contains("optimized") {
-        println!("cargo:rustc-cfg=optimized_build");
-    }
-    
-    // Set flags for monitoring levels
-    if features.contains("enhanced-monitoring") {
-        println!("cargo:rustc-cfg=enhanced_monitoring");
-    } else if features.contains("standard-monitoring") {
-        println!("cargo:rustc-cfg=standard_monitoring");
-    }
-    
-    // Set flags for protocol support
-    if features.contains("mqtt") || features.contains("s7-support") || 
-       features.contains("modbus-support") || features.contains("opcua-support") {
-        println!("cargo:rustc-cfg=has_protocols");
-    }
-    
-    // Set flags for storage capabilities
-    if features.contains("history") || features.contains("advanced-storage") {
-        println!("cargo:rustc-cfg=has_storage");
-    }
-    
-    // Set flags for security
-    if features.contains("security") {
-        println!("cargo:rustc-cfg=has_security");
+    if feature_count > 20 {
+        println!("cargo:warning=Large number of features enabled - consider using a bundle for faster builds");
     }
 }
