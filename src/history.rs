@@ -1,4 +1,6 @@
 // src/history.rs - Complete Fixed Implementation
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use crate::{error::{PlcError, Result}, value::Value};
 use chrono::{DateTime, Utc, Duration};
 use std::path::{Path, PathBuf};
