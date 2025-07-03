@@ -1,15 +1,15 @@
 // src/storage/wal.rs - Fixed with proper i64 handling for Value::Int
 use crate::{error::*, value::Value};
 // use rocksdb::{DB, Options, WriteBatch};
-use std::path::Path;
-use std::sync::Arc;
+use bytes::{Buf, BufMut, BytesMut};
 use parking_lot::Mutex;
-use bytes::{BytesMut, BufMut, Buf};
-use tracing::{info, debug};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tracing::{debug, info};
 
 pub struct WriteAheadLog {
-    // db: Arc<Mutex<DB>>,
-    db: Arc<Mutex<()>>, // RocksDB removed
+    /// Simple in-memory log of serialized entries keyed by sequence number
+    db: Arc<Mutex<Vec<(u64, Vec<u8>)>>>,
     sequence: Arc<Mutex<u64>>,
 }
 
@@ -21,41 +21,48 @@ pub struct WalEntry {
     pub value: Value,
 }
 
+#[derive(Debug, Clone)]
+pub struct WalConfig {
+    pub wal_dir: PathBuf,
+    pub max_size_mb: u64,
+    pub sync_interval_ms: u64,
+    pub retention_hours: u64,
+}
+
+impl Default for WalConfig {
+    fn default() -> Self {
+        Self {
+            wal_dir: PathBuf::from("./data/wal"),
+            max_size_mb: 100,
+            sync_interval_ms: 1000,
+            retention_hours: 48,
+        }
+    }
+}
+
 impl WriteAheadLog {
     pub fn recover_sequence(&self) -> u64 {
         *self.sequence.lock()
     }
-    
+
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-//         opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
-        
-        // let db = DB::open(&opts, path)
-        //     .map_err(|e| PlcError::Io(std::io::Error::new(
-        //         std::io::ErrorKind::Other,
-        //         format!("Failed to open WAL: {}", e)
-        //     )))?;
-        let db = (); // placeholder
-        
-        // Recover sequence number
-        // let sequence = Self::recover_sequence_from_db(&db);
+        std::fs::create_dir_all(&path)?;
+
+        let db: Vec<(u64, Vec<u8>)> = Vec::new();
         let sequence = 0;
-        
+
         info!("WAL initialized with sequence {}", sequence);
-        
+
         Ok(Self {
-            // db: Arc::new(Mutex::new(db)),
-            db: Arc::new(Mutex::new(())),
+            db: Arc::new(Mutex::new(db)),
             sequence: Arc::new(Mutex::new(sequence)),
         })
     }
-    
-    fn recover_sequence_from_db(_db: &()) -> u64 {
-        // RocksDB removed
-        0
+
+    fn recover_sequence_from_db(db: &[(u64, Vec<u8>)]) -> u64 {
+        db.last().map(|(s, _)| s + 1).unwrap_or(0)
     }
-    
+
     pub fn append(&self, signal: &str, value: Value, timestamp: i64) -> Result<u64> {
         let seq = {
             let mut seq_guard = self.sequence.lock();
@@ -63,92 +70,55 @@ impl WriteAheadLog {
             *seq_guard += 1;
             seq
         };
-        
+
         let entry = WalEntry {
             sequence: seq,
             timestamp,
             signal: signal.to_string(),
             value,
         };
-        
-        let key = seq.to_be_bytes();
+
         let value_bytes = self.serialize_entry(&entry)?;
-        
-        self.db.lock()
-            .put(&key, value_bytes)
-            .map_err(|e| PlcError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("WAL write failed: {}", e)
-            )))?;
-        
+
+        self.db.lock().push((seq, value_bytes));
+
         Ok(seq)
     }
-    
+
     pub fn read_range(&self, start_seq: u64, end_seq: u64) -> Result<Vec<WalEntry>> {
         let db = self.db.lock();
         let mut entries = Vec::new();
-        
-        let start_key = start_seq.to_be_bytes();
-        let end_key = end_seq.to_be_bytes();
-        
-//         let iter = db.iterator(rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward));
-        
-        // for item in iter {
-            let (key, value) = item.map_err(|e| PlcError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("WAL read failed: {}", e)
-            )))?;
-            
-            if key.as_ref() > end_key.as_slice() {
+
+        for (seq, bytes) in db.iter() {
+            if *seq < start_seq {
+                continue;
+            }
+            if *seq > end_seq {
                 break;
             }
-            
-            let entry = self.deserialize_entry(&value)?;
+            let entry = self.deserialize_entry(bytes)?;
             entries.push(entry);
-        // }
-        
+        }
+
         Ok(entries)
     }
-    
+
     pub fn checkpoint(&self, up_to_seq: u64) -> Result<()> {
-        let db = self.db.lock();
-        // let mut batch = WriteBatch::default();
-        let mut batch = (); // placeholder
-
-        let end_key = up_to_seq.to_be_bytes();
-        // let iter = db.iterator(rocksdb::IteratorMode::Start);
-
-        // for item in iter {
-        //     let (key, _) = item.map_err(|e| PlcError::Io(std::io::Error::new(
-        //         std::io::ErrorKind::Other,
-        //         format!("WAL checkpoint failed: {}", e)
-        //     )))?;
-
-        //     if key.as_ref() > end_key.as_slice() {
-        //         break;
-        //     }
-
-        //     batch.delete(&key);
-        // }
-
-        // db.write(batch)
-        //     .map_err(|e| PlcError::Io(std::io::Error::new(
-        //         std::io::ErrorKind::Other,
-        //         format!("WAL checkpoint write failed: {}", e)
-        //     )))?;
+        let mut db = self.db.lock();
+        db.retain(|(seq, _)| *seq > up_to_seq);
 
         debug!("WAL checkpointed up to sequence {}", up_to_seq);
         Ok(())
     }
-    
+
     fn serialize_entry(&self, entry: &WalEntry) -> Result<Vec<u8>> {
         let mut buf = BytesMut::with_capacity(256);
-        
+
         // Simple binary format: timestamp(8) + signal_len(2) + signal + value_type(1) + value
         buf.put_i64(entry.timestamp);
         buf.put_u16(entry.signal.len() as u16);
         buf.put_slice(entry.signal.as_bytes());
-        
+
         match &entry.value {
             Value::Bool(b) => {
                 buf.put_u8(0);
@@ -156,17 +126,17 @@ impl WriteAheadLog {
             }
             Value::Int(i) => {
                 buf.put_u8(1);
-                buf.put_i64(*i);  // Fixed: use i64 instead of i32
+                buf.put_i64(*i); // Fixed: use i64 instead of i32
             }
             Value::Float(f) => {
                 buf.put_u8(2);
                 buf.put_f64(*f);
             }
         }
-        
+
         Ok(buf.freeze().to_vec())
     }
-    
+
     fn deserialize_entry(&self, data: &[u8]) -> Result<WalEntry> {
         let mut buf = bytes::Bytes::copy_from_slice(data);
 
@@ -217,13 +187,14 @@ impl WriteAheadLog {
                 Value::Bool(buf.get_u8() != 0)
             }
             1 => {
-                if buf.remaining() < 8 {  // Fixed: check for 8 bytes instead of 4
+                if buf.remaining() < 8 {
+                    // Fixed: check for 8 bytes instead of 4
                     return Err(PlcError::Io(std::io::Error::new(
                         std::io::ErrorKind::UnexpectedEof,
                         "WAL entry truncated",
                     )));
                 }
-                Value::Int(buf.get_i64())  // Fixed: use get_i64 instead of get_i32
+                Value::Int(buf.get_i64()) // Fixed: use get_i64 instead of get_i32
             }
             2 => {
                 if buf.remaining() < 8 {
@@ -254,27 +225,9 @@ impl WriteAheadLog {
         let db = self.db.lock();
         let mut entries = Vec::new();
 
-        // let iter = db.iterator(rocksdb::IteratorMode::Start);
-
-        // for item in iter {
-        //     let (key, value) = item.map_err(|e| PlcError::Io(std::io::Error::new(
-        //         std::io::ErrorKind::Other,
-        //         format!("WAL read failed: {}", e),
-        //     )))?;
-        //
-        //     let key_str = match String::from_utf8(key.to_vec()) {
-        //         Ok(s) => s,
-        //         Err(_) => {
-        //             let seq = u64::from_be_bytes(
-        //                 key.as_ref()[..8]
-        //                     .try_into()
-        //                     .unwrap_or([0u8; 8]),
-        //             );
-        //             seq.to_string()
-        //         }
-        //     };
-        //     entries.push((key_str, value.to_vec()));
-        // }
+        for (seq, bytes) in db.iter() {
+            entries.push((seq.to_string(), bytes.clone()));
+        }
 
         Ok(entries)
     }
@@ -285,3 +238,6 @@ impl WriteAheadLog {
         Ok(())
     }
 }
+
+/// Type alias used by the rest of the crate
+pub type Wal = WriteAheadLog;
