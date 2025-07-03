@@ -102,9 +102,6 @@ ed25519-dalek = { version = "2.1", optional = true }
 opcua = { version = "0.12", default-features = false, optional = true }
 tokio-modbus = { version = "0.7", default-features = false, optional = true }
 
-# System monitoring
-sysinfo = { version = "0.31", optional = true }
-
 # Notifications
 lettre = { version = "0.11", optional = true }
 
