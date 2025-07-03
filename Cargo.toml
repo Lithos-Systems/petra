@@ -11,7 +11,7 @@ categories = ["embedded", "network-programming", "automation"]
 
 [dependencies]
 # Core runtime - minimal features only
-tokio = { version = "1.40", features = ["rt-multi-thread", "time", "signal", "macros", "sync"] }
+tokio = { version = "1.45", features = ["full", "fs", "rt-multi-thread", "macros", "time", "sync"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
@@ -54,7 +54,7 @@ serde_with = { version = "3.8", optional = true }
 rust-snap7 = { version = "1.142.2", optional = true }
 
 # HTTP/Web - minimal features
-axum = { version = "0.7", features = ["tokio"], default-features = false, optional = true }
+axum = { version = "0.7", features = ["json", "query", "tokio", "http1", "http2"], default-features = false, optional = true }
 tower = { version = "0.4", features = ["tokio"], default-features = false, optional = true }
 tower-http = { version = "0.5", features = ["cors"], default-features = false, optional = true }
 hyper = { version = "1.3", optional = true }
@@ -122,7 +122,7 @@ egui-phosphor = { version = "0.5", optional = true }
 egui_plot = { version = "0.30", optional = true }
 
 # Utilities
-rand = { version = "0.8", optional = true }
+rand = "0.8"
 
 [build-dependencies]
 chrono = "0.4"
@@ -158,7 +158,7 @@ standard-monitoring = ["basic-monitoring"]
 enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer"]
 
 # Metrics
-metrics = ["dep:metrics", "dep:metrics-exporter-prometheus"]
+metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "dep:axum"]
 
 # Protocol features
 s7-support = ["dep:rust-snap7"]
@@ -233,6 +233,16 @@ gui = ["dep:eframe", "dep:egui", "dep:egui-phosphor", "dep:egui_plot"]
 # Development features
 dev-tools = ["dep:csv", "dep:notify"]
 profiling = ["dep:pprof"]
+
+# Additional feature flags referenced in the code
+examples = []
+hot-swap = []
+async-blocks = []
+advanced-blocks = []
+statistics = []
+ml-blocks = []
+error-recovery = []
+pprof = []
 
 # === MISSING FEATURES THAT WERE CAUSING COMPILATION ERRORS ===
 

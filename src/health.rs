@@ -12,7 +12,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 #[cfg(feature = "health-metrics")]
 use sysinfo::{System, SystemExt, CpuExt, DiskExt, NetworkExt};
@@ -509,8 +509,13 @@ impl HealthMonitor {
         
         info!("Health monitor listening on {}", addr);
         
-        axum::Server::bind(&addr)
-            .serve(router.into_make_service())
+        let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
+            PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to start health server: {}", e),
+            ))
+        })?;
+        axum::serve(listener, router)
             .await
             .map_err(|e| PlcError::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,

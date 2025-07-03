@@ -2,7 +2,7 @@
 use crate::error::*;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tracing::{info, error};
+use tracing::info;
 use serde::{Serialize, Deserialize};
 
 #[cfg(feature = "json-schema")]
@@ -100,7 +100,7 @@ impl MetricsServer {
             info!("Metrics server listening on {} at {}", self.config.bind_address, metrics_path);
 
             axum::serve(listener, app).await
-                .map_err(|e| PlcError::Config(format!("Metrics server error: {}", e)))?;
+                .map_err(|e| PlcError::Web(e.to_string()))?;
 
             Ok(())
         }

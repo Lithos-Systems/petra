@@ -119,6 +119,9 @@ pub enum PlcError {
     #[cfg(feature = "web")]
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
+
+    #[error("Web error: {0}")]
+    Web(String),
     
     #[cfg(feature = "email")]
     #[error("Email error: {0}")]

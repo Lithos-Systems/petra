@@ -64,6 +64,7 @@ pub enum CompressionType {
     Snappy,
 }
 
+#[derive(Clone)]
 pub struct HistoryManager {
     config: HistoryConfig,
     buffer: Arc<RwLock<Vec<HistoryEntry>>>,
@@ -116,7 +117,7 @@ impl HistoryManager {
         };
         
         // Start background task
-        tokio::spawn(manager.background_task(rx));
+        tokio::spawn(manager.clone().background_task(rx));
         
         Ok(manager)
     }
@@ -146,7 +147,7 @@ impl HistoryManager {
             .map_err(|e| PlcError::Runtime(format!("Failed to send compact command: {}", e)))
     }
     
-    async fn background_task(&self, mut rx: mpsc::Receiver<HistoryCommand>) {
+    async fn background_task(self, mut rx: mpsc::Receiver<HistoryCommand>) {
         while let Some(command) = rx.recv().await {
             match command {
                 HistoryCommand::Write(entry) => {
@@ -215,7 +216,7 @@ impl HistoryManager {
         drop(buffer); // Release lock
         
         // Query files
-        let file_results = self.query_files(query, query.limit.map(|l| l.saturating_sub(results.len()))).await?;
+        let file_results = self.query_files(query.clone(), query.limit.map(|l| l.saturating_sub(results.len()))).await?;
         results.extend(file_results);
         
         Ok(results)

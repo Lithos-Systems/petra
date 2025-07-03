@@ -137,10 +137,6 @@ pub mod opcua;
 pub mod storage {
     //! Data storage and persistence implementations
     
-    #[cfg(feature = "history")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "history")))]
-    /// Parquet-based historical data logging
-    pub mod history;
     
     #[cfg(feature = "advanced-storage")]
     #[cfg_attr(docsrs, doc(cfg(feature = "advanced-storage")))]
@@ -163,35 +159,7 @@ pub mod history;
 
 #[cfg(feature = "security")]
 #[cfg_attr(docsrs, doc(cfg(feature = "security")))]
-/// Security, authentication, and authorization
-pub mod security {
-    //! Security features including authentication, authorization, and audit logging
-    
-    #[cfg(feature = "basic-auth")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "basic-auth")))]
-    /// Basic authentication implementation
-    pub mod basic_auth;
-    
-    #[cfg(feature = "jwt-auth")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "jwt-auth")))]
-    /// JWT-based authentication
-    pub mod jwt;
-    
-    #[cfg(feature = "rbac")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rbac")))]
-    /// Role-based access control
-    pub mod rbac;
-    
-    #[cfg(feature = "audit")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "audit")))]
-    /// Security audit logging
-    pub mod audit;
-    
-    #[cfg(feature = "signing")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "signing")))]
-    /// Cryptographic signing for configurations
-    pub mod signing;
-}
+pub mod security;
 
 // ============================================================================
 // VALIDATION MODULES (feature-gated)
@@ -506,25 +474,14 @@ fn validate_runtime_features() -> Result<()> {
     // Collect enabled features for validation
     let features = Features::detect();
     let mut enabled_features = HashSet::new();
-    
-    // Add enabled features to set for validation
-    if features.core.standard_monitoring { enabled_features.insert("standard-monitoring"); }
-    if features.core.enhanced_monitoring { enabled_features.insert("enhanced-monitoring"); }
-    if features.core.optimized { enabled_features.insert("optimized"); }
-    if features.core.metrics { enabled_features.insert("metrics"); }
-    if features.protocols.mqtt { enabled_features.insert("mqtt"); }
-    if features.protocols.s7 { enabled_features.insert("s7-support"); }
-    if features.protocols.modbus { enabled_features.insert("modbus-support"); }
-    if features.protocols.opcua { enabled_features.insert("opcua-support"); }
-    if features.storage.history { enabled_features.insert("history"); }
-    if features.storage.advanced { enabled_features.insert("advanced-storage"); }
-    if features.security.security { enabled_features.insert("security"); }
-    if features.security.jwt_auth { enabled_features.insert("jwt-auth"); }
-    if features.security.rbac { enabled_features.insert("rbac"); }
+
+    for feature in features.enabled_features() {
+        enabled_features.insert(feature.to_string());
+    }
     
     // Validate using the features module
-    if let Err(e) = crate::features::dependencies::validate_features(&enabled_features) {
-        return Err(PlcError::Config(format!("Feature validation failed: {}", e)));
+    if let Err(errors) = features.validate() {
+        return Err(PlcError::Config(format!("Feature validation failed: {:?}", errors)));
     }
     
     Ok(())

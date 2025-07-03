@@ -1,7 +1,6 @@
 // src/blocks/arithmetic.rs - Arithmetic block implementations
 use super::{Block, BlockConfig};
 use crate::{error::{PlcError, Result}, signal::SignalBus, value::Value};
-use std::collections::HashMap;
 
 // ============================================================================
 // Binary arithmetic operations
