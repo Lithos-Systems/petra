@@ -297,8 +297,8 @@ fn benchmark_value_operations(c: &mut Criterion) {
         let bool_val = Value::Bool(true);
 
         b.iter(|| {
-            let _ = black_box(float_val.as_f64());
-            let _ = black_box(int_val.as_i64());
+            let _ = black_box(float_val.as_float());
+            let _ = black_box(int_val.as_int());
             let _ = black_box(bool_val.as_bool());
         });
     });
