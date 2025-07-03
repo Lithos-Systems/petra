@@ -118,7 +118,7 @@ impl Engine {
     }
     
     /// Run the engine
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         if self.running.load(Ordering::Relaxed) {
             return Err(PlcError::Runtime("Engine already running".to_string()));
         }
