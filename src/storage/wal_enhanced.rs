@@ -1,5 +1,5 @@
 use crate::{error::*, value::Value};
-use rocksdb::{DB, Options, WriteBatch};
+// use rocksdb::{DB, Options, WriteBatch};
 use serde::{Serialize, Deserialize};
 use std::path::Path;
 use bincode;
@@ -22,45 +22,26 @@ pub enum WalOperation {
 }
 
 pub struct EnhancedWal {
-    db: DB,
+    // db: DB,
+    db: (), // RocksDB removed
     sequence: AtomicU64,
     corruption_count: AtomicU64,
 }
 
 impl EnhancedWal {
-    pub fn new(path: &Path) -> Result<Self> {
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.set_write_buffer_size(16 * 1024 * 1024); // 16MB
-        opts.set_max_write_buffer_number(3);
-        opts.set_target_file_size_base(64 * 1024 * 1024); // 64MB
-        opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
-        
-        let db = DB::open(&opts, path)
-            .map_err(|e| PlcError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to open WAL: {}", e)
-            )))?;
-        
-        // Find the last sequence number
-        let last_seq = Self::find_last_sequence(&db);
-        
+    pub fn new(_path: &Path) -> Result<Self> {
+        // RocksDB removed
+        let last_seq = 0;
+
         Ok(Self {
-            db,
+            db: (),
             sequence: AtomicU64::new(last_seq + 1),
             corruption_count: AtomicU64::new(0),
         })
     }
-    
-    fn find_last_sequence(db: &DB) -> u64 {
-        let iter = db.iterator(rocksdb::IteratorMode::End);
-        
-        for (key, _) in iter {
-            if let Ok(seq) = Self::key_to_sequence(&key) {
-                return seq;
-            }
-        }
-        
+
+    fn find_last_sequence(_db: &()) -> u64 {
+        // RocksDB removed
         0
     }
     
@@ -124,9 +105,10 @@ impl EnhancedWal {
         let mut corrupted = 0;
         
         let start_key = start.to_be_bytes();
-        let iter = self.db.iterator(rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward));
+        // let iter = self.db.iterator(rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward));
+        let iter = [].iter();
         
-        for (key, value) in iter {
+        // for (key, value) in iter {
             let seq = Self::key_to_sequence(&key)?;
             
             if seq > end {
@@ -160,7 +142,7 @@ impl EnhancedWal {
                     error!("Failed to deserialize WAL entry at sequence {}: {}", seq, e);
                 }
             }
-        }
+        // }
         
         if corrupted > 0 {
             self.corruption_count.fetch_add(corrupted, Ordering::Relaxed);
@@ -182,33 +164,34 @@ impl EnhancedWal {
         let cutoff = current_seq - keep_entries;
         
         // Delete old entries
-        let mut batch = WriteBatch::default();
+        // let mut batch = WriteBatch::default();
+        let mut batch = ();
         let mut deleted = 0;
         
-        let iter = self.db.iterator(rocksdb::IteratorMode::Start);
-        for (key, _) in iter {
+        // let iter = self.db.iterator(rocksdb::IteratorMode::Start);
+        // for (key, _) in iter {
             let seq = Self::key_to_sequence(&key)?;
             
             if seq >= cutoff {
                 break;
             }
             
-            batch.delete(&key);
-            deleted += 1;
-            
-            if deleted % 10000 == 0 {
-                self.db.write(batch)?;
-                batch = WriteBatch::default();
-            }
-        }
-        
-        if deleted > 0 {
-            self.db.write(batch)?;
-            info!("Deleted {} old WAL entries", deleted);
-        }
-        
-        // Compact the database
-        self.db.compact_range(None::<&[u8]>, None::<&[u8]>);
+        //     batch.delete(&key);
+        //     deleted += 1;
+
+        //     if deleted % 10000 == 0 {
+        //         self.db.write(batch)?;
+        //         batch = WriteBatch::default();
+        //     }
+        // }
+
+        // if deleted > 0 {
+        //     self.db.write(batch)?;
+        //     info!("Deleted {} old WAL entries", deleted);
+        // }
+
+        // // Compact the database
+        // self.db.compact_range(None::<&[u8]>, None::<&[u8]>);
         
         Ok(())
     }

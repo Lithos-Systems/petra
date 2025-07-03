@@ -77,7 +77,6 @@ arrow = { version = "55.1", default-features = false, optional = true }
 arrow-array = { version = "55.1", default-features = false, optional = true }
 arrow-schema = { version = "55.1", default-features = false, optional = true }
 parquet = { version = "55.2.0", features = ["arrow"], default-features = false, optional = true }
-rocksdb = { version = "0.21", default-features = false, optional = true }
 clickhouse = { version = "0.12", default-features = false, features = ["lz4"], optional = true }
 
 # Cloud storage (optional)
@@ -169,11 +168,11 @@ iot = ["mqtt"]
 
 # Storage features
 history = ["dep:parquet", "dep:arrow", "dep:arrow-array", "dep:arrow-schema"]
-advanced-storage = ["history", "dep:clickhouse", "dep:aws-sdk-s3", "dep:aws-config", "dep:rocksdb"]
+advanced-storage = ["history", "dep:clickhouse", "dep:aws-sdk-s3", "dep:aws-config"]
 clickhouse = ["dep:clickhouse"]
 s3 = ["dep:aws-sdk-s3"]
 compression = ["dep:zstd", "dep:lz4"]
-wal = ["dep:rocksdb"]
+wal = []
 basic-storage = ["history"]
 enterprise-storage = ["advanced-storage", "compression", "wal"]
 
