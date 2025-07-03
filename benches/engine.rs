@@ -5,39 +5,64 @@ use petra::{Config, Engine, SignalBus, Value};
 use std::time::Duration;
 
 fn create_test_config(num_blocks: usize) -> Config {
-    let mut config = Config::default();
-    
-    // Set up engine for benchmark
-    config.engine.scan_time_ms = 10;
-    config.engine.performance_monitoring = false;
+    let mut config = Config {
+        scan_time_ms: 10,
+        max_scan_jitter_ms: 50,
+        error_recovery: true,
+        signals: Vec::new(),
+        blocks: Vec::new(),
+        #[cfg(feature = "mqtt")]
+        mqtt: None,
+        #[cfg(feature = "security")]
+        security: None,
+        #[cfg(feature = "history")]
+        history: None,
+        #[cfg(feature = "alarms")]
+        alarms: None,
+        #[cfg(feature = "web")]
+        web: None,
+        protocols: None,
+    };
     
     // Add signals
     for i in 0..num_blocks * 2 {
-        config.signals.insert(
-            format!("signal_{}", i),
-            petra::config::SignalConfig {
-                description: format!("Test signal {}", i),
-                initial_value: serde_json::json!(false),
-                persistent: false,
-                metadata: Default::default(),
-            },
-        );
+        config.signals.push(petra::config::SignalConfig {
+            name: format!("signal_{}", i),
+            signal_type: "bool".to_string(),
+            initial: Some(serde_yaml::Value::Bool(false)),
+            description: Some(format!("Test signal {}", i)),
+            tags: Vec::new(),
+            #[cfg(feature = "engineering-types")]
+            units: None,
+            #[cfg(feature = "quality-codes")]
+            quality_enabled: false,
+            #[cfg(feature = "validation")]
+            validation: None,
+            metadata: Default::default(),
+        });
     }
     
     // Add AND blocks
     for i in 0..num_blocks {
+        let mut inputs = std::collections::HashMap::new();
+        inputs.insert("in1".to_string(), format!("signal_{}", i * 2));
+        inputs.insert("in2".to_string(), format!("signal_{}", i * 2 + 1));
+
+        let mut outputs = std::collections::HashMap::new();
+        outputs.insert("out".to_string(), format!("output_{}", i));
+
         config.blocks.push(petra::config::BlockConfig {
             name: format!("and_block_{}", i),
             block_type: "AND".to_string(),
-            description: format!("Test AND block {}", i),
-            inputs: vec![
-                format!("signal_{}", i * 2),
-                format!("signal_{}", i * 2 + 1),
-            ],
-            outputs: vec![format!("output_{}", i)],
-            parameters: Default::default(),
-            priority: petra::config::Priority::Medium,
-            enabled: true,
+            inputs,
+            outputs,
+            params: std::collections::HashMap::new(),
+            description: Some(format!("Test AND block {}", i)),
+            tags: Vec::new(),
+            #[cfg(feature = "enhanced-errors")]
+            error_handling: None,
+            #[cfg(feature = "circuit-breaker")]
+            circuit_breaker: None,
         });
     }
     
@@ -127,15 +152,25 @@ fn benchmark_block_execution(c: &mut Criterion) {
     let mut group = c.benchmark_group("block_execution");
     
     group.bench_function("and_block", |b| {
+        let mut inputs = std::collections::HashMap::new();
+        inputs.insert("in1".to_string(), "in1".to_string());
+        inputs.insert("in2".to_string(), "in2".to_string());
+
+        let mut outputs = std::collections::HashMap::new();
+        outputs.insert("out".to_string(), "out".to_string());
+
         let config = petra::config::BlockConfig {
             name: "test_and".to_string(),
             block_type: "AND".to_string(),
-            description: String::new(),
-            inputs: vec!["in1".to_string(), "in2".to_string()],
-            outputs: vec!["out".to_string()],
-            parameters: Default::default(),
-            priority: petra::config::Priority::Medium,
-            enabled: true,
+            inputs,
+            outputs,
+            params: std::collections::HashMap::new(),
+            description: Some(String::new()),
+            tags: Vec::new(),
+            #[cfg(feature = "enhanced-errors")]
+            error_handling: None,
+            #[cfg(feature = "circuit-breaker")]
+            circuit_breaker: None,
         };
         
         let mut block = petra::blocks::create_block(&config)
@@ -158,15 +193,24 @@ fn benchmark_block_execution(c: &mut Criterion) {
         params.insert("kd".to_string(), serde_json::json!(0.01));
         params.insert("setpoint".to_string(), serde_json::json!(100.0));
         
+        let mut inputs = std::collections::HashMap::new();
+        inputs.insert("pv".to_string(), "process_value".to_string());
+
+        let mut outputs = std::collections::HashMap::new();
+        outputs.insert("cv".to_string(), "control_output".to_string());
+
         let config = petra::config::BlockConfig {
             name: "test_pid".to_string(),
             block_type: "PID".to_string(),
-            description: String::new(),
-            inputs: vec!["process_value".to_string()],
-            outputs: vec!["control_output".to_string()],
-            parameters: params,
-            priority: petra::config::Priority::High,
-            enabled: true,
+            inputs,
+            outputs,
+            params,
+            description: Some(String::new()),
+            tags: Vec::new(),
+            #[cfg(feature = "enhanced-errors")]
+            error_handling: None,
+            #[cfg(feature = "circuit-breaker")]
+            circuit_breaker: None,
         };
         
         let mut block = petra::blocks::create_block(&config)

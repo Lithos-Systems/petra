@@ -84,6 +84,41 @@ impl SignalBus {
         let name = name.as_ref();
         self.signals.get(name).map(|entry| entry.value().clone())
     }
+
+    /// Alias for [`set`]. Provided for backwards compatibility with older
+    /// examples and benchmarks.
+    pub fn write(&self, name: impl AsRef<str>, value: Value) -> Result<()> {
+        self.set(name, value)
+    }
+
+    /// Alias for [`get`]. Returns the signal value if it exists.
+    pub fn read(&self, name: impl AsRef<str>) -> Option<Value> {
+        self.get(name)
+    }
+
+    /// Write a signal and return a `Result` indicating success.
+    pub fn write_signal(&self, name: impl AsRef<str>, value: Value) -> Result<()> {
+        self.set(name, value)
+    }
+
+    /// Read a signal value, returning an error if the signal does not exist.
+    pub fn read_signal(&self, name: impl AsRef<str>) -> Result<Value> {
+        let name_ref = name.as_ref();
+        self.get(name_ref)
+            .ok_or_else(|| PlcError::SignalNotFound(name_ref.to_string()))
+    }
+
+    /// Batch write multiple signals.
+    pub fn write_batch<I, S>(&self, updates: I) -> Result<()>
+    where
+        I: IntoIterator<Item = (S, Value)>,
+        S: AsRef<str>,
+    {
+        for (name, value) in updates {
+            self.set(name.as_ref(), value)?;
+        }
+        Ok(())
+    }
     
     /// Atomically update a signal value
     /// 

@@ -16,6 +16,7 @@ use std::{
 use tokio::{
     sync::{Mutex, RwLock},
     time::{interval, MissedTickBehavior},
+    runtime::Runtime,
 };
 use tracing::{info, warn, error, debug, trace};
 
@@ -468,6 +469,14 @@ impl Engine {
     /// Get target scan time
     pub fn target_scan_time(&self) -> Duration {
         self.target_scan_time
+    }
+
+    /// Execute a single scan cycle synchronously.
+    ///
+    /// This is a convenience wrapper used by benchmarks and tests.
+    pub fn scan_once(&self) -> Result<()> {
+        let rt = Runtime::new().expect("failed to create tokio runtime");
+        rt.block_on(self.execute_scan_cycle())
     }
     
     #[cfg(feature = "enhanced-monitoring")]
