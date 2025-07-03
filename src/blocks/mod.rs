@@ -2,7 +2,7 @@
 
 pub mod base;
 pub mod timer;
-pub mod math;
+pub mod arithmetic;  // Changed from math to arithmetic
 pub mod data;
 
 #[cfg(feature = "edge-detection")]
@@ -192,10 +192,10 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
         "PULSE" => timer::create_pulse_block(config),
         
         // Math blocks (always available)
-        "ADD" => math::create_add_block(config),
-        "SUB" => math::create_sub_block(config),
-        "MUL" => math::create_mul_block(config),
-        "DIV" => math::create_div_block(config),
+        "ADD" => arithmetic::create_add_block(config),
+        "SUB" => arithmetic::create_subtract_block(config),
+        "MUL" => arithmetic::create_multiply_block(config),
+        "DIV" => arithmetic::create_divide_block(config),
         
         // Data blocks (always available)
         "SCALE" => data::create_scale_block(config),
