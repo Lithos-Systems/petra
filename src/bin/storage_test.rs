@@ -23,7 +23,6 @@ async fn main() -> Result<()> {
     
     // Set up our own simple storage for testing
     let (storage_tx, mut storage_rx) = mpsc::channel::<(String, Value)>(1000);
-    engine.set_signal_change_channel(storage_tx);
     
     // Simple local storage writer
     let storage_handle = tokio::spawn(async move {
@@ -129,7 +128,7 @@ async fn write_to_parquet(data_points: &[(f64, String, Value)], file_number: i32
             Value::Int(i) => {
                 value_type_builder.append_value("int");
                 bool_builder.append_null();
-                int_builder.append_value(*i);
+                int_builder.append_value(*i as i32);
                 float_builder.append_null();
             }
             Value::Float(f) => {

@@ -9,9 +9,9 @@
 
 use clap::{Parser, Subcommand, ValueEnum};
 use petra::{
-    Config, Engine, EngineConfig, Features, PlcError, Result,
-    __internal_validate_features,
+    Config, Engine, Features, PlcError, Result,
 };
+use petra::engine::EngineConfig;
 use std::path::PathBuf;
 use std::process;
 use tokio::signal;
@@ -22,9 +22,7 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use petra::metrics_server::MetricsServer;
 
 #[cfg(feature = "health")]
-use petra::health::HealthServer;
-
-#[cfg(feature = "web")]
+use petra::health::HealthMonitor;
 use std::net::SocketAddr;
 
 // ============================================================================
@@ -300,7 +298,7 @@ enum LogLevel {
     Trace,
 }
 
-#[derive(ValueEnum, Clone)]
+#[derive(Debug, ValueEnum, Clone)]
 enum ConfigTemplate {
     Basic,
     Edge,
@@ -309,7 +307,7 @@ enum ConfigTemplate {
     Development,
 }
 
-#[derive(ValueEnum, Clone)]
+#[derive(Debug, ValueEnum, Clone)]
 enum ConfigFormat {
     Yaml,
     Json,
@@ -336,11 +334,6 @@ async fn main() {
         process::exit(1);
     }
     
-    // Validate features at startup
-    if let Err(e) = __internal_validate_features() {
-        error!("Feature validation failed: {}", e);
-        process::exit(1);
-    }
     
     // Handle commands
     let result = match cli.command {
@@ -519,7 +512,7 @@ async fn run_engine(
     }
     
     // Show configuration summary
-    info!("Configuration loaded: {}", config.feature_summary());
+    info!("Configuration loaded: {}", Features::detect().summary());
     info!("Signals: {}, Blocks: {}, Scan time: {}ms", 
           config.signals.len(), config.blocks.len(), config.scan_time_ms);
     
@@ -529,7 +522,7 @@ async fn run_engine(
     // Start auxiliary services
     #[cfg(feature = "metrics")]
     let _metrics_server = if engine_config.metrics_enabled {
-        Some(start_metrics_service().await?)
+        Some(start_metrics_service()?)
     } else {
         None
     };
@@ -580,7 +573,7 @@ async fn validate_config(config_path: PathBuf, detailed: bool, check_features: b
         println!("  Signals: {}", config.signals.len());
         println!("  Blocks: {}", config.blocks.len());
         println!("  Scan time: {}ms", config.scan_time_ms);
-        println!("  Features: {}", config.feature_summary());
+        println!("  Features: {}", Features::detect().summary());
         
         // Show signal details
         if !config.signals.is_empty() {
@@ -606,17 +599,17 @@ async fn validate_config(config_path: PathBuf, detailed: bool, check_features: b
         let mut missing_features = Vec::new();
         
         #[cfg(not(feature = "mqtt"))]
-        if config.mqtt.is_some() {
+        if config.get_mqtt_config().is_some() {
             missing_features.push("mqtt");
         }
         
         #[cfg(not(feature = "security"))]
-        if config.security.is_some() {
+        if config.get_security_config().is_some() {
             missing_features.push("security");
         }
         
         #[cfg(not(feature = "alarms"))]
-        if config.alarms.is_some() {
+        if config.get_alarms_config().is_some() {
             missing_features.push("alarms");
         }
         
@@ -816,36 +809,52 @@ async fn show_config_schema(
 // ============================================================================
 
 #[cfg(feature = "metrics")]
-async fn start_metrics_service() -> Result<MetricsServer> {
+fn start_metrics_service() -> Result<MetricsServer> {
     info!("Starting metrics server on :9090");
-    MetricsServer::new("0.0.0.0:9090".parse().unwrap()).await
+    let metrics_config = petra::metrics_server::MetricsConfig {
+        bind_address: "0.0.0.0:9090".to_string(),
+        enabled: true,
+        path: Some("/metrics".to_string()),
+        timeout_secs: Some(30),
+    };
+    MetricsServer::new(metrics_config)
 }
 
 #[cfg(feature = "metrics")]
 async fn start_metrics_server(port: u16, bind: String) -> Result<()> {
     let addr: SocketAddr = format!("{}:{}", bind, port).parse()
         .map_err(|e| PlcError::Config(format!("Invalid address: {}", e)))?;
-    
+
     info!("Starting standalone metrics server on {}", addr);
-    let server = MetricsServer::new(addr).await?;
+    let server = MetricsServer::new(petra::metrics_server::MetricsConfig {
+        bind_address: addr.to_string(),
+        enabled: true,
+        path: Some("/metrics".to_string()),
+        timeout_secs: Some(30),
+    })?;
     server.run().await?;
     Ok(())
 }
 
 #[cfg(feature = "health")]
-async fn start_health_service() -> Result<HealthServer> {
+async fn start_health_service() -> Result<HealthMonitor> {
     info!("Starting health server on :8080");
-    HealthServer::new("0.0.0.0:8080".parse().unwrap()).await
+    let monitor = HealthMonitor::new(petra::health::HealthConfig::default());
+    monitor.start().await?;
+    Ok(monitor)
 }
 
 #[cfg(feature = "health")]
 async fn start_health_server(port: u16, bind: String) -> Result<()> {
     let addr: SocketAddr = format!("{}:{}", bind, port).parse()
         .map_err(|e| PlcError::Config(format!("Invalid address: {}", e)))?;
-    
+
     info!("Starting standalone health server on {}", addr);
-    let server = HealthServer::new(addr).await?;
-    server.run().await?;
+    let monitor = HealthMonitor::new(petra::health::HealthConfig {
+        bind_address: addr.to_string(),
+        ..Default::default()
+    });
+    monitor.start().await?;
     Ok(())
 }
 
@@ -859,6 +868,9 @@ fn generate_basic_config() -> Config {
     
     Config {
         scan_time_ms: 100,
+        max_scan_jitter_ms: 10,
+        error_recovery: true,
+        protocols: None,
         signals: vec![
             SignalConfig {
                 name: "input_1".to_string(),

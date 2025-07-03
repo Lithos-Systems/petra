@@ -227,6 +227,7 @@ pub struct MqttTopicConfig {
 #[serde(rename_all = "lowercase")]
 pub enum MqttDirection {
     Publish,
+    /// Subscribe operation for event handling
     Subscribe,
 }
 
@@ -252,18 +253,22 @@ pub struct CircuitBreakerConfig {
 #[cfg(feature = "security")]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SecurityConfig {
+    /// Whether the feature is enabled
     pub enabled: bool,
     
     #[cfg(feature = "basic-auth")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Basic authentication configuration
     pub basic_auth: Option<BasicAuthConfig>,
     
     #[cfg(feature = "jwt-auth")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// JWT authentication configuration
     pub jwt: Option<JwtConfig>,
     
     #[cfg(feature = "rbac")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Role-based access control configuration
     pub rbac: Option<RbacConfig>,
 }
 
@@ -471,6 +476,40 @@ impl Config {
         }
         
         Ok(())
+    }
+
+    /// Retrieve the alarm configuration if available
+    #[cfg(feature = "alarms")]
+    pub fn get_alarms_config(&self) -> Option<&AlarmConfig> {
+        self.alarms.as_ref()
+    }
+
+    /// Retrieve the alarm configuration if the feature is disabled
+    #[cfg(not(feature = "alarms"))]
+    pub fn get_alarms_config(&self) -> Option<&()> {
+        None
+    }
+
+    /// Retrieve MQTT configuration if available
+    #[cfg(feature = "mqtt")]
+    pub fn get_mqtt_config(&self) -> Option<&MqttConfig> {
+        self.mqtt.as_ref()
+    }
+
+    #[cfg(not(feature = "mqtt"))]
+    pub fn get_mqtt_config(&self) -> Option<&()> {
+        None
+    }
+
+    /// Retrieve security configuration if available
+    #[cfg(feature = "security")]
+    pub fn get_security_config(&self) -> Option<&SecurityConfig> {
+        self.security.as_ref()
+    }
+
+    #[cfg(not(feature = "security"))]
+    pub fn get_security_config(&self) -> Option<&()> {
+        None
     }
 }
 
