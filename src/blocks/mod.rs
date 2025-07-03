@@ -1,83 +1,69 @@
-// src/blocks/mod.rs - Updated block system with complete factory
-use crate::{error::*, signal::SignalBus, config::BlockConfig, value::Value};
+// src/blocks/mod.rs - Block system implementation with fixed parameter references
+
+pub mod base;
+pub mod timer;
+pub mod math;
+pub mod data;
+
+#[cfg(feature = "edge-detection")]
+pub mod edge;
+
+#[cfg(feature = "memory-blocks")]
+pub mod memory;
+
+#[cfg(feature = "pid-control")]
+pub mod pid;
+
+#[cfg(feature = "communication")]
+pub mod comm;
+
+#[cfg(feature = "state-machine")]
+pub mod state;
+
+#[cfg(feature = "advanced-math")]
+pub mod advanced_math;
+
+#[cfg(feature = "ml")]
+pub mod ml;
+
+#[cfg(feature = "circuit-breaker")]
+pub mod circuit_breaker;
+
+use crate::{
+    config::BlockConfig,
+    error::{PlcError, Result},
+    signal::SignalBus,
+    value::Value,
+};
 use std::collections::HashMap;
-
-#[cfg(feature = "async-blocks")]
-use async_trait::async_trait;
-
-#[cfg(feature = "circuit-breaker")]
-use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
-
-#[cfg(feature = "circuit-breaker")]
-use parking_lot::RwLock;
-
-#[cfg(feature = "circuit-breaker")]
-use std::time::{Instant, Duration};
+use serde::{Serialize, Deserialize};
 
 #[cfg(feature = "enhanced-monitoring")]
-use std::time::Duration as MonitoringDuration;
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 
-// Import all block modules
-mod base;
-mod timer;
-mod math;
-mod data;
-
-#[cfg(feature = "edge-detection")]
-mod edge;
-
-#[cfg(feature = "memory-blocks")]
-mod memory;
-
-#[cfg(feature = "pid-control")]
-mod pid;
-
-#[cfg(feature = "statistics")]
-mod statistics;
-
-#[cfg(feature = "email")]
-mod email;
-
-#[cfg(feature = "twilio")]
-mod sms;
-
-#[cfg(feature = "web")]
-mod web;
-
-// ============================================================================
-// CORE BLOCK TRAIT
-// ============================================================================
-
 /// Core trait that all blocks must implement
 /// 
-/// Blocks are the fundamental processing units in PETRA, executing logic
-/// operations on signals from the signal bus.
+/// Blocks are the fundamental processing units in PETRA. They read signals
+/// from the signal bus, perform computation, and write results back to the bus.
 /// 
 /// # Examples
 /// 
 /// ```rust
-/// use petra::blocks::{Block, BlockConfig};
-/// use petra::{SignalBus, Value, Result};
+/// use petra::{Block, SignalBus, Value, Result};
 /// 
 /// struct MyBlock {
 ///     name: String,
-///     config: BlockConfig,
+///     input: String,
+///     output: String,
 /// }
 /// 
 /// impl Block for MyBlock {
 ///     fn execute(&mut self, bus: &SignalBus) -> Result<()> {
-///         // Read inputs
-///         let input = bus.get_bool("my_input")?;
-///         
-///         // Process
-///         let output = !input;
-///         
-///         // Write outputs
-///         bus.set("my_output", Value::Bool(output))?;
-///         
+///         let input_value = bus.get_bool(&self.input)?;
+///         bus.set(&self.output, Value::Bool(!input_value))?;
 ///         Ok(())
 ///     }
 ///     
@@ -92,35 +78,43 @@ mod web;
 /// ```
 pub trait Block: Send + Sync {
     /// Execute the block logic
+    /// 
+    /// This method is called during each scan cycle. It should:
+    /// - Read input signals from the signal bus
+    /// - Perform the block's computation
+    /// - Write output signals back to the signal bus
+    /// - Complete quickly (typically < 1ms for real-time performance)
     fn execute(&mut self, bus: &SignalBus) -> Result<()>;
     
-    /// Get the block instance name
+    /// Get the block's name (unique identifier)
     fn name(&self) -> &str;
     
-    /// Get the block type identifier
+    /// Get the block's type identifier
     fn block_type(&self) -> &str;
     
-    // Optional trait methods with default implementations
-    
-    /// Get the block category
+    /// Get the block's category (for organization)
     fn category(&self) -> &str {
-        "core"
+        "general"
     }
     
-    /// Validate block configuration
+    /// Validate block configuration (called at creation time)
     fn validate_config(config: &BlockConfig) -> Result<()>
     where
         Self: Sized,
     {
+        // Default validation - subclasses can override
+        if config.name.is_empty() {
+            return Err(PlcError::Config("Block name cannot be empty".to_string()));
+        }
         Ok(())
     }
     
-    /// Initialize the block
-    fn initialize(&mut self, config: &BlockConfig) -> Result<()> {
+    /// Initialize block with configuration
+    fn initialize(&mut self, _config: &BlockConfig) -> Result<()> {
         Ok(())
     }
     
-    /// Reset the block to initial state
+    /// Reset block to initial state
     fn reset(&mut self) -> Result<()> {
         Ok(())
     }
@@ -130,44 +124,30 @@ pub trait Block: Send + Sync {
         None
     }
     
-    /// Get block tags
-    fn tags(&self) -> Vec<&str> {
-        Vec::new()
-    }
-    
-    // Enhanced monitoring support
+    /// Enhanced monitoring support
     #[cfg(feature = "enhanced-monitoring")]
-    /// Get last execution time
-    fn last_execution_time(&self) -> Option<MonitoringDuration> {
+    fn last_execution_time(&self) -> Option<Duration> {
         None
     }
     
     #[cfg(feature = "enhanced-monitoring")]
-    /// Get execution count
     fn execution_count(&self) -> u64 {
         0
     }
     
     #[cfg(feature = "enhanced-monitoring")]
-    /// Get current state for debugging
-    fn state(&self) -> HashMap<String, Value> {
-        HashMap::new()
+    fn error_count(&self) -> u64 {
+        0
     }
     
     #[cfg(feature = "enhanced-monitoring")]
-    /// Get block metadata
-    fn metadata(&self) -> Option<BlockMetadata> {
-        None
+    fn state(&self) -> HashMap<String, Value> {
+        HashMap::new()
     }
 }
 
-// ============================================================================
-// BLOCK FACTORY
-// ============================================================================
-
-/// Create a block instance from configuration
+/// Block factory function - creates blocks based on configuration
 /// 
-/// This is the main factory function that creates blocks based on their type.
 /// All block types must be registered here.
 /// 
 /// # Examples
@@ -181,7 +161,7 @@ pub trait Block: Send + Sync {
 ///     block_type: "AND".to_string(),
 ///     inputs: HashMap::new(),
 ///     outputs: HashMap::new(),
-///     parameters: HashMap::new(),
+///     params: HashMap::new(),
 ///     description: None,
 ///     tags: vec![],
 /// };
@@ -239,33 +219,46 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
         #[cfg(feature = "memory-blocks")]
         "D_FLIPFLOP" => memory::create_d_flipflop_block(config),
         #[cfg(feature = "memory-blocks")]
-        "COUNTER" => memory::create_counter_block(config),
+        "JK_FLIPFLOP" => memory::create_jk_flipflop_block(config),
+        #[cfg(feature = "memory-blocks")]
+        "T_FLIPFLOP" => memory::create_t_flipflop_block(config),
         
-        // PID control (feature-gated)
+        // PID control blocks (feature-gated)
         #[cfg(feature = "pid-control")]
         "PID" => pid::create_pid_block(config),
-        
-        // Statistics blocks (feature-gated)
-        #[cfg(feature = "statistics")]
-        "AVERAGE" => statistics::create_average_block(config),
-        #[cfg(feature = "statistics")]
-        "MIN_MAX" => statistics::create_min_max_block(config),
-        #[cfg(feature = "statistics")]
-        "STATISTICS" => statistics::create_statistics_block(config),
+        #[cfg(feature = "pid-control")]
+        "TUNE_PID" => pid::create_tune_pid_block(config),
         
         // Communication blocks (feature-gated)
-        #[cfg(feature = "email")]
-        "EMAIL_SEND" => email::create_email_send_block(config),
+        #[cfg(feature = "communication")]
+        "MODBUS_READ" => comm::create_modbus_read_block(config),
+        #[cfg(feature = "communication")]
+        "MODBUS_WRITE" => comm::create_modbus_write_block(config),
+        #[cfg(feature = "communication")]
+        "TCP_CLIENT" => comm::create_tcp_client_block(config),
+        #[cfg(feature = "communication")]
+        "UDP_SEND" => comm::create_udp_send_block(config),
         
-        #[cfg(feature = "twilio")]
-        "SMS_SEND" => sms::create_sms_send_block(config),
+        // State machine blocks (feature-gated)
+        #[cfg(feature = "state-machine")]
+        "STATE_MACHINE" => state::create_state_machine_block(config),
+        #[cfg(feature = "state-machine")]
+        "SEQUENCE" => state::create_sequence_block(config),
         
-        #[cfg(feature = "web")]
-        "HTTP_REQUEST" => web::create_http_request_block(config),
-        #[cfg(feature = "web")]
-        "REST_API" => web::create_rest_api_block(config),
+        // Advanced math blocks (feature-gated)
+        #[cfg(feature = "advanced-math")]
+        "FFT" => advanced_math::create_fft_block(config),
+        #[cfg(feature = "advanced-math")]
+        "FILTER" => advanced_math::create_filter_block(config),
+        #[cfg(feature = "advanced-math")]
+        "STATISTICS" => advanced_math::create_statistics_block(config),
         
-        // Unknown block type
+        // Machine learning blocks (feature-gated)
+        #[cfg(feature = "ml")]
+        "ML_INFERENCE" => ml::create_ml_inference_block(config),
+        #[cfg(feature = "ml")]
+        "ANOMALY_DETECT" => ml::create_anomaly_detect_block(config),
+        
         _ => Err(PlcError::Config(format!(
             "Unknown block type: '{}'. Available types: {}",
             config.block_type,
@@ -274,7 +267,7 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
     }
 }
 
-/// Get list of available block types
+/// Get list of all available block types
 pub fn get_available_block_types() -> Vec<&'static str> {
     let mut types = vec![
         // Always available
@@ -286,33 +279,30 @@ pub fn get_available_block_types() -> Vec<&'static str> {
     ];
     
     #[cfg(feature = "edge-detection")]
-    types.extend(&["RISING_EDGE", "FALLING_EDGE", "CHANGE_DETECT"]);
+    types.extend_from_slice(&["RISING_EDGE", "FALLING_EDGE", "CHANGE_DETECT"]);
     
     #[cfg(feature = "memory-blocks")]
-    types.extend(&["SR_LATCH", "D_FLIPFLOP", "COUNTER"]);
+    types.extend_from_slice(&["SR_LATCH", "D_FLIPFLOP", "JK_FLIPFLOP", "T_FLIPFLOP"]);
     
     #[cfg(feature = "pid-control")]
-    types.push("PID");
+    types.extend_from_slice(&["PID", "TUNE_PID"]);
     
-    #[cfg(feature = "statistics")]
-    types.extend(&["AVERAGE", "MIN_MAX", "STATISTICS"]);
+    #[cfg(feature = "communication")]
+    types.extend_from_slice(&["MODBUS_READ", "MODBUS_WRITE", "TCP_CLIENT", "UDP_SEND"]);
     
-    #[cfg(feature = "email")]
-    types.push("EMAIL_SEND");
+    #[cfg(feature = "state-machine")]
+    types.extend_from_slice(&["STATE_MACHINE", "SEQUENCE"]);
     
-    #[cfg(feature = "twilio")]
-    types.push("SMS_SEND");
+    #[cfg(feature = "advanced-math")]
+    types.extend_from_slice(&["FFT", "FILTER", "STATISTICS"]);
     
-    #[cfg(feature = "web")]
-    types.extend(&["HTTP_REQUEST", "REST_API"]);
+    #[cfg(feature = "ml")]
+    types.extend_from_slice(&["ML_INFERENCE", "ANOMALY_DETECT"]);
     
     types
 }
 
-// ============================================================================
-// BLOCK METADATA (for enhanced monitoring)
-// ============================================================================
-
+/// Enhanced monitoring metadata for blocks
 #[cfg(feature = "enhanced-monitoring")]
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -390,7 +380,7 @@ pub fn get_parameter<T>(config: &BlockConfig, param_name: &str, default: Option<
 where
     T: serde::de::DeserializeOwned + Clone,
 {
-    match config.params.get(param_name) {
+    match config.params.get(param_name) {  // Fixed: using params instead of parameters
         Some(value) => {
             serde_yaml::from_value(value.clone())
                 .map_err(|e| PlcError::Config(format!(
@@ -413,7 +403,7 @@ where
 
 /// Helper to get string parameter
 pub fn get_string_parameter(config: &BlockConfig, param_name: &str, default: Option<&str>) -> Result<String> {
-    match config.params.get(param_name) {
+    match config.params.get(param_name) {  // Fixed: using params instead of parameters
         Some(serde_yaml::Value::String(s)) => Ok(s.clone()),
         Some(value) => {
             // Convert serde_yaml::Value to string
@@ -443,7 +433,7 @@ where
     T: serde::de::DeserializeOwned + std::str::FromStr + Clone,
     T::Err: std::fmt::Display,
 {
-    match config.params.get(param_name) {
+    match config.params.get(param_name) {  // Fixed: using params instead of parameters
         Some(serde_yaml::Value::Number(n)) => {
             serde_yaml::from_value(serde_yaml::Value::Number(n.clone()))
                 .map_err(|e| PlcError::Config(format!(
@@ -477,8 +467,8 @@ where
 
 /// Helper to get boolean parameter
 pub fn get_bool_parameter(config: &BlockConfig, param_name: &str, default: Option<bool>) -> Result<bool> {
-    match config.params.get(param_name) {
-        Some(serde_yaml::Value::Bool(b)) => Ok(b.clone()),
+    match config.params.get(param_name) {  // Fixed: using params instead of parameters
+        Some(serde_yaml::Value::Bool(b)) => Ok(*b),  // Fixed: dereferencing the bool
         Some(serde_yaml::Value::String(s)) => {
             match s.to_lowercase().as_str() {
                 "true" | "yes" | "on" | "1" => Ok(true),
@@ -506,128 +496,94 @@ pub fn get_bool_parameter(config: &BlockConfig, param_name: &str, default: Optio
     }
 }
 
-// ============================================================================
-// ASYNC BLOCK TRAIT (feature-gated)
-// ============================================================================
-
-/// Asynchronous block trait for blocks that need async operations
-#[cfg(feature = "async-blocks")]
-#[async_trait]
-pub trait AsyncBlock: Send + Sync {
-    /// Execute the block logic asynchronously
-    async fn execute_async(&mut self, bus: &SignalBus) -> Result<()>;
-    
-    /// Get the block instance name
-    fn name(&self) -> &str;
-    
-    /// Get the block type identifier
-    fn block_type(&self) -> &str;
-}
-
-// ============================================================================
-// CIRCUIT BREAKER (feature-gated)
-// ============================================================================
-
-#[cfg(feature = "circuit-breaker")]
-/// Circuit breaker for enhanced error handling
-pub struct CircuitBreaker {
-    failure_count: AtomicU32,
-    max_failures: u32,
-    reset_timeout: Duration,
-    last_attempt: RwLock<Instant>,
-    circuit_open: AtomicBool,
-    half_open_calls: AtomicU32,
-}
-
-#[cfg(feature = "circuit-breaker")]
-impl CircuitBreaker {
-    /// Create a new circuit breaker
-    pub fn new(max_failures: u32, reset_timeout: Duration) -> Self {
-        Self {
-            failure_count: AtomicU32::new(0),
-            max_failures,
-            reset_timeout,
-            last_attempt: RwLock::new(Instant::now()),
-            circuit_open: AtomicBool::new(false),
-            half_open_calls: AtomicU32::new(0),
-        }
-    }
-    
-    /// Execute block with circuit breaker protection
-    pub fn execute(&self, block: &mut dyn Block, bus: &SignalBus) -> Result<()> {
-        // Check if circuit is open
-        if self.circuit_open.load(Ordering::Relaxed) {
-            let elapsed = self.last_attempt.read().elapsed();
-            
-            if elapsed < self.reset_timeout {
-                return Err(PlcError::CircuitOpen);
-            }
-            
-            // Try half-open state
-            if self.half_open_calls.fetch_add(1, Ordering::Relaxed) > 3 {
-                // Too many half-open attempts, keep circuit open
-                self.half_open_calls.store(0, Ordering::Relaxed);
-                *self.last_attempt.write() = Instant::now();
-                return Err(PlcError::CircuitOpen);
-            }
-        }
-        
-        // Execute the block
-        match block.execute(bus) {
-            Ok(()) => {
-                // Reset on success
-                self.failure_count.store(0, Ordering::Relaxed);
-                self.circuit_open.store(false, Ordering::Relaxed);
-                self.half_open_calls.store(0, Ordering::Relaxed);
-                Ok(())
-            }
-            Err(e) => {
-                let failures = self.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
-                *self.last_attempt.write() = Instant::now();
-                
-                if failures >= self.max_failures {
-                    self.circuit_open.store(true, Ordering::Relaxed);
-                    tracing::error!(
-                        "Circuit breaker opened for block '{}' after {} failures", 
-                        block.name(), failures
-                    );
-                    
-                    return Err(PlcError::CircuitOpen);
+/// Helper to get array parameter
+pub fn get_array_parameter<T>(config: &BlockConfig, param_name: &str, default: Option<Vec<T>>) -> Result<Vec<T>>
+where
+    T: serde::de::DeserializeOwned + Clone,
+{
+    match config.params.get(param_name) {  // Fixed: using params instead of parameters
+        Some(serde_yaml::Value::Sequence(seq)) => {
+            let mut result = Vec::with_capacity(seq.len());
+            for (i, item) in seq.iter().enumerate() {
+                match serde_yaml::from_value(item.clone()) {
+                    Ok(value) => result.push(value),
+                    Err(e) => return Err(PlcError::Config(format!(
+                        "Block '{}' parameter '{}' array item {} invalid: {}",
+                        config.name, param_name, i, e
+                    ))),
                 }
-                
-                Err(e)
+            }
+            Ok(result)
+        }
+        Some(_) => Err(PlcError::Config(format!(
+            "Block '{}' parameter '{}' must be an array",
+            config.name, param_name
+        ))),
+        None => {
+            if let Some(default_value) = default {
+                Ok(default_value)
+            } else {
+                Err(PlcError::Config(format!(
+                    "Block '{}' missing required array parameter '{}'",
+                    config.name, param_name
+                )))
             }
         }
     }
-    
-    /// Get circuit breaker status
-    pub fn status(&self) -> CircuitBreakerStatus {
-        CircuitBreakerStatus {
-            circuit_open: self.circuit_open.load(Ordering::Relaxed),
-            failure_count: self.failure_count.load(Ordering::Relaxed),
-            max_failures: self.max_failures,
-            last_failure: *self.last_attempt.read(),
-            reset_timeout: self.reset_timeout,
+}
+
+/// Helper to get input signal path
+pub fn get_input_signal(config: &BlockConfig, input_name: &str, required: bool) -> Result<Option<String>> {
+    match config.inputs.get(input_name) {
+        Some(signal_path) => Ok(Some(signal_path.clone())),
+        None => {
+            if required {
+                Err(PlcError::Config(format!(
+                    "Block '{}' missing required input '{}'",
+                    config.name, input_name
+                )))
+            } else {
+                Ok(None)
+            }
         }
-    }
-    
-    /// Manually reset the circuit breaker
-    pub fn reset(&self) {
-        self.failure_count.store(0, Ordering::Relaxed);
-        self.circuit_open.store(false, Ordering::Relaxed);
-        self.half_open_calls.store(0, Ordering::Relaxed);
     }
 }
 
-/// Circuit breaker status information
-#[cfg(feature = "circuit-breaker")]
-#[derive(Debug, Clone)]
-pub struct CircuitBreakerStatus {
-    pub circuit_open: bool,
-    pub failure_count: u32,
-    pub max_failures: u32,
-    pub last_failure: Instant,
-    pub reset_timeout: Duration,
+/// Helper to get output signal path
+pub fn get_output_signal(config: &BlockConfig, output_name: &str, required: bool) -> Result<Option<String>> {
+    match config.outputs.get(output_name) {
+        Some(signal_path) => Ok(Some(signal_path.clone())),
+        None => {
+            if required {
+                Err(PlcError::Config(format!(
+                    "Block '{}' missing required output '{}'",
+                    config.name, output_name
+                )))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+/// Helper to get the first/primary input signal
+pub fn get_primary_input(config: &BlockConfig) -> Result<String> {
+    config.inputs.values().next()
+        .cloned()
+        .ok_or_else(|| PlcError::Config(format!(
+            "Block '{}' has no input signals",
+            config.name
+        )))
+}
+
+/// Helper to get the first/primary output signal
+pub fn get_primary_output(config: &BlockConfig) -> Result<String> {
+    config.outputs.values().next()
+        .cloned()
+        .ok_or_else(|| PlcError::Config(format!(
+            "Block '{}' has no output signals",
+            config.name
+        )))
 }
 
 // ============================================================================
@@ -645,7 +601,7 @@ pub mod test_utils {
             block_type: block_type.to_string(),
             inputs: HashMap::new(),
             outputs: HashMap::new(),
-            parameters: HashMap::new(),
+            params: HashMap::new(),  // Fixed: using params instead of parameters
             description: Some(format!("Test {} block", block_type)),
             tags: vec!["test".to_string()],
         }
@@ -717,5 +673,46 @@ mod tests {
         // Test with default
         let missing: u64 = get_numeric_parameter(&config, "missing", Some(500)).unwrap();
         assert_eq!(missing, 500);
+    }
+    
+    #[test]
+    fn test_boolean_parameter() {
+        let mut config = test_utils::create_test_config("TEST", "test");
+        config.params.insert("enabled".to_string(), serde_yaml::Value::Bool(true));
+        config.params.insert("string_true".to_string(), serde_yaml::Value::String("yes".to_string()));
+        config.params.insert("string_false".to_string(), serde_yaml::Value::String("no".to_string()));
+        
+        assert_eq!(get_bool_parameter(&config, "enabled", None).unwrap(), true);
+        assert_eq!(get_bool_parameter(&config, "string_true", None).unwrap(), true);
+        assert_eq!(get_bool_parameter(&config, "string_false", None).unwrap(), false);
+        assert_eq!(get_bool_parameter(&config, "missing", Some(false)).unwrap(), false);
+    }
+    
+    #[test]
+    fn test_string_parameter() {
+        let mut config = test_utils::create_test_config("TEST", "test");
+        config.params.insert("mode".to_string(), serde_yaml::Value::String("fast".to_string()));
+        config.params.insert("count".to_string(), serde_yaml::Value::Number(serde_yaml::Number::from(42)));
+        
+        assert_eq!(get_string_parameter(&config, "mode", None).unwrap(), "fast");
+        assert_eq!(get_string_parameter(&config, "count", None).unwrap(), "42");
+        assert_eq!(get_string_parameter(&config, "missing", Some("default")).unwrap(), "default");
+    }
+    
+    #[test]
+    fn test_signal_helpers() {
+        let config = test_utils::create_test_config_with_io(
+            "TEST", "test",
+            vec![("in1", "signal.input1"), ("in2", "signal.input2")],
+            vec![("out", "signal.output")]
+        );
+        
+        assert_eq!(get_input_signal(&config, "in1", true).unwrap().unwrap(), "signal.input1");
+        assert_eq!(get_output_signal(&config, "out", true).unwrap().unwrap(), "signal.output");
+        assert!(get_input_signal(&config, "missing", false).unwrap().is_none());
+        assert!(get_input_signal(&config, "missing", true).is_err());
+        
+        assert_eq!(get_primary_input(&config).unwrap(), "signal.input1");
+        assert_eq!(get_primary_output(&config).unwrap(), "signal.output");
     }
 }
