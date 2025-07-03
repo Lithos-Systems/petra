@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use axum::{
-    extract::{Query, State},
+    extract::State,
     response::{IntoResponse, Json},
     routing::get,
     Router,
@@ -473,25 +473,19 @@ impl HealthMonitor {
     pub fn build_router(self) -> Router {
         let shared_state = Arc::new(self);
         
-        let mut router = Router::new()
+        let router = Router::new()
             .route("/health", get(health_handler))
             .route("/health/live", get(liveness_handler))
             .route("/health/ready", get(readiness_handler));
         
         #[cfg(feature = "detailed-health")]
-        {
-            router = router.route("/health/detailed", get(detailed_health_handler));
-        }
-        
+        let router = router.route("/health/detailed", get(detailed_health_handler));
+
         #[cfg(feature = "health-history")]
-        {
-            router = router.route("/health/history", get(history_handler));
-        }
-        
+        let router = router.route("/health/history", get(history_handler));
+
         #[cfg(feature = "health-metrics")]
-        {
-            router = router.route("/health/metrics", get(metrics_handler));
-        }
+        let router = router.route("/health/metrics", get(metrics_handler));
         
         #[cfg(feature = "custom-endpoints")]
         {
@@ -684,7 +678,7 @@ pub fn database_check(connection_string: &str) -> Box<dyn Fn() -> HealthCheck + 
 }
 
 /// Disk space check
-pub fn disk_space_check(min_free_gb: f64) -> Box<dyn Fn() -> HealthCheck + Send + Sync> {
+pub fn disk_space_check(_min_free_gb: f64) -> Box<dyn Fn() -> HealthCheck + Send + Sync> {
     Box::new(move || {
         #[cfg(feature = "health-metrics")]
         {
@@ -693,11 +687,11 @@ pub fn disk_space_check(min_free_gb: f64) -> Box<dyn Fn() -> HealthCheck + Send 
                 .map(|disk| disk.available_space())
                 .sum::<u64>() as f64 / 1024.0 / 1024.0 / 1024.0;
             
-            if free_gb < min_free_gb {
+            if free_gb < _min_free_gb {
                 HealthCheck {
                     name: "disk_space".to_string(),
                     status: Status::Unhealthy,
-                    message: Some(format!("Only {:.2} GB free, minimum required: {:.2} GB", free_gb, min_free_gb)),
+                    message: Some(format!("Only {:.2} GB free, minimum required: {:.2} GB", free_gb, _min_free_gb)),
                     duration_ms: Some(10),
                     metadata: None,
                 }
@@ -726,7 +720,7 @@ pub fn disk_space_check(min_free_gb: f64) -> Box<dyn Fn() -> HealthCheck + Send 
 }
 
 /// Memory usage check
-pub fn memory_check(max_usage_percent: f32) -> Box<dyn Fn() -> HealthCheck + Send + Sync> {
+pub fn memory_check(_max_usage_percent: f32) -> Box<dyn Fn() -> HealthCheck + Send + Sync> {
     Box::new(move || {
         #[cfg(feature = "health-metrics")]
         {
@@ -735,9 +729,9 @@ pub fn memory_check(max_usage_percent: f32) -> Box<dyn Fn() -> HealthCheck + Sen
             let total = system.total_memory() as f32;
             let usage_percent = (used / total) * 100.0;
             
-            let status = if usage_percent > max_usage_percent {
+            let status = if usage_percent > _max_usage_percent {
                 Status::Unhealthy
-            } else if usage_percent > max_usage_percent * 0.9 {
+            } else if usage_percent > _max_usage_percent * 0.9 {
                 Status::Degraded
             } else {
                 Status::Healthy

@@ -108,7 +108,7 @@ impl HistoryManager {
             })
             .build();
         
-        let mut manager = Self {
+        let manager = Self {
             config,
             buffer: Arc::new(RwLock::new(Vec::new())),
             tx,

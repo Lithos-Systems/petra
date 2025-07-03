@@ -267,36 +267,55 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
 
 /// Get list of all available block types
 pub fn get_available_block_types() -> Vec<&'static str> {
-    let mut types = vec![
+    let types = vec![
         // Always available
         "AND", "OR", "NOT", "XOR",
         "GT", "LT", "GTE", "LTE", "EQ", "NEQ",
         "ON_DELAY", "OFF_DELAY", "PULSE",
         "ADD", "SUB", "MUL", "DIV",
         "SCALE", "LIMIT", "SELECT", "MUX", "DEMUX", "DATA_GENERATOR",
+        #[cfg(feature = "edge-detection")]
+        "RISING_EDGE",
+        #[cfg(feature = "edge-detection")]
+        "FALLING_EDGE",
+        #[cfg(feature = "edge-detection")]
+        "CHANGE_DETECT",
+        #[cfg(feature = "memory-blocks")]
+        "SR_LATCH",
+        #[cfg(feature = "memory-blocks")]
+        "D_FLIPFLOP",
+        #[cfg(feature = "memory-blocks")]
+        "JK_FLIPFLOP",
+        #[cfg(feature = "memory-blocks")]
+        "T_FLIPFLOP",
+        #[cfg(feature = "pid-control")]
+        "PID",
+        #[cfg(feature = "pid-control")]
+        "TUNE_PID",
+        #[cfg(feature = "communication")]
+        "MODBUS_READ",
+        #[cfg(feature = "communication")]
+        "MODBUS_WRITE",
+        #[cfg(feature = "communication")]
+        "TCP_CLIENT",
+        #[cfg(feature = "communication")]
+        "UDP_SEND",
+        #[cfg(feature = "state-machine")]
+        "STATE_MACHINE",
+        #[cfg(feature = "state-machine")]
+        "SEQUENCE",
+        #[cfg(feature = "advanced-math")]
+        "FFT",
+        #[cfg(feature = "advanced-math")]
+        "FILTER",
+        #[cfg(feature = "advanced-math")]
+        "STATISTICS",
+        #[cfg(feature = "ml")]
+        "ML_INFERENCE",
+        #[cfg(feature = "ml")]
+        "ANOMALY_DETECT",
     ];
-    
-    #[cfg(feature = "edge-detection")]
-    types.extend_from_slice(&["RISING_EDGE", "FALLING_EDGE", "CHANGE_DETECT"]);
-    
-    #[cfg(feature = "memory-blocks")]
-    types.extend_from_slice(&["SR_LATCH", "D_FLIPFLOP", "JK_FLIPFLOP", "T_FLIPFLOP"]);
-    
-    #[cfg(feature = "pid-control")]
-    types.extend_from_slice(&["PID", "TUNE_PID"]);
-    
-    #[cfg(feature = "communication")]
-    types.extend_from_slice(&["MODBUS_READ", "MODBUS_WRITE", "TCP_CLIENT", "UDP_SEND"]);
-    
-    #[cfg(feature = "state-machine")]
-    types.extend_from_slice(&["STATE_MACHINE", "SEQUENCE"]);
-    
-    #[cfg(feature = "advanced-math")]
-    types.extend_from_slice(&["FFT", "FILTER", "STATISTICS"]);
-    
-    #[cfg(feature = "ml")]
-    types.extend_from_slice(&["ML_INFERENCE", "ANOMALY_DETECT"]);
-    
+
     types
 }
 
