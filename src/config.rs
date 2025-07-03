@@ -2,6 +2,7 @@
 use crate::error::{PlcError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(feature = "history")]
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -81,6 +82,7 @@ pub struct SignalConfig {
     pub name: String,
     
     /// Signal type (bool, int, float, etc.)
+    #[serde(rename = "type")]
     pub signal_type: String,
     
     /// Initial value (optional)
@@ -511,6 +513,34 @@ impl Config {
     pub fn get_security_config(&self) -> Option<&()> {
         None
     }
+
+    /// Get a summary of the configuration useful for debugging
+    pub fn feature_summary(&self) -> ConfigSummary {
+        ConfigSummary {
+            signal_count: self.signals.len(),
+            block_count: self.blocks.len(),
+        }
+    }
+}
+
+/// Summary information about a configuration
+#[derive(Debug, Clone)]
+pub struct ConfigSummary {
+    pub signal_count: usize,
+    pub block_count: usize,
+}
+
+impl ConfigSummary {
+    /// Returns true if no signals or blocks are defined
+    pub fn is_empty(&self) -> bool {
+        self.signal_count == 0 && self.block_count == 0
+    }
+}
+
+impl std::fmt::Display for ConfigSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "signals: {}, blocks: {}", self.signal_count, self.block_count)
+    }
 }
 
 impl SignalConfig {
@@ -525,7 +555,7 @@ impl SignalConfig {
             )));
         }
         
-        match self.signal_type.as_str() {
+        match self.signal_type.to_lowercase().as_str() {
             "bool" | "int" | "float" => {}
             #[cfg(feature = "extended-types")]
             "string" | "binary" | "timestamp" | "array" | "object" => {}

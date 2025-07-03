@@ -417,6 +417,11 @@ impl Engine {
     pub fn signal_bus(&self) -> &SignalBus {
         &self.bus
     }
+
+    /// Alias for `signal_bus` for backwards compatibility with tests
+    pub fn get_bus(&self) -> &SignalBus {
+        self.signal_bus()
+    }
     
     /// Get engine statistics
     pub async fn stats(&self) -> EngineStats {
@@ -550,6 +555,7 @@ mod tests {
                 },
             ],
             blocks: vec![],
+            #[cfg(feature = "mqtt")]
             mqtt: None,
             #[cfg(feature = "security")]
             security: None,
