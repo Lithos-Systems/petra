@@ -200,8 +200,8 @@ fn benchmark_value_operations(c: &mut Criterion) {
         let bool_val = Value::Bool(true);
         
         b.iter(|| {
-            black_box(float_val.as_f64());
-            black_box(int_val.as_i64());
+            black_box(float_val.as_float());
+            black_box(int_val.as_int());
             black_box(bool_val.as_bool());
         });
     });
