@@ -102,18 +102,21 @@ fn validate_feature_combinations(features: &HashSet<String>) -> Result<(), Strin
 
 /// Check mutually exclusive features
 fn validate_mutually_exclusive_features(features: &HashSet<String>) -> Result<(), String> {
-    let monitoring_features: Vec<_> = [
-        "standard-monitoring",
-        "enhanced-monitoring",
-    ]
-    .iter()
-    .filter(|f| features.contains(&f.to_string()))
-    .collect();
-    
+    // Allow enhanced-monitoring to include standard-monitoring
+    if features.contains("standard-monitoring") && features.contains("enhanced-monitoring") {
+        return Ok(());
+    }
+
+    let monitoring_features: Vec<_> = ["standard-monitoring", "enhanced-monitoring"]
+        .iter()
+        .filter(|f| features.contains(&f.to_string()))
+        .collect::<Vec<_>>();
+
     if monitoring_features.len() > 1 {
         return Err(format!(
             "Only one monitoring level can be enabled at a time. Found: {}",
-            monitoring_features.iter()
+            monitoring_features
+                .iter()
                 .map(|f| format!("'{}'", f))
                 .collect::<Vec<_>>()
                 .join(", ")
