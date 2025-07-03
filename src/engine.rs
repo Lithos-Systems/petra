@@ -193,7 +193,7 @@ impl Engine {
             }
         }
         
-        let target_scan_time = Duration::from_millis(config.engine.scan_time_ms);
+        let target_scan_time = Duration::from_millis(config.scan_time_ms);
         let start_time = Instant::now();
         
         // Initialize stats
@@ -233,7 +233,7 @@ impl Engine {
     /// Start the engine main loop
     pub async fn run(&self) -> Result<()> {
         self.running.store(true, Ordering::Relaxed);
-        info!("Starting PETRA engine with scan time: {}ms", self.config.engine.scan_time_ms);
+        info!("Starting PETRA engine with scan time: {}ms", self.config.scan_time_ms);
         
         let mut interval = interval(self.target_scan_time);
         interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -241,7 +241,7 @@ impl Engine {
         // Initialize metrics if enabled
         #[cfg(feature = "metrics")]
         if self.engine_config.metrics_enabled {
-            gauge!("petra_engine_scan_time_ms").set(self.config.engine.scan_time_ms as f64);
+            gauge!("petra_engine_scan_time_ms").set(self.config.scan_time_ms as f64);
             counter!("petra_engine_starts").increment(1);
         }
         
@@ -531,11 +531,9 @@ mod tests {
     
     fn create_test_config() -> Config {
         Config {
-            engine: ConfigEngineConfig {
-                scan_time_ms: 100,
-                max_scan_jitter_ms: 50,
-                error_recovery: true,
-            },
+            scan_time_ms: 100,
+            max_scan_jitter_ms: 50,
+            error_recovery: true,
             signals: vec![
                 SignalConfig {
                     name: "test_signal".to_string(),
