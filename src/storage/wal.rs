@@ -257,24 +257,24 @@ impl WriteAheadLog {
         // let iter = db.iterator(rocksdb::IteratorMode::Start);
 
         // for item in iter {
-            let (key, value) = item.map_err(|e| PlcError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("WAL read failed: {}", e),
-            )))?;
-
-            let key_str = match String::from_utf8(key.to_vec()) {
-                Ok(s) => s,
-                Err(_) => {
-                    let seq = u64::from_be_bytes(
-                        key.as_ref()[..8]
-                            .try_into()
-                            .unwrap_or([0u8; 8]),
-                    );
-                    seq.to_string()
-                }
-            };
-            entries.push((key_str, value.to_vec()));
-        }
+        //     let (key, value) = item.map_err(|e| PlcError::Io(std::io::Error::new(
+        //         std::io::ErrorKind::Other,
+        //         format!("WAL read failed: {}", e),
+        //     )))?;
+        //
+        //     let key_str = match String::from_utf8(key.to_vec()) {
+        //         Ok(s) => s,
+        //         Err(_) => {
+        //             let seq = u64::from_be_bytes(
+        //                 key.as_ref()[..8]
+        //                     .try_into()
+        //                     .unwrap_or([0u8; 8]),
+        //             );
+        //             seq.to_string()
+        //         }
+        //     };
+        //     entries.push((key_str, value.to_vec()));
+        // }
 
         Ok(entries)
     }
