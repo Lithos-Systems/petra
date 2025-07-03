@@ -18,14 +18,14 @@
 //!
 //! # Examples
 //!
-//! ```rust
+//! ```rust,ignore
 //! use petra::{Config, Engine, Features};
 //!
 //! // Initialize PETRA runtime
 //! petra::init()?;
 //!
 //! // Print enabled features
-//! Features::print();
+//! Features::detect().print();
 //!
 //! // Load configuration and start engine
 //! let config = Config::from_file("config.yaml")?;

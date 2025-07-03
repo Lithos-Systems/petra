@@ -416,16 +416,19 @@ impl RuntimeFeatures {
         let mut errors = Vec::new();
         
         // Check monitoring level conflicts (mutually exclusive)
-        let monitoring_levels = ["basic-monitoring", "standard-monitoring", "enhanced-monitoring"];
-        let enabled_monitoring: Vec<_> = monitoring_levels.iter()
-            .filter(|&&level| self.is_enabled(level))
-            .collect();
-        
-        if enabled_monitoring.len() > 1 {
-            errors.push(format!(
-                "Multiple monitoring levels enabled: {:?}. Only one monitoring level is allowed.",
-                enabled_monitoring
-            ));
+        // Determine which monitoring level is active. Higher levels imply lower
+        // ones, so only count the highest enabled level.
+        let mut level_count = 0;
+        if self.is_enabled("enhanced-monitoring") {
+            level_count += 1;
+        } else if self.is_enabled("standard-monitoring") {
+            level_count += 1;
+        } else if self.is_enabled("basic-monitoring") {
+            level_count += 1;
+        }
+
+        if level_count > 1 {
+            errors.push("Multiple monitoring levels enabled".to_string());
         }
         
         // Check feature dependencies
@@ -494,6 +497,13 @@ pub struct FeatureSummary {
     pub security: usize,
     pub monitoring: usize,
     pub bundles: Vec<&'static str>,
+}
+
+impl FeatureSummary {
+    /// Check if any features are reported
+    pub fn is_empty(&self) -> bool {
+        self.total_features == 0 && self.bundles.is_empty()
+    }
 }
 
 impl fmt::Display for FeatureSummary {

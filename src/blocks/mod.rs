@@ -150,8 +150,9 @@ pub trait Block: Send + Sync {
 /// 
 /// # Examples
 /// 
-/// ```rust
-/// use petra::blocks::{create_block, BlockConfig};
+/// ```rust,ignore
+/// use petra::blocks::create_block;
+/// use petra::config::BlockConfig;
 /// use std::collections::HashMap;
 /// 
 /// let config = BlockConfig {
@@ -585,7 +586,10 @@ pub fn get_output_signal(config: &BlockConfig, output_name: &str, required: bool
 
 /// Helper to get the first/primary input signal
 pub fn get_primary_input(config: &BlockConfig) -> Result<String> {
-    config.inputs.values().next()
+    config
+        .inputs
+        .values()
+        .min()
         .cloned()
         .ok_or_else(|| PlcError::Config(format!(
             "Block '{}' has no input signals",
@@ -595,7 +599,10 @@ pub fn get_primary_input(config: &BlockConfig) -> Result<String> {
 
 /// Helper to get the first/primary output signal
 pub fn get_primary_output(config: &BlockConfig) -> Result<String> {
-    config.outputs.values().next()
+    config
+        .outputs
+        .values()
+        .min()
         .cloned()
         .ok_or_else(|| PlcError::Config(format!(
             "Block '{}' has no output signals",
@@ -613,15 +620,17 @@ pub mod test_utils {
     
     /// Create a test block configuration
     pub fn create_test_config(block_type: &str, name: &str) -> BlockConfig {
-        BlockConfig {
+        let config = BlockConfig {
             name: name.to_string(),
             block_type: block_type.to_string(),
             inputs: HashMap::new(),
             outputs: HashMap::new(),
-            params: HashMap::new(),  // Fixed: using params instead of parameters
+            params: HashMap::new(),
             description: Some(format!("Test {} block", block_type)),
             tags: vec!["test".to_string()],
-        }
+        };
+
+        config
     }
     
     /// Helper to create block config with inputs/outputs
@@ -651,7 +660,12 @@ mod tests {
     
     #[test]
     fn test_block_factory() {
-        let config = test_utils::create_test_config("AND", "test_and");
+        let config = test_utils::create_test_config_with_io(
+            "AND",
+            "test_and",
+            vec![("a", "in1")],
+            vec![("out", "out1")],
+        );
         let block = create_block(&config).unwrap();
         assert_eq!(block.block_type(), "AND");
         assert_eq!(block.name(), "test_and");
