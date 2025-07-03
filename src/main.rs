@@ -517,18 +517,19 @@ async fn run_engine(
           config.signals.len(), config.blocks.len(), config.scan_time_ms);
     
     // Create and start engine
+    let metrics_enabled = engine_config.metrics_enabled;
     let mut engine = Engine::new_with_engine_config(config, engine_config)?;
     
     // Start auxiliary services
     #[cfg(feature = "metrics")]
-    let _metrics_server = if engine_config.metrics_enabled {
+    let _metrics_server = if metrics_enabled {
         Some(start_metrics_service()?)
     } else {
         None
     };
     
     #[cfg(feature = "health")]
-    let _health_server = start_health_service().await?;
+    start_health_service().await?;
     
     // Setup signal handling for graceful shutdown
     let running = engine.is_running();
@@ -837,11 +838,11 @@ async fn start_metrics_server(port: u16, bind: String) -> Result<()> {
 }
 
 #[cfg(feature = "health")]
-async fn start_health_service() -> Result<HealthMonitor> {
+async fn start_health_service() -> Result<()> {
     info!("Starting health server on :8080");
     let monitor = HealthMonitor::new(petra::health::HealthConfig::default());
     monitor.start().await?;
-    Ok(monitor)
+    Ok(())
 }
 
 #[cfg(feature = "health")]
@@ -851,7 +852,7 @@ async fn start_health_server(port: u16, bind: String) -> Result<()> {
 
     info!("Starting standalone health server on {}", addr);
     let monitor = HealthMonitor::new(petra::health::HealthConfig {
-        bind_address: addr.to_string(),
+        bind_address: addr,
         ..Default::default()
     });
     monitor.start().await?;
