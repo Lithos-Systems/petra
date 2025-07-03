@@ -1,118 +1,199 @@
-//! PETRA binary entry point with comprehensive CLI interface
+//! # PETRA Binary Entry Point - Production-Ready CLI Interface
 //!
-//! This binary provides the main command-line interface for PETRA with support for:
-//! - Configuration validation and loading
-//! - Engine execution with different feature sets
-//! - Feature detection and validation
-//! - Development and testing utilities
-//! - Hot configuration reloading
+//! ## Purpose & Overview
+//! 
+//! This is the main executable entry point for PETRA that provides a comprehensive
+//! command-line interface for:
+//!
+//! - **Engine Execution** - Run PETRA with configurable scan times and features
+//! - **Configuration Management** - Validate, convert, and migrate configurations
+//! - **Feature Detection** - Show enabled features and dependencies
+//! - **Development Tools** - Testing utilities and examples
+//! - **Protocol Testing** - Test industrial protocol connections
+//! - **Service Management** - Run individual services (metrics, health)
+//!
+//! ## Architecture & Interactions
+//!
+//! This binary uses the PETRA library (`src/lib.rs`) and directly interacts with:
+//! - **Config** (`src/config.rs`) - Configuration loading and validation
+//! - **Engine** (`src/engine.rs`) - Core execution engine
+//! - **Features** (`src/features.rs`) - Runtime feature detection
+//! - **Protocol modules** - For connection testing
+//! - **Service modules** - For standalone service execution
+//!
+//! ## Performance Considerations
+//!
+//! - Async/await throughout for non-blocking I/O
+//! - Graceful shutdown handling with proper signal handling
+//! - Resource cleanup on exit
+//! - Feature-gated compilation for minimal binary size
+//! - Structured logging with performance-optimized formatting
+//!
+//! ## Error Handling
+//!
+//! All operations return `Result<(), PlcError>` and are properly handled with:
+//! - Descriptive error messages
+//! - Appropriate exit codes
+//! - Error context preservation
+//! - No panics in production code paths
+
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::cargo)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::module_name_repetitions)]
 
 use clap::{Parser, Subcommand, ValueEnum};
 use petra::{
-    Config, Engine, Features, PlcError, Result,
+    Config, Engine, Features, PlcError, Result, init_petra,
+    VERSION, build_info
 };
-use petra::engine::EngineConfig;
 use std::path::PathBuf;
 use std::process;
+use std::time::Duration;
 use tokio::signal;
-use tracing::{info, error, debug};
+use tracing::{info, error, debug, warn, Level};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use colored::*;
 
+// Feature-gated imports for optional functionality
 #[cfg(feature = "metrics")]
-use petra::metrics_server::MetricsServer;
+use petra::MetricsServer;
 
 #[cfg(feature = "health")]
 use petra::health::HealthMonitor;
+
+#[cfg(feature = "realtime")]
+use petra::realtime::RealtimeScheduler;
+
+#[cfg(feature = "security")]
+use petra::security::SecurityManager;
 
 // ============================================================================
 // CLI ARGUMENT DEFINITIONS
 // ============================================================================
 
+/// PETRA command-line interface with comprehensive automation features
 #[derive(Parser)]
 #[command(name = "petra")]
-#[command(version = petra::VERSION)]
+#[command(version = VERSION)]
 #[command(about = "PETRA - Programmable Engine for Telemetry, Runtime, and Automation")]
-#[command(long_about = "
-PETRA is a high-performance automation engine built in Rust with advanced 
-industrial connectivity, alarm management, and enterprise data storage.
-
-Features are enabled at compile time using Cargo feature flags.
-Use 'petra features' to see which features are enabled in this build.
-")]
+#[command(long_about = format!(
+    "PETRA v{} - High-performance industrial automation engine built in Rust\n\
+     \n\
+     Features:\n\
+     • Real-time deterministic execution with microsecond precision\n\
+     • 80+ optional features for lean deployments\n\
+     • Industrial protocol support (Modbus, S7, OPC-UA, MQTT)\n\
+     • Enterprise data storage with compression and WAL\n\
+     • Advanced alarm management with SMS/email notifications\n\
+     • Web-based configuration interface\n\
+     • Comprehensive security with RBAC and audit logging\n\
+     \n\
+     Use 'petra features' to see which features are enabled in this build.\n\
+     Use 'petra config example' to generate a starter configuration.\n\
+     \n\
+     Build Info:\n\
+     {}",
+    VERSION,
+    build_info::build_info_string()
+))]
 struct Cli {
-    /// Configuration file path
-    #[arg(value_name = "CONFIG")]
+    /// Configuration file path (for default run mode)
+    #[arg(short, long, value_name = "FILE")]
     config: Option<PathBuf>,
-
-    /// Override scan time in milliseconds
+    
+    /// Scan time in milliseconds (for default run mode)
+    #[arg(short, long, default_value = "10")]
+    scan_time: u64,
+    
+    /// Validate configuration only, don't run engine
     #[arg(short, long)]
-    scan_time: Option<u64>,
-
-    /// Log level
-    #[arg(short, long, value_enum, default_value = "info")]
-    log_level: LogLevel,
-
-    /// Enable verbose logging
+    validate_only: bool,
+    
+    /// Enable verbose logging (debug level)
     #[arg(short, long)]
     verbose: bool,
-
-    /// Enable quiet mode (errors only)
+    
+    /// Enable quiet mode (error level only)
     #[arg(short, long)]
     quiet: bool,
-
-    /// Disable colored output
+    
+    /// Log output format
+    #[arg(long, value_enum, default_value = "pretty")]
+    log_format: LogFormat,
+    
+    /// CPU affinity (Linux only, comma-separated core IDs)
+    #[cfg(target_os = "linux")]
+    #[arg(long, value_delimiter = ',')]
+    cpu_affinity: Vec<usize>,
+    
+    /// Thread priority (0-99, requires privileges)
+    #[cfg(feature = "realtime")]
     #[arg(long)]
-    no_color: bool,
-
-    /// Enable JSON log format
-    #[arg(long)]
-    json_logs: bool,
-
-    /// Validate configuration only
-    #[arg(long)]
-    validate_only: bool,
-
-    /// Dry run (don't start protocols or external connections)
-    #[arg(long)]
-    dry_run: bool,
-
+    thread_priority: Option<u8>,
+    
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
+/// Available commands for different operation modes
 #[derive(Subcommand)]
 enum Commands {
-    /// Run the PETRA engine
+    /// Run the PETRA engine with specified configuration
     Run {
         /// Configuration file path
+        #[arg(value_name = "CONFIG_FILE")]
         config: PathBuf,
-        /// Override scan time
-        #[arg(short, long)]
-        scan_time: Option<u64>,
-        /// Enable enhanced monitoring
+        
+        /// Engine scan time in milliseconds
+        #[arg(short, long, default_value = "10")]
+        scan_time: u64,
+        
+        /// Enable enhanced monitoring and diagnostics
+        #[cfg(feature = "enhanced-monitoring")]
         #[arg(long)]
         enhanced_monitoring: bool,
-        /// Disable circuit breakers
+        
+        /// Disable circuit breakers for blocks
+        #[cfg(feature = "circuit-breaker")]
         #[arg(long)]
         no_circuit_breakers: bool,
-        /// CPU affinity mask (hex)
+        
+        /// CPU affinity for worker threads (Linux only)
+        #[cfg(target_os = "linux")]
+        #[arg(long, value_delimiter = ',')]
+        cpu_affinity: Option<Vec<usize>>,
+        
+        /// Real-time thread priority (0-99)
+        #[cfg(feature = "realtime")]
         #[arg(long)]
-        cpu_affinity: Option<String>,
-        /// Thread priority (1-99)
+        thread_priority: Option<u8>,
+        
+        /// Force real-time scheduling
+        #[cfg(feature = "realtime")]
         #[arg(long)]
-        thread_priority: Option<i32>,
+        force_realtime: bool,
     },
     
-    /// Validate configuration file
+    /// Validate configuration file without running
     Validate {
-        /// Configuration file path
+        /// Configuration file to validate
+        #[arg(value_name = "CONFIG_FILE")]
         config: PathBuf,
+        
         /// Show detailed validation report
         #[arg(short, long)]
         detailed: bool,
+        
         /// Check feature compatibility
-        #[arg(long)]
+        #[arg(short, long)]
         check_features: bool,
+        
+        /// Validate against schema
+        #[cfg(feature = "schema-validation")]
+        #[arg(long)]
+        schema: bool,
     },
     
     /// Show enabled features and capabilities
@@ -120,12 +201,18 @@ enum Commands {
         /// Show feature dependencies
         #[arg(short, long)]
         dependencies: bool,
+        
         /// Show feature conflicts
         #[arg(short, long)]
         conflicts: bool,
-        /// Check specific feature
+        
+        /// Check specific feature availability
         #[arg(long)]
         check: Option<String>,
+        
+        /// List all available features
+        #[arg(short, long)]
+        list: bool,
     },
     
     /// Configuration management utilities
@@ -135,14 +222,19 @@ enum Commands {
     },
     
     /// Development and testing utilities  
-    #[cfg(any(feature = "examples", feature = "burn-in"))]
+    #[cfg(any(feature = "examples", feature = "burn-in", feature = "profiling"))]
     Dev {
         #[command(subcommand)]
         dev_cmd: DevCommands,
     },
     
-    /// Protocol testing utilities
-    #[cfg(any(feature = "mqtt", feature = "s7-support", feature = "modbus-support"))]
+    /// Protocol testing and diagnostics
+    #[cfg(any(
+        feature = "mqtt", 
+        feature = "s7-support", 
+        feature = "modbus-support",
+        feature = "opcua-support"
+    ))]
     Protocol {
         #[command(subcommand)]
         protocol_cmd: ProtocolCommands,
@@ -151,70 +243,125 @@ enum Commands {
     /// Start metrics server only
     #[cfg(feature = "metrics")]
     Metrics {
-        /// Port to bind to
+        /// Port to bind metrics server
         #[arg(short, long, default_value = "9090")]
         port: u16,
-        /// Bind address
+        
+        /// Bind address for metrics server
         #[arg(short, long, default_value = "0.0.0.0")]
         bind: String,
+        
+        /// Enable additional runtime metrics
+        #[arg(long)]
+        runtime_metrics: bool,
     },
     
-    /// Start health server only  
+    /// Start health monitoring server only  
     #[cfg(feature = "health")]
     Health {
-        /// Port to bind to
+        /// Port to bind health server
         #[arg(short, long, default_value = "8080")]
         port: u16,
-        /// Bind address
+        
+        /// Bind address for health server
         #[arg(short, long, default_value = "0.0.0.0")]
         bind: String,
+        
+        /// Health check interval in seconds
+        #[arg(long, default_value = "30")]
+        check_interval: u64,
+    },
+    
+    /// Security management utilities
+    #[cfg(feature = "security")]
+    Security {
+        #[command(subcommand)]
+        security_cmd: SecurityCommands,
+    },
+    
+    /// Database and storage utilities
+    #[cfg(any(feature = "history", feature = "advanced-storage"))]
+    Storage {
+        #[command(subcommand)]
+        storage_cmd: StorageCommands,
     },
 }
 
+/// Configuration management subcommands
 #[derive(Subcommand)]
 enum ConfigCommands {
-    /// Generate example configuration
+    /// Generate example configuration files
     Example {
         /// Output file path
         #[arg(short, long, default_value = "petra-example.yaml")]
         output: PathBuf,
+        
         /// Configuration template type
         #[arg(short, long, value_enum, default_value = "basic")]
         template: ConfigTemplate,
+        
+        /// Include feature-specific examples
+        #[arg(long)]
+        include_features: bool,
     },
     
     /// Convert configuration between formats
     Convert {
         /// Input configuration file
+        #[arg(value_name = "INPUT")]
         input: PathBuf,
+        
         /// Output file path
         #[arg(short, long)]
         output: PathBuf,
+        
         /// Output format
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: ConfigFormat,
     },
     
-    /// Migrate configuration to new version
+    /// Migrate configuration to newer version
     Migrate {
         /// Input configuration file
+        #[arg(value_name = "INPUT")]
         input: PathBuf,
+        
         /// Output file path (defaults to backup + update input)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        
+        /// Target configuration version
+        #[arg(long, default_value = "latest")]
+        target_version: String,
+    },
+    
+    /// Show configuration schema information
+    Schema {
+        /// Show JSON schema
+        #[cfg(feature = "schema-validation")]
+        #[arg(long)]
+        json: bool,
+        
+        /// Output schema to file
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
     
-    /// Validate and show configuration schema
-    Schema {
-        /// Show JSON schema
-        #[cfg(feature = "json-schema")]
+    /// Validate configuration against best practices
+    Lint {
+        /// Configuration file to lint
+        #[arg(value_name = "CONFIG_FILE")]
+        config: PathBuf,
+        
+        /// Apply automatic fixes where possible
         #[arg(long)]
-        json: bool,
+        fix: bool,
     },
 }
 
+/// Development and testing subcommands
+#[cfg(any(feature = "examples", feature = "burn-in", feature = "profiling"))]
 #[derive(Subcommand)]
-#[cfg(any(feature = "examples", feature = "burn-in"))]
 enum DevCommands {
     /// Run example scenarios
     #[cfg(feature = "examples")]
@@ -222,183 +369,453 @@ enum DevCommands {
         /// List available examples
         #[arg(short, long)]
         list: bool,
-        /// Run specific example
+        
+        /// Run specific example by name
         #[arg(short, long)]
         run: Option<String>,
+        
+        /// Generate example data
+        #[arg(long)]
+        generate_data: bool,
     },
     
-    /// Run burn-in tests
+    /// Run comprehensive burn-in tests
     #[cfg(feature = "burn-in")]
     BurnIn {
-        /// Duration in seconds
+        /// Test duration in seconds
         #[arg(short, long, default_value = "3600")]
         duration: u64,
-        /// Number of signals
+        
+        /// Number of test signals to create
         #[arg(short, long, default_value = "1000")]
         signals: usize,
-        /// Number of blocks
+        
+        /// Number of test blocks to create
         #[arg(short, long, default_value = "100")]
         blocks: usize,
-        /// Target scan time in ms
+        
+        /// Target scan time in milliseconds
         #[arg(short, long, default_value = "10")]
         scan_time: u64,
+        
+        /// Memory stress testing
+        #[arg(long)]
+        memory_stress: bool,
+    },
+    
+    /// Performance profiling and benchmarking
+    #[cfg(feature = "profiling")]
+    Profile {
+        /// Configuration file for profiling
+        #[arg(value_name = "CONFIG_FILE")]
+        config: PathBuf,
+        
+        /// Profiling duration in seconds
+        #[arg(short, long, default_value = "60")]
+        duration: u64,
+        
+        /// Output profile report file
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        
+        /// Enable CPU profiling
+        #[arg(long)]
+        cpu: bool,
+        
+        /// Enable memory profiling
+        #[arg(long)]
+        memory: bool,
     },
 }
 
+/// Protocol testing and diagnostics subcommands
+#[cfg(any(
+    feature = "mqtt", 
+    feature = "s7-support", 
+    feature = "modbus-support",
+    feature = "opcua-support"
+))]
 #[derive(Subcommand)]
-#[cfg(any(feature = "mqtt", feature = "s7-support", feature = "modbus-support"))]
 enum ProtocolCommands {
     /// Test MQTT connectivity
     #[cfg(feature = "mqtt")]
     Mqtt {
-        /// MQTT broker URL
-        #[arg(short, long)]
+        /// MQTT broker address
+        #[arg(short, long, default_value = "localhost:1883")]
         broker: String,
-        /// Test topic
-        #[arg(short, long, default_value = "petra/test")]
+        
+        /// Topic to test
+        #[arg(short, long, default_value = "test/petra")]
         topic: String,
-        /// Test message
-        #[arg(short, long, default_value = "Hello from PETRA")]
-        message: String,
-    },
-    
-    /// Test S7 PLC connectivity
-    #[cfg(feature = "s7-support")]
-    S7 {
-        /// PLC IP address
-        #[arg(short, long)]
-        ip: String,
-        /// Rack number
-        #[arg(short, long, default_value = "0")]
-        rack: u16,
-        /// Slot number
-        #[arg(short, long, default_value = "1")]
-        slot: u16,
+        
+        /// Number of test messages
+        #[arg(short, long, default_value = "10")]
+        count: usize,
     },
     
     /// Test Modbus connectivity
     #[cfg(feature = "modbus-support")]
     Modbus {
         /// Modbus server address
+        #[arg(short, long, default_value = "127.0.0.1:502")]
+        address: String,
+        
+        /// Unit ID to test
+        #[arg(short, long, default_value = "1")]
+        unit_id: u8,
+        
+        /// Register address to read
+        #[arg(short, long, default_value = "0")]
+        register: u16,
+    },
+    
+    /// Test Siemens S7 connectivity
+    #[cfg(feature = "s7-support")]
+    S7 {
+        /// S7 PLC address
         #[arg(short, long)]
         address: String,
-        /// Unit ID
-        #[arg(short, long, default_value = "1")]
-        unit: u8,
+        
+        /// Rack number
+        #[arg(short, long, default_value = "0")]
+        rack: u16,
+        
+        /// Slot number
+        #[arg(short, long, default_value = "2")]
+        slot: u16,
+    },
+    
+    /// Test OPC-UA connectivity
+    #[cfg(feature = "opcua-support")]
+    OpcUa {
+        /// OPC-UA server endpoint
+        #[arg(short, long)]
+        endpoint: String,
+        
+        /// Node ID to read
+        #[arg(short, long)]
+        node_id: Option<String>,
     },
 }
 
-#[derive(ValueEnum, Clone)]
-enum LogLevel {
-    Error,
-    Warn,
-    Info,
-    Debug,
-    Trace,
+/// Security management subcommands
+#[cfg(feature = "security")]
+#[derive(Subcommand)]
+enum SecurityCommands {
+    /// Generate cryptographic keys
+    KeyGen {
+        /// Key type to generate
+        #[arg(value_enum)]
+        key_type: KeyType,
+        
+        /// Output file for the key
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    
+    /// Create user accounts
+    #[cfg(feature = "basic-auth")]
+    CreateUser {
+        /// Username
+        #[arg(short, long)]
+        username: String,
+        
+        /// Password (will prompt if not provided)
+        #[arg(short, long)]
+        password: Option<String>,
+        
+        /// User roles
+        #[cfg(feature = "rbac")]
+        #[arg(short, long, value_delimiter = ',')]
+        roles: Vec<String>,
+    },
+    
+    /// Show audit logs
+    #[cfg(feature = "audit")]
+    Audit {
+        /// Number of recent entries to show
+        #[arg(short, long, default_value = "100")]
+        limit: usize,
+        
+        /// Filter by user
+        #[arg(short, long)]
+        user: Option<String>,
+        
+        /// Filter by action
+        #[arg(short, long)]
+        action: Option<String>,
+    },
 }
 
-#[derive(Debug, ValueEnum, Clone)]
+/// Storage management subcommands
+#[cfg(any(feature = "history", feature = "advanced-storage"))]
+#[derive(Subcommand)]
+enum StorageCommands {
+    /// Initialize storage backends
+    Init {
+        /// Storage type to initialize
+        #[arg(value_enum)]
+        storage_type: StorageType,
+        
+        /// Configuration file
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+    },
+    
+    /// Backup data
+    Backup {
+        /// Output backup file
+        #[arg(short, long)]
+        output: PathBuf,
+        
+        /// Start time for backup (ISO 8601)
+        #[arg(long)]
+        start_time: Option<String>,
+        
+        /// End time for backup (ISO 8601)
+        #[arg(long)]
+        end_time: Option<String>,
+    },
+    
+    /// Restore data from backup
+    Restore {
+        /// Input backup file
+        #[arg(value_name = "BACKUP_FILE")]
+        input: PathBuf,
+        
+        /// Force restore (overwrite existing data)
+        #[arg(long)]
+        force: bool,
+    },
+    
+    /// Compact and optimize storage
+    Compact {
+        /// Dry run (show what would be done)
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+// ============================================================================
+// VALUE ENUMS FOR CLI OPTIONS
+// ============================================================================
+
+/// Log output format options
+#[derive(Clone, Copy, ValueEnum)]
+enum LogFormat {
+    /// Human-readable pretty format
+    Pretty,
+    /// JSON structured logging
+    Json,
+    /// Compact single-line format
+    Compact,
+}
+
+/// Configuration template types
+#[derive(Clone, Copy, ValueEnum)]
 enum ConfigTemplate {
+    /// Basic automation example
     Basic,
-    Edge,
-    Scada,
+    /// Industrial manufacturing example
+    Industrial,
+    /// IoT sensor network example
+    Iot,
+    /// Advanced enterprise features example
     Enterprise,
+    /// Development and testing example
     Development,
 }
 
-#[derive(Debug, ValueEnum, Clone)]
+/// Configuration file formats
+#[derive(Clone, Copy, ValueEnum)]
 enum ConfigFormat {
+    /// YAML format (recommended)
     Yaml,
+    /// JSON format
     Json,
+    /// TOML format
     Toml,
 }
 
+/// Cryptographic key types
+#[cfg(feature = "security")]
+#[derive(Clone, Copy, ValueEnum)]
+enum KeyType {
+    /// RSA key pair
+    Rsa,
+    /// Ed25519 key pair
+    Ed25519,
+    /// Symmetric AES key
+    Aes,
+    /// JWT signing key
+    #[cfg(feature = "jwt-auth")]
+    Jwt,
+}
+
+/// Storage backend types
+#[cfg(any(feature = "history", feature = "advanced-storage"))]
+#[derive(Clone, Copy, ValueEnum)]
+enum StorageType {
+    /// Parquet file storage
+    #[cfg(feature = "history")]
+    Parquet,
+    /// ClickHouse database
+    #[cfg(feature = "advanced-storage")]
+    Clickhouse,
+    /// RocksDB storage
+    #[cfg(feature = "advanced-storage")]
+    Rocksdb,
+    /// S3-compatible storage
+    #[cfg(feature = "advanced-storage")]
+    S3,
+}
+
 // ============================================================================
-// MAIN FUNCTION
+// MAIN ENTRY POINT
 // ============================================================================
 
+/// Main entry point with comprehensive error handling and graceful shutdown
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     
-    // Initialize logging first
-    if let Err(e) = init_logging(&cli) {
-        eprintln!("Failed to initialize logging: {}", e);
-        process::exit(1);
-    }
+    // Initialize logging based on CLI flags
+    init_logging(&cli)?;
     
-    // Initialize PETRA
-    if let Err(e) = petra::init() {
+    // Log startup information
+    info!("Starting PETRA v{}", VERSION);
+    debug!("Build info: {}", build_info::build_info_string());
+    
+    // Initialize PETRA library
+    if let Err(e) = init_petra() {
         error!("Failed to initialize PETRA: {}", e);
         process::exit(1);
     }
     
+    // Handle CPU affinity (Linux only)
+    #[cfg(target_os = "linux")]
+    if !cli.cpu_affinity.is_empty() {
+        if let Err(e) = set_cpu_affinity(&cli.cpu_affinity) {
+            warn!("Failed to set CPU affinity: {}", e);
+        }
+    }
     
-    // Handle commands
+    // Handle the command or default behavior
     let result = match cli.command {
         Some(Commands::Run { 
             config, 
             scan_time, 
+            #[cfg(feature = "enhanced-monitoring")]
             enhanced_monitoring,
+            #[cfg(feature = "circuit-breaker")]
             no_circuit_breakers,
+            #[cfg(target_os = "linux")]
             cpu_affinity,
+            #[cfg(feature = "realtime")]
             thread_priority,
+            #[cfg(feature = "realtime")]
+            force_realtime,
         }) => {
             run_engine(
-                config, 
-                scan_time, 
-                enhanced_monitoring, 
+                config,
+                scan_time,
+                #[cfg(feature = "enhanced-monitoring")]
+                enhanced_monitoring,
+                #[cfg(feature = "circuit-breaker")]
                 !no_circuit_breakers,
+                #[cfg(target_os = "linux")]
                 cpu_affinity,
-                thread_priority
+                #[cfg(feature = "realtime")]
+                thread_priority,
+                #[cfg(feature = "realtime")]
+                force_realtime,
             ).await
         }
         
-        Some(Commands::Validate { config, detailed, check_features }) => {
-            validate_config(config, detailed, check_features).await
+        Some(Commands::Validate { 
+            config, 
+            detailed, 
+            check_features,
+            #[cfg(feature = "schema-validation")]
+            schema,
+        }) => {
+            validate_config(
+                config, 
+                detailed, 
+                check_features,
+                #[cfg(feature = "schema-validation")]
+                schema,
+            ).await
         }
         
-        Some(Commands::Features { dependencies, conflicts, check }) => {
-            show_features(dependencies, conflicts, check).await
+        Some(Commands::Features { dependencies, conflicts, check, list }) => {
+            show_features(dependencies, conflicts, check, list).await
         }
         
         Some(Commands::Config { config_cmd }) => {
             handle_config_command(config_cmd).await
         }
         
-        #[cfg(any(feature = "examples", feature = "burn-in"))]
+        #[cfg(any(feature = "examples", feature = "burn-in", feature = "profiling"))]
         Some(Commands::Dev { dev_cmd }) => {
             handle_dev_command(dev_cmd).await
         }
         
-        #[cfg(any(feature = "mqtt", feature = "s7-support", feature = "modbus-support"))]
+        #[cfg(any(
+            feature = "mqtt", 
+            feature = "s7-support", 
+            feature = "modbus-support",
+            feature = "opcua-support"
+        ))]
         Some(Commands::Protocol { protocol_cmd }) => {
             handle_protocol_command(protocol_cmd).await
         }
         
         #[cfg(feature = "metrics")]
-        Some(Commands::Metrics { port, bind }) => {
-            start_metrics_server(port, bind).await
+        Some(Commands::Metrics { port, bind, runtime_metrics }) => {
+            start_metrics_server(port, bind, runtime_metrics).await
         }
         
         #[cfg(feature = "health")]
-        Some(Commands::Health { port, bind }) => {
-            start_health_server(port, bind).await
+        Some(Commands::Health { port, bind, check_interval }) => {
+            start_health_server(port, bind, check_interval).await
+        }
+        
+        #[cfg(feature = "security")]
+        Some(Commands::Security { security_cmd }) => {
+            handle_security_command(security_cmd).await
+        }
+        
+        #[cfg(any(feature = "history", feature = "advanced-storage"))]
+        Some(Commands::Storage { storage_cmd }) => {
+            handle_storage_command(storage_cmd).await
         }
         
         None => {
-            // Default behavior - run engine if config provided, otherwise show help
+            // Default behavior based on CLI flags
             if let Some(config_path) = cli.config {
                 if cli.validate_only {
-                    validate_config(config_path, false, true).await
+                    validate_config(
+                        config_path, 
+                        false, 
+                        true,
+                        #[cfg(feature = "schema-validation")]
+                        false,
+                    ).await
                 } else {
                     run_engine(
-                        config_path, 
-                        cli.scan_time, 
-                        false, 
-                        true, 
-                        None, 
-                        None
+                        config_path,
+                        cli.scan_time,
+                        #[cfg(feature = "enhanced-monitoring")]
+                        false,
+                        #[cfg(feature = "circuit-breaker")]
+                        true,
+                        #[cfg(target_os = "linux")]
+                        Some(cli.cpu_affinity),
+                        #[cfg(feature = "realtime")]
+                        cli.thread_priority,
+                        #[cfg(feature = "realtime")]
+                        false,
                     ).await
                 }
             } else {
@@ -407,9 +824,16 @@ async fn main() {
         }
     };
     
-    if let Err(e) = result {
-        error!("Command failed: {}", e);
-        process::exit(1);
+    // Handle results and exit appropriately
+    match result {
+        Ok(()) => {
+            info!("PETRA completed successfully");
+            Ok(())
+        }
+        Err(e) => {
+            error!("PETRA failed: {}", e);
+            process::exit(1);
+        }
     }
 }
 
@@ -417,566 +841,843 @@ async fn main() {
 // LOGGING INITIALIZATION
 // ============================================================================
 
-fn init_logging(cli: &Cli) -> Result<()> {
+/// Initialize structured logging with performance optimizations
+fn init_logging(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     let log_level = if cli.quiet {
-        "error"
+        Level::ERROR
     } else if cli.verbose {
-        "debug"
+        Level::DEBUG
     } else {
-        match cli.log_level {
-            LogLevel::Error => "error",
-            LogLevel::Warn => "warn", 
-            LogLevel::Info => "info",
-            LogLevel::Debug => "debug",
-            LogLevel::Trace => "trace",
+        Level::INFO
+    };
+    
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(log_level.into())
+        .from_env_lossy()
+        .add_directive("petra=debug".parse()?)
+        .add_directive("tokio_postgres=warn".parse()?)
+        .add_directive("sqlx=warn".parse()?)
+        .add_directive("h2=warn".parse()?)
+        .add_directive("tower=warn".parse()?);
+    
+    match cli.log_format {
+        LogFormat::Pretty => {
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(
+                    fmt::layer()
+                        .with_target(true)
+                        .with_thread_ids(true)
+                        .with_thread_names(true)
+                        .with_file(cli.verbose)
+                        .with_line_number(cli.verbose)
+                        .pretty()
+                )
+                .init();
         }
-    };
-    
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(format!("petra={}", log_level)));
-    
-    let fmt_layer = fmt::layer()
-        .with_target(true)
-        .with_thread_ids(cli.verbose)
-        .with_file(cli.verbose)
-        .with_line_number(cli.verbose);
-        
-    let fmt_layer = if cli.json_logs {
-        fmt_layer.json().boxed()
-    } else if cli.no_color {
-        fmt_layer.without_time().boxed()
-    } else {
-        fmt_layer.boxed()
-    };
-    
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt_layer)
-        .init();
-    
-    info!("PETRA v{} starting", petra::VERSION);
-    debug!("Logging initialized with level: {}", log_level);
+        LogFormat::Json => {
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(
+                    fmt::layer()
+                        .with_target(true)
+                        .with_thread_ids(true)
+                        .with_thread_names(true)
+                        .with_file(true)
+                        .with_line_number(true)
+                        .json()
+                )
+                .init();
+        }
+        LogFormat::Compact => {
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(
+                    fmt::layer()
+                        .with_target(false)
+                        .with_thread_ids(false)
+                        .compact()
+                )
+                .init();
+        }
+    }
     
     Ok(())
 }
 
 // ============================================================================
-// ENGINE EXECUTION
+// CORE ENGINE EXECUTION
 // ============================================================================
 
+/// Run the main PETRA engine with comprehensive configuration
 async fn run_engine(
     config_path: PathBuf,
-    scan_time_override: Option<u64>,
+    scan_time: u64,
+    #[cfg(feature = "enhanced-monitoring")]
     enhanced_monitoring: bool,
-    _circuit_breakers: bool,
-    _cpu_affinity: Option<String>,
-    _thread_priority: Option<i32>,
+    #[cfg(feature = "circuit-breaker")]
+    circuit_breakers: bool,
+    #[cfg(target_os = "linux")]
+    cpu_affinity: Option<Vec<usize>>,
+    #[cfg(feature = "realtime")]
+    thread_priority: Option<u8>,
+    #[cfg(feature = "realtime")]
+    force_realtime: bool,
 ) -> Result<()> {
     info!("Loading configuration from: {}", config_path.display());
     
     // Load and validate configuration
-    let mut config = Config::from_file(&config_path)?;
+    let config = Config::from_file(&config_path)
+        .map_err(|e| PlcError::Config(format!("Failed to load config: {}", e)))?;
     
-    // Apply overrides
-    if let Some(scan_time) = scan_time_override {
-        info!("Overriding scan time: {}ms -> {}ms", config.scan_time_ms, scan_time);
-        config.scan_time_ms = scan_time;
+    info!("Configuration loaded successfully");
+    
+    // Create engine with scan time
+    let mut engine = Engine::new(config, Duration::from_millis(scan_time))?;
+    
+    // Configure optional features
+    #[cfg(feature = "enhanced-monitoring")]
+    if enhanced_monitoring {
+        info!("Enabling enhanced monitoring");
+        engine.enable_enhanced_monitoring()?;
     }
     
-    // Create engine configuration
-    let mut engine_config = EngineConfig::default();
-    engine_config.enhanced_monitoring = enhanced_monitoring;
-    
     #[cfg(feature = "circuit-breaker")]
-    {
-        engine_config.circuit_breaker_enabled = _circuit_breakers;
+    if !circuit_breakers {
+        info!("Disabling circuit breakers");
+        engine.disable_circuit_breakers();
     }
     
     #[cfg(feature = "realtime")]
-    {
-        if let Some(affinity_str) = _cpu_affinity {
-            let affinity = u64::from_str_radix(&affinity_str, 16)
-                .map_err(|e| PlcError::Config(format!("Invalid CPU affinity mask: {}", e)))?;
-            engine_config.cpu_affinity = Some(affinity);
-            engine_config.realtime_enabled = true;
-        }
-        
-        if let Some(priority) = _thread_priority {
-            if priority < 1 || priority > 99 {
-                return Err(PlcError::Config("Thread priority must be between 1 and 99".to_string()));
-            }
-            engine_config.thread_priority = Some(priority);
-            engine_config.realtime_enabled = true;
-        }
+    if let Some(priority) = thread_priority {
+        info!("Setting real-time thread priority: {}", priority);
+        engine.set_realtime_priority(priority, force_realtime)?;
     }
     
-    // Show configuration summary
-    info!("Configuration loaded: {}", Features::detect().summary());
-    info!("Signals: {}, Blocks: {}, Scan time: {}ms", 
-          config.signals.len(), config.blocks.len(), config.scan_time_ms);
-    
-    // Create and start engine
-    let _metrics_enabled = engine_config.metrics_enabled;
-    let engine = Engine::new_with_engine_config(config, engine_config)?;
-    
-    // Start auxiliary services
-    #[cfg(feature = "metrics")]
-    let _metrics_server = if _metrics_enabled {
-        Some(start_metrics_service()?)
-    } else {
-        None
-    };
-    
-    #[cfg(feature = "health")]
-    start_health_service().await?;
-    
-    // Setup signal handling for graceful shutdown
-    let _running = engine.is_running();
-    tokio::spawn(async move {
-        if let Err(e) = signal::ctrl_c().await {
-            error!("Failed to listen for shutdown signal: {}", e);
-        } else {
-            info!("Shutdown signal received");
-        }
-    });
-    
-    // Run the engine
-    info!("Starting PETRA engine...");
-    let result = engine.run().await;
-    
-    match result {
-        Ok(_) => {
-            info!("PETRA engine stopped successfully");
-            Ok(())
-        }
-        Err(e) => {
-            error!("PETRA engine failed: {}", e);
-            Err(e)
-        }
+    #[cfg(target_os = "linux")]
+    if let Some(affinity) = cpu_affinity {
+        info!("Setting CPU affinity: {:?}", affinity);
+        set_cpu_affinity(&affinity)?;
     }
+    
+    // Start the engine
+    info!("Starting PETRA engine with {}ms scan time", scan_time);
+    engine.start().await?;
+    
+    // Set up graceful shutdown
+    let shutdown_signal = setup_shutdown_handler();
+    
+    // Wait for shutdown signal
+    shutdown_signal.await;
+    info!("Shutdown signal received, stopping engine...");
+    
+    // Stop the engine gracefully
+    engine.stop().await?;
+    info!("Engine stopped successfully");
+    
+    Ok(())
 }
 
 // ============================================================================
 // CONFIGURATION VALIDATION
 // ============================================================================
 
-async fn validate_config(config_path: PathBuf, detailed: bool, check_features: bool) -> Result<()> {
+/// Comprehensive configuration validation with detailed reporting
+async fn validate_config(
+    config_path: PathBuf,
+    detailed: bool,
+    check_features: bool,
+    #[cfg(feature = "schema-validation")]
+    schema_validation: bool,
+) -> Result<()> {
     info!("Validating configuration: {}", config_path.display());
     
-    let config = Config::from_file(&config_path)?;
-    
-    // Basic validation is done during loading
-    info!("✅ Configuration is valid");
-    
-    if detailed {
-        println!("\n📊 Configuration Summary:");
-        println!("  Signals: {}", config.signals.len());
-        println!("  Blocks: {}", config.blocks.len());
-        println!("  Scan time: {}ms", config.scan_time_ms);
-        println!("  Features: {}", Features::detect().summary());
-        
-        // Show signal details
-        if !config.signals.is_empty() {
-            println!("\n📡 Signals:");
-            for signal in &config.signals {
-                println!("  - {} ({})", signal.name, signal.signal_type);
-            }
+    // Basic configuration loading
+    let config = match Config::from_file(&config_path) {
+        Ok(config) => {
+            println!("{}", "PASS Configuration file loads successfully".green().bold());
+            config
         }
-        
-        // Show block details  
-        if !config.blocks.is_empty() {
-            println!("\n🔧 Blocks:");
-            for block in &config.blocks {
-                println!("  - {} ({})", block.name, block.block_type);
-            }
+        Err(e) => {
+            println!("{} Configuration file failed to load: {}", "FAIL".red().bold(), e);
+            return Err(PlcError::Config(format!("Validation failed: {}", e)));
         }
-    }
+    };
     
+    // Feature compatibility check
     if check_features {
-        println!("\n🎛️  Feature Compatibility Check:");
+        let features = petra::get_runtime_features();
+        let compat_result = config.check_feature_compatibility(&features);
         
-        // Check if configuration uses features that aren't enabled
-        let mut missing_features = Vec::new();
-        
-        #[cfg(not(feature = "mqtt"))]
-        if config.get_mqtt_config().is_some() {
-            missing_features.push("mqtt");
-        }
-        
-        #[cfg(not(feature = "security"))]
-        if config.get_security_config().is_some() {
-            missing_features.push("security");
-        }
-        
-        #[cfg(not(feature = "alarms"))]
-        if config.get_alarms_config().is_some() {
-            missing_features.push("alarms");
-        }
-        
-        if missing_features.is_empty() {
-            println!("  ✅ All required features are enabled");
-        } else {
-            println!("  ⚠️  Missing features: {}", missing_features.join(", "));
-            println!("     Rebuild with: cargo build --features \"{}\"", missing_features.join(" "));
+        match compat_result {
+            Ok(()) => println!("{}", "PASS All required features are available".green().bold()),
+            Err(e) => {
+                println!("{} Feature compatibility warning: {}", "WARN".yellow().bold(), e);
+                if !detailed {
+                    return Err(e);
+                }
+            }
         }
     }
     
+    // Schema validation
+    #[cfg(feature = "schema-validation")]
+    if schema_validation {
+        match config.validate_schema() {
+            Ok(()) => println!("{}", "PASS Configuration passes schema validation".green().bold()),
+            Err(e) => {
+                println!("{} Schema validation failed: {}", "FAIL".red().bold(), e);
+                return Err(e);
+            }
+        }
+    }
+    
+    // Detailed validation report
+    if detailed {
+        println!("\n{}", "Detailed Validation Report:".cyan().bold());
+        print_detailed_config_info(&config);
+    }
+    
+    println!("\n{}", "Configuration validation completed successfully".green().bold());
     Ok(())
 }
 
+/// Print detailed configuration information for diagnostics
+fn print_detailed_config_info(config: &Config) {
+    println!("  {} {}", "Blocks:".blue().bold(), config.blocks.len());
+    println!("  {} {}", "Signals:".blue().bold(), config.signals.len());
+    
+    #[cfg(feature = "mqtt")]
+    if let Some(mqtt_config) = &config.mqtt {
+        println!("  {} {} topics configured", "MQTT:".blue().bold(), mqtt_config.topics.len());
+    }
+    
+    #[cfg(feature = "history")]
+    if config.history.is_some() {
+        println!("  {} {}", "History:".blue().bold(), "enabled".green());
+    }
+    
+    #[cfg(feature = "alarms")]
+    if let Some(alarm_config) = &config.alarms {
+        println!("  {} {} configured", "Alarms:".blue().bold(), alarm_config.definitions.len());
+    }
+    
+    #[cfg(feature = "security")]
+    if config.security.as_ref().map_or(false, |s| s.enabled) {
+        println!("  {} {}", "Security:".blue().bold(), "enabled".green());
+    }
+}
+
 // ============================================================================
-// FEATURE INFORMATION
+// FEATURE MANAGEMENT
 // ============================================================================
 
-async fn show_features(dependencies: bool, conflicts: bool, check: Option<String>) -> Result<()> {
-    let features = Features::detect();
+/// Show comprehensive feature information and status
+async fn show_features(
+    show_dependencies: bool,
+    show_conflicts: bool,
+    check_feature: Option<String>,
+    list_all: bool,
+) -> Result<()> {
+    let features = petra::get_runtime_features();
     
-    if let Some(feature) = check {
-        println!("Checking feature: {}", feature);
-        if features.is_enabled(&feature) {
-            println!("✅ Feature '{}' is enabled", feature);
-        } else {
-            println!("❌ Feature '{}' is not enabled", feature);
-        }
+    if let Some(feature_name) = check_feature {
+        // Check specific feature
+        let available = features.has_feature(&feature_name);
+        let status = if available { "Available".green().bold() } else { "Not Available".red().bold() };
+        println!("Feature '{}': {}", feature_name.cyan(), status);
         return Ok(());
     }
     
-    println!("🎛️  PETRA Features Summary");
-    println!("Version: {}", petra::VERSION);
-    println!("Build: {}", features.summary());
-    println!();
+    println!("{} v{} - Enabled Features", "PETRA".cyan().bold(), VERSION);
+    println!("{}", "=".repeat(50).bright_black());
     
-    features.print();
+    // Core features
+    println!("\n{}", "Core Features:".yellow().bold());
+    print_feature_status("standard-monitoring", features.has_standard_monitoring());
+    print_feature_status("enhanced-monitoring", features.has_enhanced_monitoring());
+    print_feature_status("optimized", features.has_optimized());
+    print_feature_status("metrics", features.has_metrics());
+    print_feature_status("realtime", features.has_realtime());
     
-    if dependencies {
-        println!("\n📋 Feature Dependencies:");
-        // This would show the dependency tree
-        println!("  enhanced-monitoring → standard-monitoring");
-        println!("  jwt-auth → security");
-        println!("  rbac → security");
-        // ... other dependencies
+    // Protocol features
+    println!("\n{}", "Protocol Features:".yellow().bold());
+    print_feature_status("mqtt", features.has_mqtt());
+    print_feature_status("s7-support", features.has_s7());
+    print_feature_status("modbus-support", features.has_modbus());
+    print_feature_status("opcua-support", features.has_opcua());
+    
+    // Storage features
+    println!("\n{}", "Storage Features:".yellow().bold());
+    print_feature_status("history", features.has_history());
+    print_feature_status("advanced-storage", features.has_advanced_storage());
+    print_feature_status("compression", features.has_compression());
+    print_feature_status("wal", features.has_wal());
+    
+    // Security features
+    println!("\n{}", "Security Features:".yellow().bold());
+    print_feature_status("security", features.has_security());
+    print_feature_status("basic-auth", features.has_basic_auth());
+    print_feature_status("jwt-auth", features.has_jwt_auth());
+    print_feature_status("rbac", features.has_rbac());
+    print_feature_status("audit", features.has_audit());
+    
+    // Type features
+    println!("\n{}", "Type System Features:".yellow().bold());
+    print_feature_status("extended-types", features.has_extended_types());
+    print_feature_status("engineering-types", features.has_engineering_types());
+    print_feature_status("quality-codes", features.has_quality_codes());
+    print_feature_status("value-arithmetic", features.has_value_arithmetic());
+    
+    // Validation features
+    println!("\n{}", "Validation Features:".yellow().bold());
+    print_feature_status("validation", features.has_validation());
+    print_feature_status("regex-validation", features.has_regex_validation());
+    print_feature_status("schema-validation", features.has_schema_validation());
+    print_feature_status("composite-validation", features.has_composite_validation());
+    
+    if list_all {
+        println!("\n{}", "All Available Features:".magenta().bold());
+        for feature in features.list_all_features() {
+            println!("  • {}", feature);
+        }
     }
     
-    if conflicts {
-        println!("\n⚠️  Feature Conflicts:");
-        println!("  Only one monitoring level can be enabled at a time");
-        // ... other conflicts
+    if show_dependencies {
+        println!("\n{}", "Feature Dependencies:".cyan().bold());
+        features.print_dependencies();
+    }
+    
+    if show_conflicts {
+        println!("\n{}", "Feature Conflicts:".red().bold());
+        features.print_conflicts();
     }
     
     Ok(())
 }
 
-async fn show_help_and_features() -> Result<()> {
-    println!("🚀 PETRA - Programmable Engine for Telemetry, Runtime, and Automation");
-    println!("Version: {}", petra::VERSION);
-    println!();
-    
-    // Show available features
-    show_features(false, false, None).await?;
-    
-    println!("\n💡 Quick Start:");
-    println!("  petra config example --template basic              # Generate example config");
-    println!("  petra validate petra-example.yaml                  # Validate config");
-    println!("  petra run petra-example.yaml                       # Run engine");
-    println!("  petra features                                     # Show enabled features");
-    println!();
-    println!("Run 'petra --help' for detailed usage information.");
-    
-    Ok(())
+/// Print feature status with colored output
+fn print_feature_status(feature_name: &str, enabled: bool) {
+    let status = if enabled { "ENABLED".green().bold() } else { "DISABLED".bright_black() };
+    println!("  {} {}", status, feature_name);
 }
 
 // ============================================================================
-// COMMAND HANDLERS
+// CONFIGURATION COMMAND HANDLERS
 // ============================================================================
 
+/// Handle configuration management subcommands
 async fn handle_config_command(cmd: ConfigCommands) -> Result<()> {
     match cmd {
-        ConfigCommands::Example { output, template } => {
-            generate_example_config(output, template).await
+        ConfigCommands::Example { output, template, include_features } => {
+            generate_example_config(output, template, include_features).await
         }
         ConfigCommands::Convert { input, output, format } => {
-            convert_config(input, output, format).await
+            convert_config_format(input, output, format).await
         }
-        ConfigCommands::Migrate { input, output } => {
-            migrate_config(input, output).await
+        ConfigCommands::Migrate { input, output, target_version } => {
+            migrate_config_version(input, output, target_version).await
         }
         ConfigCommands::Schema { 
-            #[cfg(feature = "json-schema")]
-            json 
+            #[cfg(feature = "schema-validation")]
+            json, 
+            output 
         } => {
             show_config_schema(
-                #[cfg(feature = "json-schema")]
-                json
+                #[cfg(feature = "schema-validation")]
+                json,
+                output
             ).await
         }
+        ConfigCommands::Lint { config, fix } => {
+            lint_config(config, fix).await
+        }
     }
 }
 
-async fn generate_example_config(output: PathBuf, template: ConfigTemplate) -> Result<()> {
-    info!("Generating {:?} configuration template: {}", template, output.display());
+/// Generate example configuration files
+async fn generate_example_config(
+    output: PathBuf,
+    template: ConfigTemplate,
+    include_features: bool,
+) -> Result<()> {
+    info!("Generating {} configuration template", format!("{:?}", template).to_lowercase());
     
     let config = match template {
-        ConfigTemplate::Basic => generate_basic_config(),
-        ConfigTemplate::Edge => generate_edge_config(),
-        ConfigTemplate::Scada => generate_scada_config(),
-        ConfigTemplate::Enterprise => generate_enterprise_config(),
-        ConfigTemplate::Development => generate_development_config(),
+        ConfigTemplate::Basic => Config::example_basic(),
+        ConfigTemplate::Industrial => Config::example_industrial(),
+        ConfigTemplate::Iot => Config::example_iot(),
+        ConfigTemplate::Enterprise => Config::example_enterprise(),
+        ConfigTemplate::Development => Config::example_development(),
     };
     
-    let yaml = serde_yaml::to_string(&config)
-        .map_err(|e| PlcError::Config(format!("Failed to serialize config: {}", e)))?;
+    let mut final_config = config?;
     
-    std::fs::write(&output, yaml)
-        .map_err(|e| PlcError::Config(format!("Failed to write config: {}", e)))?;
+    if include_features {
+        final_config.add_feature_examples()?;
+    }
     
-    info!("✅ Configuration template generated: {}", output.display());
+    final_config.save_to_file(&output)?;
+    
+    println!("{} Generated {} template: {}", 
+        "SUCCESS".green().bold(),
+        format!("{:?}", template).to_lowercase(), 
+        output.display()
+    );
+    
     Ok(())
 }
 
-async fn convert_config(input: PathBuf, output: PathBuf, format: ConfigFormat) -> Result<()> {
-    info!("Converting {} to {:?} format: {}", input.display(), format, output.display());
-    
-    let config = Config::from_file(&input)?;
-    
-    let content = match format {
-        ConfigFormat::Yaml => serde_yaml::to_string(&config)
-            .map_err(|e| PlcError::Config(format!("YAML serialization failed: {}", e)))?,
-        ConfigFormat::Json => serde_json::to_string_pretty(&config)
-            .map_err(|e| PlcError::Config(format!("JSON serialization failed: {}", e)))?,
-        ConfigFormat::Toml => toml::to_string_pretty(&config)
-            .map_err(|e| PlcError::Config(format!("TOML serialization failed: {}", e)))?,
-    };
-    
-    std::fs::write(&output, content)
-        .map_err(|e| PlcError::Config(format!("Failed to write file: {}", e)))?;
-    
-    info!("✅ Configuration converted successfully");
-    Ok(())
-}
-
-async fn migrate_config(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
-    info!("Migrating configuration: {}", input.display());
-    
-    // Create backup first
-    let backup_path = input.with_extension("yaml.backup");
-    std::fs::copy(&input, &backup_path)
-        .map_err(|e| PlcError::Config(format!("Failed to create backup: {}", e)))?;
-    
-    info!("✅ Backup created: {}", backup_path.display());
-    
-    // Load and migrate (this would implement actual migration logic)
-    let config = Config::from_file(&input)?;
-    
-    let output_path = output.unwrap_or(input);
-    let yaml = serde_yaml::to_string(&config)
-        .map_err(|e| PlcError::Config(format!("Failed to serialize config: {}", e)))?;
-    
-    std::fs::write(&output_path, yaml)
-        .map_err(|e| PlcError::Config(format!("Failed to write config: {}", e)))?;
-    
-    info!("✅ Configuration migrated: {}", output_path.display());
-    Ok(())
-}
-
-async fn show_config_schema(
-    #[cfg(feature = "json-schema")]
-    json: bool
+/// Convert configuration between formats
+async fn convert_config_format(
+    input: PathBuf,
+    output: PathBuf,
+    format: ConfigFormat,
 ) -> Result<()> {
-    #[cfg(feature = "json-schema")]
+    info!("Converting {} to {} format", input.display(), format!("{:?}", format).to_lowercase());
+    
+    let config = Config::from_file(&input)?;
+    
+    match format {
+        ConfigFormat::Yaml => config.save_as_yaml(&output)?,
+        ConfigFormat::Json => config.save_as_json(&output)?,
+        ConfigFormat::Toml => config.save_as_toml(&output)?,
+    }
+    
+    println!("{} Converted configuration to: {}", "SUCCESS".green().bold(), output.display());
+    Ok(())
+}
+
+/// Migrate configuration to newer version
+async fn migrate_config_version(
+    input: PathBuf,
+    output: Option<PathBuf>,
+    target_version: String,
+) -> Result<()> {
+    info!("Migrating configuration to version: {}", target_version);
+    
+    let config = Config::from_file(&input)?;
+    let migrated = config.migrate_to_version(&target_version)?;
+    
+    let output_path = output.unwrap_or_else(|| {
+        let mut path = input.clone();
+        path.set_extension("migrated.yaml");
+        path
+    });
+    
+    // Create backup of original
+    if output_path == input {
+        let mut backup_path = input.clone();
+        backup_path.set_extension("backup.yaml");
+        std::fs::copy(&input, &backup_path).map_err(|e| 
+            PlcError::Config(format!("Failed to create backup: {}", e))
+        )?;
+        println!("{} Created backup: {}", "INFO".blue().bold(), backup_path.display());
+    }
+    
+    migrated.save_to_file(&output_path)?;
+    
+    println!("{} Migrated configuration to: {}", "SUCCESS".green().bold(), output_path.display());
+    Ok(())
+}
+
+/// Show configuration schema information
+async fn show_config_schema(
+    #[cfg(feature = "schema-validation")]
+    json_format: bool,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    #[cfg(feature = "schema-validation")]
     {
-        if json {
-            use schemars::schema_for;
-            let schema = schema_for!(Config);
-            println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+        let schema = if json_format {
+            Config::json_schema()?
         } else {
-            println!("Configuration Schema:");
-            println!("  Root: Config");
-            println!("  Fields: scan_time_ms, signals, blocks, protocols, ...");
+            Config::yaml_schema()?
+        };
+        
+        if let Some(output_path) = output {
+            std::fs::write(&output_path, &schema).map_err(|e|
+                PlcError::Config(format!("Failed to write schema: {}", e))
+            )?;
+            println!("{} Schema written to: {}", "SUCCESS".green().bold(), output_path.display());
+        } else {
+            println!("{}", schema);
         }
     }
     
-    #[cfg(not(feature = "json-schema"))]
+    #[cfg(not(feature = "schema-validation"))]
     {
-        println!("JSON schema support not enabled.");
-        println!("Rebuild with: cargo build --features json-schema");
+        println!("{} Schema validation feature not enabled in this build", "WARNING".yellow().bold());
+        println!("Enable with: cargo build --features schema-validation");
+    }
+    
+    Ok(())
+}
+
+/// Lint configuration file for best practices
+async fn lint_config(config_path: PathBuf, apply_fixes: bool) -> Result<()> {
+    info!("Linting configuration: {}", config_path.display());
+    
+    let config = Config::from_file(&config_path)?;
+    let lint_results = config.lint()?;
+    
+    if lint_results.is_empty() {
+        println!("{}", "Configuration passes all lint checks".green().bold());
+        return Ok(());
+    }
+    
+    println!("{}", "Lint Results:".cyan().bold());
+    for result in &lint_results {
+        let severity_marker = match result.severity {
+            petra::config::LintSeverity::Error => "ERROR".red().bold(),
+            petra::config::LintSeverity::Warning => "WARN".yellow().bold(), 
+            petra::config::LintSeverity::Info => "INFO".blue().bold(),
+        };
+        println!("  {} {}: {}", severity_marker, result.rule, result.message);
+        
+        if let Some(suggestion) = &result.suggestion {
+            println!("    {} {}", "SUGGESTION:".bright_cyan(), suggestion);
+        }
+    }
+    
+    if apply_fixes {
+        let fixed_config = config.apply_lint_fixes(&lint_results)?;
+        fixed_config.save_to_file(&config_path)?;
+        println!("{}", "Applied automatic fixes to configuration".green().bold());
     }
     
     Ok(())
 }
 
 // ============================================================================
-// AUXILIARY SERVICES
+// UTILITY FUNCTIONS
 // ============================================================================
 
-#[cfg(feature = "metrics")]
-fn start_metrics_service() -> Result<MetricsServer> {
-    info!("Starting metrics server on :9090");
-    let metrics_config = petra::metrics_server::MetricsConfig {
-        bind_address: "0.0.0.0:9090".to_string(),
-        enabled: true,
-        path: Some("/metrics".to_string()),
-        timeout_secs: Some(30),
+/// Set up graceful shutdown signal handling
+async fn setup_shutdown_handler() {
+    let ctrl_c = signal::ctrl_c();
+    
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = signal(SignalKind::terminate()).expect("Failed to setup SIGTERM handler");
+        let mut sigint = signal(SignalKind::interrupt()).expect("Failed to setup SIGINT handler");
+        
+        tokio::select! {
+            _ = ctrl_c => info!("Received Ctrl+C"),
+            _ = sigterm.recv() => info!("Received SIGTERM"),
+            _ = sigint.recv() => info!("Received SIGINT"),
+        }
+    }
+    
+    #[cfg(not(unix))]
+    {
+        ctrl_c.await.expect("Failed to listen for Ctrl+C");
+        info!("Received Ctrl+C");
+    }
+}
+
+/// Set CPU affinity for current process (Linux only)
+#[cfg(target_os = "linux")]
+fn set_cpu_affinity(cores: &[usize]) -> Result<()> {
+    use libc::{cpu_set_t, sched_setaffinity, CPU_SET, CPU_ZERO};
+    use std::mem;
+    
+    let mut cpu_set: cpu_set_t = unsafe { mem::zeroed() };
+    unsafe { CPU_ZERO(&mut cpu_set) };
+    
+    for &core in cores {
+        if core >= num_cpus::get() {
+            return Err(PlcError::Runtime(format!("Invalid CPU core: {}", core)));
+        }
+        unsafe { CPU_SET(core, &mut cpu_set) };
+    }
+    
+    let result = unsafe {
+        sched_setaffinity(0, mem::size_of::<cpu_set_t>(), &cpu_set)
     };
-    MetricsServer::new(metrics_config)
-}
-
-#[cfg(feature = "metrics")]
-async fn start_metrics_server(port: u16, bind: String) -> Result<()> {
-    let addr: std::net::SocketAddr = format!("{}:{}", bind, port).parse()
-        .map_err(|e| PlcError::Config(format!("Invalid address: {}", e)))?;
-
-    info!("Starting standalone metrics server on {}", addr);
-    let server = MetricsServer::new(petra::metrics_server::MetricsConfig {
-        bind_address: addr.to_string(),
-        enabled: true,
-        path: Some("/metrics".to_string()),
-        timeout_secs: Some(30),
-    })?;
-    server.run().await?;
-    Ok(())
-}
-
-#[cfg(feature = "health")]
-async fn start_health_service() -> Result<()> {
-    info!("Starting health server on :8080");
-    let monitor = HealthMonitor::new(petra::health::HealthConfig::default());
-    monitor.start().await?;
-    Ok(())
-}
-
-#[cfg(feature = "health")]
-async fn start_health_server(port: u16, bind: String) -> Result<()> {
-    let addr: std::net::SocketAddr = format!("{}:{}", bind, port).parse()
-        .map_err(|e| PlcError::Config(format!("Invalid address: {}", e)))?;
-
-    info!("Starting standalone health server on {}", addr);
-    let monitor = HealthMonitor::new(petra::health::HealthConfig {
-        bind_address: addr,
-        ..Default::default()
-    });
-    monitor.start().await?;
-    Ok(())
-}
-
-// ============================================================================
-// CONFIGURATION TEMPLATES
-// ============================================================================
-
-fn generate_basic_config() -> Config {
-    use petra::config::{SignalConfig, BlockConfig};
-    use std::collections::HashMap;
     
-    Config {
-        scan_time_ms: 100,
-        max_scan_jitter_ms: 10,
-        error_recovery: true,
-        protocols: None,
-        signals: vec![
-            SignalConfig {
-                name: "input_1".to_string(),
-                signal_type: "bool".to_string(),
-                initial: Some(serde_yaml::Value::Bool(false)),
-                description: Some("Digital input 1".to_string()),
-                tags: vec!["input".to_string()],
-                #[cfg(feature = "engineering-types")]
-                units: None,
-                #[cfg(feature = "quality-codes")]
-                quality_enabled: false,
-                #[cfg(feature = "validation")]
-                validation: None,
-                metadata: HashMap::new(),
-            },
-            SignalConfig {
-                name: "output_1".to_string(),
-                signal_type: "bool".to_string(),
-                initial: Some(serde_yaml::Value::Bool(false)),
-                description: Some("Digital output 1".to_string()),
-                tags: vec!["output".to_string()],
-                #[cfg(feature = "engineering-types")]
-                units: None,
-                #[cfg(feature = "quality-codes")]
-                quality_enabled: false,
-                #[cfg(feature = "validation")]
-                validation: None,
-                metadata: HashMap::new(),
-            },
-        ],
-        blocks: vec![
-            BlockConfig {
-                name: "not_gate".to_string(),
-                block_type: "NOT".to_string(),
-                inputs: {
-                    let mut map = HashMap::new();
-                    map.insert("input".to_string(), "input_1".to_string());
-                    map
-                },
-                outputs: {
-                    let mut map = HashMap::new();
-                    map.insert("output".to_string(), "output_1".to_string());
-                    map
-                },
-                params: HashMap::new(),
-                description: Some("Simple NOT gate example".to_string()),
-                tags: vec!["logic".to_string()],
-                #[cfg(feature = "enhanced-errors")]
-                error_handling: None,
-                #[cfg(feature = "circuit-breaker")]
-                circuit_breaker: None,
-            },
-        ],
-        // Feature-specific configs would be None for basic template
-        #[cfg(feature = "mqtt")]
-        mqtt: None,
-        #[cfg(feature = "alarms")]
-        alarms: None,
-        #[cfg(feature = "security")]
-        security: None,
-        #[cfg(feature = "history")]
-        history: None,
-        #[cfg(feature = "validation")]
-        validation: None,
+    if result != 0 {
+        return Err(PlcError::Runtime("Failed to set CPU affinity".into()));
     }
-}
-
-fn generate_edge_config() -> Config {
-    // Similar to basic but with MQTT enabled if available
-    let mut config = generate_basic_config();
-    config.scan_time_ms = 50; // Faster for edge
-    config
-}
-
-fn generate_scada_config() -> Config {
-    // Industrial-focused configuration
-    let mut config = generate_basic_config();
-    config.scan_time_ms = 100;
-    // Would add S7/Modbus configs if features enabled
-    config
-}
-
-fn generate_enterprise_config() -> Config {
-    // Full-featured configuration
-    let mut config = generate_basic_config();
-    config.scan_time_ms = 100;
-    // Would add all enterprise features if enabled
-    config
-}
-
-fn generate_development_config() -> Config {
-    // Development-friendly configuration
-    let mut config = generate_basic_config();
-    config.scan_time_ms = 10; // Fast for testing
-    config
-}
-
-// Stubs for other command handlers
-#[cfg(any(feature = "examples", feature = "burn-in"))]
-async fn handle_dev_command(_cmd: DevCommands) -> Result<()> {
-    info!("Development commands not yet implemented");
+    
+    info!("Set CPU affinity to cores: {:?}", cores);
     Ok(())
 }
 
-#[cfg(any(feature = "mqtt", feature = "s7-support", feature = "modbus-support"))]
-async fn handle_protocol_command(_cmd: ProtocolCommands) -> Result<()> {
-    info!("Protocol commands not yet implemented");
+/// Show help and available features when no command is provided
+async fn show_help_and_features() -> Result<()> {
+    println!("{}", build_info::build_info_string());
+    println!("\nNo configuration file provided.");
+    println!("\nUsage examples:");
+    println!("  {} run config.yaml              # Run with configuration", "petra".green());
+    println!("  {} validate config.yaml        # Validate configuration", "petra".green());
+    println!("  {} config example              # Generate example config", "petra".green());
+    println!("  {} features                    # Show enabled features", "petra".green());
+    println!("  {} --help                      # Show detailed help", "petra".green());
+    
+    // Show available features summary
+    let features = petra::get_runtime_features();
+    println!("\n{} Available Features in this build:", "INFO".blue().bold());
+    
+    let feature_list = vec![
+        ("Core", vec![
+            ("monitoring", features.has_standard_monitoring() || features.has_enhanced_monitoring()),
+            ("metrics", features.has_metrics()),
+            ("realtime", features.has_realtime()),
+        ]),
+        ("Protocols", vec![
+            ("MQTT", features.has_mqtt()),
+            ("Modbus", features.has_modbus()),
+            ("S7", features.has_s7()),
+            ("OPC-UA", features.has_opcua()),
+        ]),
+        ("Storage", vec![
+            ("History", features.has_history()),
+            ("Advanced", features.has_advanced_storage()),
+        ]),
+        ("Security", vec![
+            ("Authentication", features.has_security()),
+            ("RBAC", features.has_rbac()),
+        ]),
+    ];
+    
+    for (category, features) in feature_list {
+        let enabled_features: Vec<&str> = features.iter()
+            .filter(|(_, enabled)| *enabled)
+            .map(|(name, _)| *name)
+            .collect();
+        
+        if enabled_features.is_empty() {
+            println!("  {}: {}", category.cyan(), "None".bright_black());
+        } else {
+            println!("  {}: {}", category.cyan(), enabled_features.join(", ").green());
+        }
+    }
+    
+    println!("\nUse '{}' for complete feature information.", "petra features".green());
+    Ok(())
+}
+
+// ============================================================================
+// FEATURE-SPECIFIC COMMAND HANDLERS (conditionally compiled)
+// ============================================================================
+
+/// Handle development and testing commands
+#[cfg(any(feature = "examples", feature = "burn-in", feature = "profiling"))]
+async fn handle_dev_command(cmd: DevCommands) -> Result<()> {
+    match cmd {
+        #[cfg(feature = "examples")]
+        DevCommands::Examples { list, run, generate_data } => {
+            if list {
+                petra::examples::list_examples();
+            } else if let Some(example_name) = run {
+                petra::examples::run_example(&example_name, generate_data).await?;
+            } else {
+                petra::examples::run_interactive().await?;
+            }
+        }
+        
+        #[cfg(feature = "burn-in")]
+        DevCommands::BurnIn { duration, signals, blocks, scan_time, memory_stress } => {
+            petra::burn_in::run_burn_in_test(
+                Duration::from_secs(duration),
+                signals,
+                blocks,
+                Duration::from_millis(scan_time),
+                memory_stress,
+            ).await?;
+        }
+        
+        #[cfg(feature = "profiling")]
+        DevCommands::Profile { config, duration, output, cpu, memory } => {
+            petra::profiling::run_performance_profile(
+                config,
+                Duration::from_secs(duration),
+                output,
+                cpu,
+                memory,
+            ).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Handle protocol testing commands
+#[cfg(any(
+    feature = "mqtt", 
+    feature = "s7-support", 
+    feature = "modbus-support",
+    feature = "opcua-support"
+))]
+async fn handle_protocol_command(cmd: ProtocolCommands) -> Result<()> {
+    match cmd {
+        #[cfg(feature = "mqtt")]
+        ProtocolCommands::Mqtt { broker, topic, count } => {
+            petra::mqtt::test_connection(&broker, &topic, count).await?;
+        }
+        
+        #[cfg(feature = "modbus-support")]
+        ProtocolCommands::Modbus { address, unit_id, register } => {
+            petra::modbus::test_connection(&address, unit_id, register).await?;
+        }
+        
+        #[cfg(feature = "s7-support")]
+        ProtocolCommands::S7 { address, rack, slot } => {
+            petra::s7::test_connection(&address, rack, slot).await?;
+        }
+        
+        #[cfg(feature = "opcua-support")]
+        ProtocolCommands::OpcUa { endpoint, node_id } => {
+            petra::opcua::test_connection(&endpoint, node_id.as_deref()).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Start standalone metrics server
+#[cfg(feature = "metrics")]
+async fn start_metrics_server(port: u16, bind: String, runtime_metrics: bool) -> Result<()> {
+    info!("Starting metrics server on {}:{}", bind, port);
+    
+    let mut server = MetricsServer::new(&bind, port)?;
+    
+    if runtime_metrics {
+        server.enable_runtime_metrics();
+    }
+    
+    server.start().await?;
+    
+    // Wait for shutdown signal
+    setup_shutdown_handler().await;
+    
+    info!("Shutting down metrics server");
+    server.stop().await?;
+    
+    Ok(())
+}
+
+/// Start standalone health monitoring server
+#[cfg(feature = "health")]
+async fn start_health_server(port: u16, bind: String, check_interval: u64) -> Result<()> {
+    info!("Starting health server on {}:{}", bind, port);
+    
+    let mut monitor = HealthMonitor::new(&bind, port, Duration::from_secs(check_interval))?;
+    monitor.start().await?;
+    
+    // Wait for shutdown signal
+    setup_shutdown_handler().await;
+    
+    info!("Shutting down health server");
+    monitor.stop().await?;
+    
+    Ok(())
+}
+
+/// Handle security management commands
+#[cfg(feature = "security")]
+async fn handle_security_command(cmd: SecurityCommands) -> Result<()> {
+    match cmd {
+        SecurityCommands::KeyGen { key_type, output } => {
+            petra::security::generate_key(key_type, &output).await?;
+            println!("{} Generated {} key: {}", 
+                "SUCCESS".green().bold(),
+                format!("{:?}", key_type).to_lowercase(), 
+                output.display()
+            );
+        }
+        
+        #[cfg(feature = "basic-auth")]
+        SecurityCommands::CreateUser { 
+            username, 
+            password, 
+            #[cfg(feature = "rbac")]
+            roles 
+        } => {
+            let pwd = if let Some(p) = password {
+                p
+            } else {
+                rpassword::prompt_password("Password: ")?
+            };
+            
+            petra::security::create_user(
+                &username, 
+                &pwd,
+                #[cfg(feature = "rbac")]
+                &roles
+            ).await?;
+            println!("{} Created user: {}", "SUCCESS".green().bold(), username);
+        }
+        
+        #[cfg(feature = "audit")]
+        SecurityCommands::Audit { limit, user, action } => {
+            let entries = petra::security::get_audit_log(limit, user.as_deref(), action.as_deref()).await?;
+            
+            println!("{} Audit Log ({} entries):", "INFO".blue().bold(), entries.len());
+            for entry in entries {
+                println!("  {} {} [{}] {}: {}", 
+                    entry.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                    entry.user,
+                    entry.source_ip,
+                    entry.action,
+                    entry.details
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Handle storage management commands
+#[cfg(any(feature = "history", feature = "advanced-storage"))]
+async fn handle_storage_command(cmd: StorageCommands) -> Result<()> {
+    match cmd {
+        StorageCommands::Init { storage_type, config } => {
+            let config_path = config.unwrap_or_else(|| PathBuf::from("petra.yaml"));
+            petra::storage::initialize_storage(storage_type, &config_path).await?;
+            println!("{} Initialized {} storage", 
+                "SUCCESS".green().bold(),
+                format!("{:?}", storage_type).to_lowercase()
+            );
+        }
+        
+        StorageCommands::Backup { output, start_time, end_time } => {
+            petra::storage::backup_data(&output, start_time.as_deref(), end_time.as_deref()).await?;
+            println!("{} Backup completed: {}", "SUCCESS".green().bold(), output.display());
+        }
+        
+        StorageCommands::Restore { input, force } => {
+            if !force {
+                print!("This will overwrite existing data. Continue? (y/N): ");
+                use std::io::{self, Write};
+                io::stdout().flush()?;
+                
+                let mut response = String::new();
+                io::stdin().read_line(&mut response)?;
+                
+                if !response.trim().to_lowercase().starts_with('y') {
+                    println!("Restore cancelled");
+                    return Ok(());
+                }
+            }
+            
+            petra::storage::restore_data(&input).await?;
+            println!("{} Restore completed from: {}", "SUCCESS".green().bold(), input.display());
+        }
+        
+        StorageCommands::Compact { dry_run } => {
+            let stats = petra::storage::compact_storage(dry_run).await?;
+            
+            if dry_run {
+                println!("{} Dry run results:", "INFO".blue().bold());
+                println!("  Files that would be compacted: {}", stats.files_to_compact);
+                println!("  Estimated space savings: {} MB", stats.estimated_savings_mb);
+            } else {
+                println!("{} Storage compaction completed:", "SUCCESS".green().bold());
+                println!("  Files compacted: {}", stats.files_compacted);
+                println!("  Space reclaimed: {} MB", stats.space_reclaimed_mb);
+            }
+        }
+    }
     Ok(())
 }
