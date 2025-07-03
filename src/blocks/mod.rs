@@ -478,7 +478,7 @@ where
 /// Helper to get boolean parameter
 pub fn get_bool_parameter(config: &BlockConfig, param_name: &str, default: Option<bool>) -> Result<bool> {
     match config.params.get(param_name) {
-        Some(serde_yaml::Value::Bool(b)) => Ok(*b),
+        Some(serde_yaml::Value::Bool(b)) => Ok(b.clone()),
         Some(serde_yaml::Value::String(s)) => {
             match s.to_lowercase().as_str() {
                 "true" | "yes" | "on" | "1" => Ok(true),
