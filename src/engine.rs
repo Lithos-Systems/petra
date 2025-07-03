@@ -1,13 +1,12 @@
 // src/engine.rs - Fixed engine implementation with Arc<Mutex<>> for async safety
 use crate::{
     blocks::{Block, create_block},
-    config::{Config, EngineConfig},
+    config::Config,
     error::{PlcError, Result},
     signal::SignalBus,
     value::Value,
 };
 use std::{
-    collections::{HashMap, VecDeque},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
@@ -15,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{
-    sync::{Mutex, RwLock, mpsc},
+    sync::{Mutex, RwLock},
     time::{interval, MissedTickBehavior},
 };
 use tracing::{info, warn, error, debug, trace};
@@ -85,13 +84,13 @@ pub struct Engine {
     
     // Enhanced monitoring data
     #[cfg(feature = "enhanced-monitoring")]
-    scan_times: Arc<RwLock<VecDeque<Duration>>>,
+    scan_times: Arc<RwLock<std::collections::VecDeque<Duration>>>,
     #[cfg(feature = "enhanced-monitoring")]
     execution_order: Arc<RwLock<Vec<String>>>,
     #[cfg(feature = "enhanced-monitoring")]
     failed_blocks: Arc<RwLock<Vec<String>>>,
     #[cfg(feature = "enhanced-monitoring")]
-    block_execution_times: Arc<RwLock<HashMap<String, Duration>>>,
+    block_execution_times: Arc<RwLock<std::collections::HashMap<String, Duration>>>,
     
     // Circuit breaker integration
     #[cfg(feature = "circuit-breaker")]
@@ -217,13 +216,13 @@ impl Engine {
             stats: Arc::new(RwLock::new(stats)),
             
             #[cfg(feature = "enhanced-monitoring")]
-            scan_times: Arc::new(RwLock::new(VecDeque::with_capacity(1000))),
+            scan_times: Arc::new(RwLock::new(std::collections::VecDeque::with_capacity(1000))),
             #[cfg(feature = "enhanced-monitoring")]
             execution_order: Arc::new(RwLock::new(Vec::new())),
             #[cfg(feature = "enhanced-monitoring")]
             failed_blocks: Arc::new(RwLock::new(Vec::new())),
             #[cfg(feature = "enhanced-monitoring")]
-            block_execution_times: Arc::new(RwLock::new(HashMap::new())),
+            block_execution_times: Arc::new(RwLock::new(std::collections::HashMap::new())),
             
             #[cfg(feature = "circuit-breaker")]
             block_executor: None,
@@ -284,7 +283,7 @@ impl Engine {
         #[cfg(feature = "enhanced-monitoring")]
         let mut failed_blocks = Vec::new();
         #[cfg(feature = "enhanced-monitoring")]
-        let mut block_times = HashMap::new();
+        let mut block_times = std::collections::HashMap::new();
 
         // Lock blocks for the duration of the scan cycle
         let mut blocks = self.blocks.lock().await;
@@ -480,7 +479,7 @@ impl Engine {
     
     #[cfg(feature = "enhanced-monitoring")]
     /// Get block execution times from last scan
-    pub async fn block_execution_times(&self) -> HashMap<String, Duration> {
+    pub async fn block_execution_times(&self) -> std::collections::HashMap<String, Duration> {
         self.block_execution_times.read().await.clone()
     }
     
@@ -547,7 +546,7 @@ mod tests {
                     quality_enabled: false,
                     #[cfg(feature = "validation")]
                     validation: None,
-                    metadata: HashMap::new(),
+                    metadata: std::collections::HashMap::new(),
                 },
             ],
             blocks: vec![],

@@ -7,7 +7,6 @@
 use crate::{error::*, signal::SignalBus, value::Value};
 use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, QoS, Packet};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn, error, debug, trace};
@@ -15,10 +14,10 @@ use tracing::{info, warn, error, debug, trace};
 #[cfg(feature = "mqtt-persistence")]
 use std::path::PathBuf;
 
-#[cfg(any(feature = "security", feature = "mqtt-tls"))]
+#[cfg(feature = "mqtt-tls")]
 use rumqttc::{TlsConfiguration, Transport};
 
-#[cfg(any(feature = "security", feature = "mqtt-tls"))]
+#[cfg(feature = "mqtt-tls")]
 use std::fs::File;
 
 // ============================================================================
@@ -70,7 +69,7 @@ pub struct MqttConfig {
     pub persistence_path: Option<PathBuf>,
     
     /// TLS configuration (requires security feature)
-    #[cfg(any(feature = "security", feature = "mqtt-tls"))]
+    #[cfg(feature = "mqtt-tls")]
     #[serde(default)]
     pub tls: Option<TlsConfig>,
     
@@ -132,7 +131,7 @@ pub struct MqttPublication {
 fn default_qos() -> u8 { 1 }
 
 /// TLS configuration for secure MQTT connections
-#[cfg(any(feature = "security", feature = "mqtt-tls"))]
+#[cfg(feature = "mqtt-tls")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TlsConfig {
     /// Path to CA certificate file
@@ -175,7 +174,7 @@ pub struct Mqtt5Properties {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformConfig {
     pub transform_type: TransformType,
-    pub parameters: HashMap<String, serde_json::Value>,
+    pub parameters: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Available data transformation types
@@ -222,7 +221,7 @@ pub struct RemoteBrokerConfig {
     pub username: Option<String>,
     pub password: Option<String>,
     
-    #[cfg(any(feature = "security", feature = "mqtt-tls"))]
+    #[cfg(feature = "mqtt-tls")]
     pub tls: Option<TlsConfig>,
 }
 
@@ -264,7 +263,7 @@ impl From<crate::config::MqttConfig> for MqttConfig {
             publications: Vec::new(),  // Would need to be configured separately
             #[cfg(feature = "mqtt-persistence")]
             persistence_path: None,
-            #[cfg(any(feature = "security", feature = "mqtt-tls"))]
+            #[cfg(feature = "mqtt-tls")]
             tls: cfg.tls.map(|t| TlsConfig {
                 ca_cert: t.ca_cert,
                 client_cert: t.client_cert,
@@ -368,7 +367,7 @@ impl MqttClient {
         }
         
         // TLS configuration (requires security feature)
-        #[cfg(any(feature = "security", feature = "mqtt-tls"))]
+        #[cfg(feature = "mqtt-tls")]
         if let Some(tls_config) = &config.tls {
             let tls = create_tls_config(tls_config)?;
             mqtt_options.set_transport(Transport::tls_with_config(tls));
@@ -742,11 +741,13 @@ fn topic_matches(pattern: &str, topic: &str) -> bool {
 }
 
 /// Create TLS configuration for secure MQTT connections
-#[cfg(any(feature = "security", feature = "mqtt-tls"))]
+#[cfg(feature = "mqtt-tls")]
 fn create_tls_config(config: &TlsConfig) -> Result<TlsConfiguration> {
     let mut tls_config = TlsConfiguration::Simple {
         ca: Vec::new(),
-        alpn: config.alpn_protocols.clone(),
+        alpn: config.alpn_protocols.clone().map(|protocols| {
+            protocols.into_iter().map(|p| p.into_bytes()).collect()
+        }),
         client_auth: None,
     };
     
@@ -876,7 +877,7 @@ impl MqttBridge {
                 publications: Vec::new(),
                 #[cfg(feature = "mqtt-persistence")]
                 persistence_path: None,
-                #[cfg(any(feature = "security", feature = "mqtt-tls"))]
+                #[cfg(feature = "mqtt-tls")]
                 tls: remote_broker.tls.clone(),
                 #[cfg(feature = "mqtt-5")]
                 mqtt5_properties: None,

@@ -1,8 +1,7 @@
 // src/blocks/timer.rs - Timer block implementations
-use super::{Block, get_numeric_parameter, get_bool_parameter, BlockConfig};
+use super::{Block, get_numeric_parameter, BlockConfig};
 use crate::{error::{PlcError, Result}, signal::SignalBus, value::Value};
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
 
 // ============================================================================
 // TON - Timer ON Delay
@@ -306,6 +305,19 @@ pub fn create_timer_pulse_block(config: &BlockConfig) -> Result<Box<dyn Block>> 
     }))
 }
 
+// Add alias helper functions expected by mod.rs
+pub fn create_on_delay_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    create_timer_on_block(config)
+}
+
+pub fn create_off_delay_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    create_timer_off_block(config)
+}
+
+pub fn create_pulse_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
+    create_timer_pulse_block(config)
+}
+
 // ============================================================================
 // CTU - Count Up
 // ============================================================================
@@ -498,6 +510,7 @@ pub fn create_count_down_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
 mod tests {
     use super::*;
     use crate::signal::SignalBus;
+    use std::collections::HashMap;
     
     fn create_test_config(block_type: &str, preset_ms: u64) -> BlockConfig {
         let mut config = BlockConfig {

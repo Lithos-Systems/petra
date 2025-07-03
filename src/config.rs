@@ -1,5 +1,5 @@
 // src/config.rs - Fixed configuration with missing MQTT fields
-use crate::{error::{PlcError, Result}, value::Value};
+use crate::error::{PlcError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

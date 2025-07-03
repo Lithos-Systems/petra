@@ -13,6 +13,36 @@ use std::fmt;
 pub struct RuntimeFeatures {
     enabled: HashSet<String>,
     categories: HashMap<String, Vec<String>>,
+    pub core: CoreFeatures,
+    pub protocols: ProtocolFeatures,
+    pub storage: StorageFeatures,
+    pub security: SecurityFeatures,
+}
+
+pub struct CoreFeatures {
+    pub standard_monitoring: bool,
+    pub enhanced_monitoring: bool,
+    pub optimized: bool,
+    pub metrics: bool,
+}
+
+pub struct ProtocolFeatures {
+    pub mqtt: bool,
+    pub s7: bool,
+    pub modbus: bool,
+    pub opcua: bool,
+}
+
+pub struct StorageFeatures {
+    pub history: bool,
+    pub advanced: bool,
+    pub wal: bool,
+}
+
+pub struct SecurityFeatures {
+    pub security: bool,
+    pub jwt_auth: bool,
+    pub rbac: bool,
 }
 
 impl RuntimeFeatures {
@@ -238,7 +268,33 @@ impl RuntimeFeatures {
             categories.entry("Blocks".to_string()).or_default().push("ml-blocks".to_string());
         }
         
-        Self { enabled, categories }
+        let core = CoreFeatures {
+            standard_monitoring: cfg!(feature = "standard-monitoring"),
+            enhanced_monitoring: cfg!(feature = "enhanced-monitoring"),
+            optimized: cfg!(feature = "optimized"),
+            metrics: cfg!(feature = "metrics"),
+        };
+
+        let protocols = ProtocolFeatures {
+            mqtt: cfg!(feature = "mqtt"),
+            s7: cfg!(feature = "s7-support"),
+            modbus: cfg!(feature = "modbus-support"),
+            opcua: cfg!(feature = "opcua-support"),
+        };
+
+        let storage = StorageFeatures {
+            history: cfg!(feature = "history"),
+            advanced: cfg!(feature = "advanced-storage"),
+            wal: cfg!(feature = "wal"),
+        };
+
+        let security = SecurityFeatures {
+            security: cfg!(feature = "security"),
+            jwt_auth: cfg!(feature = "jwt-auth"),
+            rbac: cfg!(feature = "rbac"),
+        };
+
+        Self { enabled, categories, core, protocols, storage, security }
     }
     
     /// Check if a feature is enabled

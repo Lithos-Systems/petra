@@ -2,7 +2,7 @@
 use crate::{error::{PlcError, Result}, value::Value};
 use dashmap::DashMap;
 use std::sync::Arc;
-use tracing::{debug, trace};
+use tracing::trace;
 
 #[cfg(feature = "quality-codes")]
 use crate::value::Quality;

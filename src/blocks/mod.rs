@@ -33,10 +33,8 @@ use crate::{
     config::BlockConfig,
     error::{PlcError, Result},
     signal::SignalBus,
-    value::Value,
 };
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 
 #[cfg(feature = "enhanced-monitoring")]
 use std::time::{Duration, Instant};
