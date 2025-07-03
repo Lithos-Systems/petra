@@ -1,6 +1,8 @@
+// benches/engine_performance.rs - Fixed version
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use petra::config::{BlockConfig, SignalConfig};
-use petra::{Config, Engine, SignalBus, Value};
+use petra::config::{BlockConfig, SignalConfig, Config};
+use petra::{Engine, SignalBus, Value};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -8,12 +10,15 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
     let mut signals = Vec::new();
     let mut blocks = Vec::new();
 
-    // Create signals
+    // Create signals with all required fields
     for i in 0..num_signals {
         signals.push(SignalConfig {
             name: format!("signal_{}", i),
             signal_type: "float".to_string(),
-            initial: serde_yaml::Value::from(0.0f64),
+            description: format!("Test signal {}", i),
+            initial: Some(serde_yaml::Value::from(0.0f64)),
+            metadata: HashMap::new(),
+            tags: vec![],
         });
     }
 
@@ -35,9 +40,11 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
         blocks.push(BlockConfig {
             name: format!("block_{}", i),
             block_type: "AND".to_string(),
+            description: format!("Test AND block {}", i),
             inputs,
             outputs,
             params: HashMap::new(),
+            tags: vec![],
         });
     }
 
@@ -45,20 +52,20 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
         signals,
         blocks,
         scan_time_ms: 50,
-        mqtt: Default::default(),
-        s7: None,
-        alarms: None,
+        max_scan_jitter_ms: 50,
+        error_recovery: true,
+        // Feature-gated fields
+        #[cfg(feature = "mqtt")]
+        mqtt: None,
+        #[cfg(feature = "security")]
         security: None,
-        #[cfg(feature = "web")]
-        twilio: None,
         #[cfg(feature = "history")]
         history: None,
-        #[cfg(feature = "advanced-storage")]
-        storage: None,
-        #[cfg(feature = "opcua-support")]
-        opcua: None,
-        #[cfg(feature = "modbus-support")]
-        modbus: None,
+        #[cfg(feature = "alarms")]
+        alarms: None,
+        #[cfg(feature = "web")]
+        web: None,
+        protocols: None,
     }
 }
 
@@ -70,18 +77,18 @@ fn benchmark_scan_performance(c: &mut Criterion) {
     // Test different scales
     for (num_signals, num_blocks) in &[(100, 10), (1000, 100), (10000, 1000)] {
         let config = create_benchmark_config(*num_signals, *num_blocks);
-        let mut engine = Engine::new(config).expect("Failed to create engine");
+        let engine = Engine::new(config).expect("Failed to create engine");
 
         group.throughput(Throughput::Elements(*num_blocks as u64));
         group.bench_with_input(
             BenchmarkId::new(
                 "signals_and_blocks",
-                format!("{}/{}", num_signals, num_blocks),
+                format!("{}_signals_{}_blocks", num_signals, num_blocks),
             ),
-            &(num_signals, num_blocks),
+            &(*num_signals, *num_blocks),
             |b, _| {
                 b.iter(|| {
-                    engine.execute_scan_cycle();
+                    black_box(engine.scan_once());
                 });
             },
         );
@@ -92,47 +99,61 @@ fn benchmark_scan_performance(c: &mut Criterion) {
 
 fn benchmark_signal_bus_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("signal_bus");
-    group.measurement_time(Duration::from_secs(5));
 
-    let bus = SignalBus::new();
+    // Benchmark signal writes
+    group.bench_function("write_1000_signals", |b| {
+        let bus = SignalBus::new();
 
-    // Pre-populate signals
-    for i in 0..1000 {
-        bus.set(&format!("signal_{}", i), Value::Float(0.0))
-            .unwrap();
-    }
-
-    group.bench_function("write_single", |b| {
-        let mut counter = 0;
         b.iter(|| {
-            let _ = bus.set(
-                &format!("signal_{}", counter % 1000),
-                Value::Float(black_box(counter as f64)),
-            );
-            counter += 1;
-        });
-    });
-
-    group.bench_function("read_single", |b| {
-        let mut counter = 0;
-        b.iter(|| {
-            let _ = bus.get(&format!("signal_{}", counter % 1000));
-            counter += 1;
-        });
-    });
-
-    group.bench_function("batch_write_10", |b| {
-        b.iter(|| {
-            let updates: Vec<(String, Value)> = (0..10)
-                .map(|i| (format!("signal_{}", i), Value::Float(i as f64)))
-                .collect();
-            for (name, value) in &updates {
-                let _ = bus.set(name, value.clone());
+            for i in 0..1000 {
+                bus.set(&format!("signal_{}", i), Value::Float(black_box(i as f64)))
+                    .unwrap();
             }
         });
     });
 
-    group.bench_function("concurrent_read_write", |b| {
+    // Benchmark signal reads
+    group.bench_function("read_1000_signals", |b| {
+        let bus = SignalBus::new();
+
+        // Pre-populate signals
+        for i in 0..1000 {
+            bus.set(&format!("signal_{}", i), Value::Float(i as f64))
+                .unwrap();
+        }
+
+        b.iter(|| {
+            for i in 0..1000 {
+                black_box(bus.get(&format!("signal_{}", i)).unwrap());
+            }
+        });
+    });
+
+    // Benchmark atomic updates
+    group.bench_function("atomic_update_100_signals", |b| {
+        let bus = SignalBus::new();
+
+        // Pre-populate
+        for i in 0..100 {
+            bus.set(&format!("counter_{}", i), Value::Integer(0))
+                .unwrap();
+        }
+
+        b.iter(|| {
+            for i in 0..100 {
+                bus.update(&format!("counter_{}", i), |old| {
+                    match old {
+                        Some(Value::Integer(n)) => Value::Integer(n + 1),
+                        _ => Value::Integer(1),
+                    }
+                })
+                .unwrap();
+            }
+        });
+    });
+
+    // Benchmark concurrent access
+    group.bench_function("concurrent_access", |b| {
         use std::sync::Arc;
         use std::thread;
 
@@ -182,7 +203,7 @@ fn benchmark_signal_bus_operations(c: &mut Criterion) {
 }
 
 fn benchmark_block_execution(c: &mut Criterion) {
-    use petra::block::*;
+    use petra::blocks::create_block;
 
     let mut group = c.benchmark_group("block_execution");
     let bus = SignalBus::new();
@@ -194,18 +215,18 @@ fn benchmark_block_execution(c: &mut Criterion) {
     bus.set("float_in", Value::Float(50.0)).unwrap();
     bus.set("float_out", Value::Float(0.0)).unwrap();
 
-    // Create blocks directly using the helper
-
     // AND block
     let and_config = BlockConfig {
         name: "test_and".to_string(),
         block_type: "AND".to_string(),
+        description: "Test AND block".to_string(),
         inputs: HashMap::from([
             ("in1".to_string(), "input1".to_string()),
             ("in2".to_string(), "input2".to_string()),
         ]),
         outputs: HashMap::from([("out".to_string(), "output".to_string())]),
         params: HashMap::new(),
+        tags: vec![],
     };
 
     let mut and_block = create_block(&and_config).expect("Failed to create AND block");
@@ -219,13 +240,15 @@ fn benchmark_block_execution(c: &mut Criterion) {
     // Math block (more complex)
     let math_config = BlockConfig {
         name: "test_math".to_string(),
-        block_type: "Math".to_string(),
+        block_type: "MUL".to_string(),  // Use MUL instead of Math
+        description: "Test multiplication block".to_string(),
         inputs: HashMap::from([
-            ("a".to_string(), "float_in".to_string()),
-            ("b".to_string(), "2.0".to_string()),
+            ("in1".to_string(), "float_in".to_string()),
+            ("in2".to_string(), "float_in".to_string()),
         ]),
-        outputs: HashMap::from([("result".to_string(), "float_out".to_string())]),
-        params: HashMap::from([("operation".to_string(), serde_yaml::Value::from("multiply"))]),
+        outputs: HashMap::from([("out".to_string(), "float_out".to_string())]),
+        params: HashMap::new(),
+        tags: vec![],
     };
 
     let mut math_block = create_block(&math_config).expect("Failed to create Math block");
@@ -291,58 +314,7 @@ fn benchmark_history_write(c: &mut Criterion) {
     let _ = std::fs::remove_dir_all("/tmp/petra_bench_history");
 }
 
-#[cfg(feature = "enhanced")]
-fn benchmark_enhanced_features(c: &mut Criterion) {
-    use petra::{EnhancedSignalBus, SignalBusConfig};
-    use std::time::Duration;
-
-    let mut group = c.benchmark_group("enhanced_features");
-
-    let config = SignalBusConfig {
-        max_signals: 10000,
-        signal_ttl: Duration::from_secs(3600),
-        cleanup_interval: Duration::from_secs(60),
-        hot_signal_threshold: 100,
-    };
-
-    let bus = EnhancedSignalBus::new(config);
-
-    // Pre-populate
-    for i in 0..1000 {
-        bus.set(&format!("signal_{}", i), Value::Float(0.0))
-            .unwrap();
-    }
-
-    // Make a signal "hot"
-    for _ in 0..200 {
-        let _ = bus.get("hot_signal");
-    }
-
-    group.bench_function("enhanced_write_hot_signal", |b| {
-        b.iter(|| {
-            bus.set("hot_signal", Value::Float(black_box(42.0)))
-                .unwrap();
-        });
-    });
-
-    group.bench_function("enhanced_read_hot_signal", |b| {
-        b.iter(|| {
-            let _ = bus.get("hot_signal").unwrap();
-        });
-    });
-
-    group.bench_function("enhanced_cold_signal", |b| {
-        let mut counter = 0;
-        b.iter(|| {
-            let signal = format!("cold_signal_{}", counter % 100);
-            let _ = bus.get(&signal);
-            counter += 1;
-        });
-    });
-
-    group.finish();
-}
-
+// Only define the benches once based on features
 #[cfg(feature = "history")]
 criterion_group!(
     benches,
@@ -360,11 +332,4 @@ criterion_group!(
     benchmark_block_execution,
 );
 
-#[cfg(feature = "enhanced")]
-criterion_group!(enhanced_benches, benchmark_enhanced_features);
-
-#[cfg(not(feature = "enhanced"))]
 criterion_main!(benches);
-
-#[cfg(feature = "enhanced")]
-criterion_main!(benches, enhanced_benches);
