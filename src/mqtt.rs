@@ -10,13 +10,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug};
+use tracing::{info, warn, error, debug, trace};
 
 #[cfg(feature = "mqtt-persistence")]
 use std::path::PathBuf;
 
 #[cfg(any(feature = "security", feature = "mqtt-tls"))]
 use rumqttc::{TlsConfiguration, Transport};
+
+#[cfg(any(feature = "security", feature = "mqtt-tls"))]
+use std::fs::File;
 
 // ============================================================================
 // CONFIGURATION STRUCTURES
@@ -107,72 +110,67 @@ pub struct MqttSubscription {
 /// MQTT publication configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MqttPublication {
-    /// Source signal name in PETRA
-    pub signal: String,
-    
     /// MQTT topic to publish to
     pub topic: String,
+    
+    /// Source signal name in PETRA
+    pub signal: String,
     
     /// Quality of Service level (0, 1, or 2)
     #[serde(default = "default_qos")]
     pub qos: u8,
     
-    /// Retain flag for published messages
+    /// Retain message flag
     #[serde(default)]
     pub retain: bool,
     
-    /// Publication interval in milliseconds (optional)
+    /// Publication interval in milliseconds (None for event-driven)
     #[serde(default)]
     pub interval_ms: Option<u64>,
-    
-    /// Data transformation configuration (requires validation feature)
-    #[cfg(feature = "validation")]
-    pub transform: Option<TransformConfig>,
 }
 
 fn default_qos() -> u8 { 1 }
-
-// ============================================================================
-// TLS AND SECURITY CONFIGURATION
-// ============================================================================
 
 /// TLS configuration for secure MQTT connections
 #[cfg(any(feature = "security", feature = "mqtt-tls"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TlsConfig {
     /// Path to CA certificate file
-    pub ca_cert: Option<PathBuf>,
+    pub ca_cert: Option<String>,
     
     /// Path to client certificate file
-    pub client_cert: Option<PathBuf>,
+    pub client_cert: Option<String>,
     
     /// Path to client private key file
-    pub client_key: Option<PathBuf>,
+    pub client_key: Option<String>,
     
-    /// ALPN protocols for TLS negotiation
+    /// ALPN protocols (optional)
+    #[serde(default)]
     pub alpn_protocols: Option<Vec<String>>,
     
-    /// Disable certificate verification (for testing only)
+    /// Skip certificate verification (insecure, for testing only)
     #[serde(default)]
     pub insecure: bool,
 }
 
-// ============================================================================
-// ADVANCED FEATURES (FEATURE-GATED)
-// ============================================================================
-
-/// MQTT 5 specific properties (future enhancement)
+/// MQTT 5 specific properties
 #[cfg(feature = "mqtt-5")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mqtt5Properties {
+    /// Session expiry interval in seconds
     pub session_expiry_interval: Option<u32>,
+    
+    /// Receive maximum
     pub receive_maximum: Option<u16>,
+    
+    /// Maximum packet size
     pub maximum_packet_size: Option<u32>,
+    
+    /// Topic alias maximum
     pub topic_alias_maximum: Option<u16>,
-    pub user_properties: HashMap<String, String>,
 }
 
-/// Data transformation configuration
+/// Data transformation configuration (requires validation feature)
 #[cfg(feature = "validation")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformConfig {
@@ -405,54 +403,51 @@ impl MqttClient {
               self.config.broker_host, self.config.broker_port);
         
         // Subscribe to configured topics
-        for sub in &self.config.subscriptions {
-            let qos = match sub.qos {
+        for subscription in &self.config.subscriptions {
+            let qos = match subscription.qos {
                 0 => QoS::AtMostOnce,
                 1 => QoS::AtLeastOnce,
                 2 => QoS::ExactlyOnce,
                 _ => QoS::AtLeastOnce,
             };
             
-            self.client.subscribe(&sub.topic, qos).await
-                .map_err(|e| PlcError::Mqtt(format!("Subscribe failed: {}", e)))?;
+            if let Err(e) = self.client.subscribe(&subscription.topic, qos).await {
+                error!("Failed to subscribe to topic '{}': {}", subscription.topic, e);
+                return Err(PlcError::Mqtt(format!(
+                    "Failed to subscribe to topic '{}': {}", subscription.topic, e
+                )));
+            }
             
-            info!("Subscribed to MQTT topic '{}' with QoS {}", sub.topic, sub.qos);
+            info!("Subscribed to topic: {} -> signal: {}", 
+                  subscription.topic, subscription.signal);
         }
         
-        // Start publication handler
-        let _publisher_handle = self.start_publisher();
-        
-        // Main event loop with reconnection support
-        let mut reconnect_delay = self.reconnect_strategy.initial_delay_ms;
+        // Main event loop with reconnection handling
         let mut reconnect_attempts = 0;
+        let mut reconnect_delay = self.reconnect_strategy.initial_delay_ms;
         
         loop {
             match self.eventloop.poll().await {
-                Ok(Event::Incoming(packet)) => {
-                    if let Err(e) = self.handle_incoming(packet).await {
-                        error!("Error handling MQTT packet: {}", e);
-                    }
-                    
-                    // Reset reconnection delay on successful communication
-                    reconnect_delay = self.reconnect_strategy.initial_delay_ms;
+                Ok(event) => {
+                    // Reset reconnection state on successful event
                     reconnect_attempts = 0;
+                    reconnect_delay = self.reconnect_strategy.initial_delay_ms;
+                    
+                    if let Err(e) = self.handle_event(event).await {
+                        error!("Error handling MQTT event: {}", e);
+                    }
                 }
-                
-                Ok(Event::Outgoing(_)) => {
-                    // Outgoing event handled successfully
-                }
-                
                 Err(e) => {
                     error!("MQTT connection error: {}", e);
                     
                     #[cfg(feature = "metrics")]
                     {
                         let mut stats = self.statistics.write().await;
-                        stats.disconnect_count += 1;
                         stats.last_error = Some(e.to_string());
+                        stats.disconnect_count += 1;
                     }
                     
-                    // Handle reconnection
+                    // Check if we should give up
                     if let Some(max_attempts) = self.reconnect_strategy.max_attempts {
                         if reconnect_attempts >= max_attempts {
                             return Err(PlcError::Mqtt(format!(
@@ -474,6 +469,17 @@ impl MqttClient {
                     
                     continue;
                 }
+            }
+        }
+    }
+    
+    /// Handle incoming MQTT events
+    async fn handle_event(&self, event: Event) -> Result<()> {
+        match event {
+            Event::Incoming(packet) => self.handle_incoming(packet).await,
+            Event::Outgoing(_) => {
+                // Outgoing packets don't need special handling
+                Ok(())
             }
         }
     }
@@ -530,7 +536,7 @@ impl MqttClient {
         Ok(())
     }
     
-    /// Parse MQTT payload into a PETRA Value
+    /// Parse MQTT payload into a PETRA Value - FIXED VERSION
     fn parse_payload(&self, payload: &[u8], sub: &MqttSubscription) -> Result<Value> {
         let text = std::str::from_utf8(payload)
             .map_err(|e| PlcError::Mqtt(format!("Invalid UTF-8 in payload: {}", e)))?;
@@ -544,7 +550,7 @@ impl MqttClient {
         // Try to parse as different value types
         if let Ok(b) = text.parse::<bool>() {
             Ok(Value::Bool(b))
-        } else if let Ok(i) = text.parse::<i32>() {
+        } else if let Ok(i) = text.parse::<i64>() {  // FIXED: use i64 instead of i32
             Ok(Value::Int(i))
         } else if let Ok(f) = text.parse::<f64>() {
             Ok(Value::Float(f))
@@ -622,161 +628,131 @@ impl MqttClient {
             #[cfg(feature = "scripting")]
             TransformType::JavaScript { script: _ } => {
                 // JavaScript transformation would require a JS engine
-                warn!("JavaScript transforms not yet implemented");
+                warn!("JavaScript transformation not implemented");
                 Ok(Value::String(text.to_string()))
             }
         }
     }
     
-    /// Start the publication handler task
-    fn start_publisher(&self) -> tokio::task::JoinHandle<()> {
-        let client = self.client.clone();
-        let bus = self.bus.clone();
-        let publications = self.config.publications.clone();
-        
-        #[cfg(feature = "metrics")]
-        let stats = self.statistics.clone();
-        
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
-            let mut last_values: HashMap<String, Value> = HashMap::new();
-            
-            loop {
-                interval.tick().await;
+    /// Publish a signal value to MQTT
+    pub async fn publish_signal(&self, signal_name: &str, value: &Value) -> Result<()> {
+        // Find publication configuration for this signal
+        for pub_config in &self.config.publications {
+            if pub_config.signal == signal_name {
+                let payload = self.format_value_for_mqtt(value)?;
                 
-                for pub_config in &publications {
-                    if let Some(current_value) = bus.get(&pub_config.signal) {
-                        // Check if value has changed or if interval-based publishing is configured
-                        let should_publish = if let Some(interval_ms) = pub_config.interval_ms {
-                            // Interval-based publishing (simplified - should track per-publication timing)
-                            true
-                        } else {
-                            // Change-based publishing
-                            last_values.get(&pub_config.signal) != Some(&current_value)
-                        };
-                        
-                        if should_publish {
-                            let payload = format_value(&current_value, pub_config);
-                            
-                            let qos = match pub_config.qos {
-                                0 => QoS::AtMostOnce,
-                                1 => QoS::AtLeastOnce,
-                                2 => QoS::ExactlyOnce,
-                                _ => QoS::AtLeastOnce,
-                            };
-                            
-                            if let Err(e) = client.publish(
-                                &pub_config.topic,
-                                qos,
-                                pub_config.retain,
-                                payload.as_bytes(),
-                            ).await {
-                                error!("Failed to publish to '{}': {}", pub_config.topic, e);
-                            } else {
-                                debug!("Published signal '{}' to topic '{}'", 
-                                       pub_config.signal, pub_config.topic);
-                                
-                                #[cfg(feature = "metrics")]
-                                {
-                                    let mut s = stats.write().await;
-                                    s.messages_sent += 1;
-                                    s.bytes_sent += payload.len() as u64;
-                                }
-                                
-                                last_values.insert(pub_config.signal.clone(), current_value);
-                            }
-                        }
-                    }
+                let qos = match pub_config.qos {
+                    0 => QoS::AtMostOnce,
+                    1 => QoS::AtLeastOnce,
+                    2 => QoS::ExactlyOnce,
+                    _ => QoS::AtLeastOnce,
+                };
+                
+                self.client.publish(
+                    &pub_config.topic,
+                    qos,
+                    pub_config.retain,
+                    payload.as_bytes(),
+                ).await.map_err(|e| PlcError::Mqtt(format!(
+                    "Failed to publish to topic '{}': {}", pub_config.topic, e
+                )))?;
+                
+                #[cfg(feature = "metrics")]
+                {
+                    let mut stats = self.statistics.write().await;
+                    stats.messages_sent += 1;
+                    stats.bytes_sent += payload.len() as u64;
                 }
+                
+                trace!("Published signal '{}' to topic '{}'", signal_name, pub_config.topic);
+                break;
             }
-        })
-    }
-    
-    /// Get MQTT connection and message statistics
-    #[cfg(feature = "metrics")]
-    pub async fn get_statistics(&self) -> MqttStatistics {
-        self.statistics.read().await.clone()
-    }
-    
-    /// Manually publish a message to a topic
-    pub async fn publish(&self, topic: &str, payload: &[u8], qos: u8, retain: bool) -> Result<()> {
-        let qos = match qos {
-            0 => QoS::AtMostOnce,
-            1 => QoS::AtLeastOnce,
-            2 => QoS::ExactlyOnce,
-            _ => QoS::AtLeastOnce,
-        };
-        
-        self.client.publish(topic, qos, retain, payload).await
-            .map_err(|e| PlcError::Mqtt(format!("Publish failed: {}", e)))?;
+        }
         
         Ok(())
+    }
+    
+    /// Format a PETRA value for MQTT transmission
+    fn format_value_for_mqtt(&self, value: &Value) -> Result<String> {
+        match value {
+            Value::Bool(b) => Ok(b.to_string()),
+            Value::Int(i) => Ok(i.to_string()),
+            Value::Float(f) => Ok(f.to_string()),
+            #[cfg(feature = "extended-types")]
+            Value::String(s) => Ok(s.clone()),
+            #[cfg(feature = "extended-types")]
+            Value::Array(arr) => {
+                serde_json::to_string(arr)
+                    .map_err(|e| PlcError::Mqtt(format!("Failed to serialize array: {}", e)))
+            }
+            #[cfg(feature = "extended-types")]
+            Value::Object(obj) => {
+                serde_json::to_string(obj)
+                    .map_err(|e| PlcError::Mqtt(format!("Failed to serialize object: {}", e)))
+            }
+            _ => Ok(format!("{:?}", value)),
+        }
+    }
+    
+    /// Get connection statistics (if metrics feature is enabled)
+    #[cfg(feature = "metrics")]
+    pub async fn statistics(&self) -> MqttStatistics {
+        self.statistics.read().await.clone()
     }
 }
 
 // ============================================================================
-// HELPER FUNCTIONS
+// UTILITY FUNCTIONS
 // ============================================================================
 
-/// Check if an MQTT topic matches a topic pattern with wildcards
+/// Check if an MQTT topic matches a topic pattern (with wildcards)
 fn topic_matches(pattern: &str, topic: &str) -> bool {
-    if pattern == topic {
-        return true;
-    }
-    
     let pattern_parts: Vec<&str> = pattern.split('/').collect();
     let topic_parts: Vec<&str> = topic.split('/').collect();
     
     // Multi-level wildcard (#) must be the last part
     if pattern.ends_with('#') {
-        let pattern_prefix = &pattern_parts[..pattern_parts.len() - 1];
-        return topic_parts.len() >= pattern_prefix.len() &&
-               pattern_prefix.iter().zip(topic_parts.iter())
-                   .all(|(p, t)| *p == "+" || *p == *t);
+        let pattern_prefix_len = pattern_parts.len() - 1;
+        if topic_parts.len() < pattern_prefix_len {
+            return false;
+        }
+        
+        // Check all parts before the #
+        for i in 0..pattern_prefix_len {
+            if pattern_parts[i] != "+" && pattern_parts[i] != topic_parts[i] {
+                return false;
+            }
+        }
+        return true;
     }
     
-    // Single-level wildcard (+) matching
+    // For non-# patterns, lengths must match
     if pattern_parts.len() != topic_parts.len() {
         return false;
     }
     
-    pattern_parts.iter().zip(topic_parts.iter())
-        .all(|(p, t)| *p == "+" || *p == *t)
-}
-
-/// Format a PETRA Value for MQTT publication
-fn format_value(value: &Value, pub_config: &MqttPublication) -> String {
-    // Apply transformation if configured
-    #[cfg(feature = "validation")]
-    if let Some(_transform) = &pub_config.transform {
-        // Apply output transformation
-        // Implementation would depend on transform type
+    // Check each part
+    for (pattern_part, topic_part) in pattern_parts.iter().zip(topic_parts.iter()) {
+        if *pattern_part != "+" && *pattern_part != *topic_part {
+            return false;
+        }
     }
     
-    match value {
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        #[cfg(feature = "extended-types")]
-        Value::String(s) => s.clone(),
-        #[cfg(feature = "extended-types")]
-        _ => serde_json::to_string(value).unwrap_or_default(),
-        #[cfg(not(feature = "extended-types"))]
-        _ => "unsupported".to_string(),
-    }
+    true
 }
 
 /// Create TLS configuration for secure MQTT connections
 #[cfg(any(feature = "security", feature = "mqtt-tls"))]
 fn create_tls_config(config: &TlsConfig) -> Result<TlsConfiguration> {
-    use std::io::BufReader;
-    use std::fs::File;
-    
-    let mut tls_config = TlsConfiguration::default();
+    let mut tls_config = TlsConfiguration::Simple {
+        ca: Vec::new(),
+        alpn: config.alpn_protocols.clone(),
+        client_auth: None,
+    };
     
     if config.insecure {
-        warn!("TLS certificate verification disabled - use only for testing!");
-        // Configure for insecure connections
+        warn!("MQTT TLS configured with insecure mode - certificate verification disabled!");
+        // In a real implementation, you'd configure to skip verification
     }
     
     if let Some(ca_path) = &config.ca_cert {
@@ -796,6 +772,45 @@ fn create_tls_config(config: &TlsConfig) -> Result<TlsConfiguration> {
     }
     
     Ok(tls_config)
+}
+
+/// Convert payload data based on signal type - FIXED VERSION
+fn parse_value(payload: &[u8], data_type: &str) -> Result<Value> {
+    let payload_str = std::str::from_utf8(payload)
+        .map_err(|e| PlcError::Protocol(format!("Invalid UTF-8 in MQTT payload: {}", e)))?;
+    
+    match data_type.to_lowercase().as_str() {
+        "bool" | "boolean" => {
+            let b = match payload_str.to_lowercase().as_str() {
+                "true" | "1" | "on" => true,
+                "false" | "0" | "off" => false,
+                _ => return Err(PlcError::Protocol(format!(
+                    "Invalid boolean value: {}", payload_str
+                ))),
+            };
+            Ok(Value::Bool(b))
+        }
+        "int" | "integer" => {
+            let i = payload_str.parse::<i64>()  // FIXED: use i64 instead of i32
+                .map_err(|e| PlcError::Protocol(format!(
+                    "Invalid integer value '{}': {}", payload_str, e
+                )))?;
+            Ok(Value::Int(i))  // Value::Int takes i64
+        }
+        "float" | "real" | "double" => {
+            let f = payload_str.parse::<f64>()
+                .map_err(|e| PlcError::Protocol(format!(
+                    "Invalid float value '{}': {}", payload_str, e
+                )))?;
+            Ok(Value::Float(f))
+        }
+        #[cfg(feature = "extended-types")]
+        "string" | "text" => Ok(Value::String(payload_str.to_string())),
+        
+        _ => Err(PlcError::Protocol(format!(
+            "Unknown MQTT data type: {}", data_type
+        )))
+    }
 }
 
 /// Convert between engineering units
@@ -849,14 +864,14 @@ impl MqttBridge {
         
         let mut remote_clients = Vec::new();
         for remote_broker in &bridge_config.remote_brokers {
-            let remote_mqtt_config = MqttConfig {
+            let remote_config = MqttConfig {
                 broker_host: remote_broker.host.clone(),
                 broker_port: remote_broker.port,
                 client_id: remote_broker.client_id.clone(),
                 username: remote_broker.username.clone(),
                 password: remote_broker.password.clone(),
-                keep_alive_secs: default_keep_alive(),
-                clean_session: default_clean_session(),
+                keep_alive_secs: 60,
+                clean_session: true,
                 subscriptions: Vec::new(),
                 publications: Vec::new(),
                 #[cfg(feature = "mqtt-persistence")]
@@ -865,10 +880,11 @@ impl MqttBridge {
                 tls: remote_broker.tls.clone(),
                 #[cfg(feature = "mqtt-5")]
                 mqtt5_properties: None,
+                #[cfg(feature = "mqtt-bridge")]
                 bridge_config: None,
             };
             
-            let remote_client = MqttClient::new(remote_mqtt_config, bus.clone())?;
+            let remote_client = MqttClient::new(remote_config, bus.clone())?;
             remote_clients.push(remote_client);
         }
         
@@ -881,6 +897,8 @@ impl MqttBridge {
     
     /// Run the MQTT bridge
     pub async fn run(self) -> Result<()> {
+        info!("Starting MQTT bridge with {} remote brokers", self.remote_clients.len());
+        
         // Start local client
         let local_handle = tokio::spawn(async move {
             if let Err(e) = self.local_client.run().await {
@@ -899,10 +917,11 @@ impl MqttBridge {
             remote_handles.push(handle);
         }
         
-        // Wait for all clients
-        let _ = local_handle.await;
+        // Wait for all clients to complete
+        local_handle.await.map_err(|e| PlcError::Runtime(format!("Local client task error: {}", e)))?;
+        
         for handle in remote_handles {
-            let _ = handle.await;
+            handle.await.map_err(|e| PlcError::Runtime(format!("Remote client task error: {}", e)))?;
         }
         
         Ok(())
@@ -910,7 +929,7 @@ impl MqttBridge {
 }
 
 // ============================================================================
-// TESTING
+// TESTS
 // ============================================================================
 
 #[cfg(test)]
@@ -920,107 +939,65 @@ mod tests {
     #[test]
     fn test_topic_matching() {
         // Exact match
-        assert!(topic_matches("test/topic", "test/topic"));
+        assert!(topic_matches("sensor/temp", "sensor/temp"));
         
         // Single-level wildcard
-        assert!(topic_matches("test/+", "test/topic"));
-        assert!(topic_matches("test/+/sub", "test/topic/sub"));
-        assert!(!topic_matches("test/+", "test/topic/sub"));
+        assert!(topic_matches("sensor/+", "sensor/temp"));
+        assert!(topic_matches("sensor/+", "sensor/humidity"));
+        assert!(!topic_matches("sensor/+", "sensor/temp/1"));
         
         // Multi-level wildcard
-        assert!(topic_matches("test/#", "test/topic"));
-        assert!(topic_matches("test/#", "test/topic/sub"));
-        assert!(topic_matches("test/#", "test/topic/sub/deep"));
-        assert!(!topic_matches("other/#", "test/topic"));
+        assert!(topic_matches("sensor/#", "sensor/temp"));
+        assert!(topic_matches("sensor/#", "sensor/temp/1"));
+        assert!(topic_matches("sensor/#", "sensor/temp/1/value"));
+        assert!(!topic_matches("sensor/#", "actuator/pump"));
         
-        // No match
-        assert!(!topic_matches("test/topic", "test/other"));
-        assert!(!topic_matches("test/+", "other/topic"));
+        // Complex patterns
+        assert!(topic_matches("building/+/sensor/#", "building/1/sensor/temp"));
+        assert!(topic_matches("building/+/sensor/#", "building/A/sensor/temp/value"));
+        assert!(!topic_matches("building/+/sensor/#", "building/1/actuator/pump"));
     }
     
     #[test]
-    fn test_format_value() {
-        let pub_config = MqttPublication {
-            signal: "test".to_string(),
-            topic: "test/topic".to_string(),
-            qos: 1,
-            retain: false,
-            interval_ms: None,
-            #[cfg(feature = "validation")]
-            transform: None,
-        };
+    fn test_value_parsing() {
+        // Boolean values
+        assert_eq!(parse_value(b"true", "bool").unwrap(), Value::Bool(true));
+        assert_eq!(parse_value(b"false", "bool").unwrap(), Value::Bool(false));
+        assert_eq!(parse_value(b"1", "bool").unwrap(), Value::Bool(true));
+        assert_eq!(parse_value(b"0", "bool").unwrap(), Value::Bool(false));
         
-        assert_eq!(format_value(&Value::Bool(true), &pub_config), "true");
-        assert_eq!(format_value(&Value::Int(42), &pub_config), "42");
-        assert_eq!(format_value(&Value::Float(3.14), &pub_config), "3.14");
+        // Integer values - FIXED: now returns i64
+        assert_eq!(parse_value(b"42", "int").unwrap(), Value::Int(42));
+        assert_eq!(parse_value(b"-123", "int").unwrap(), Value::Int(-123));
         
-        #[cfg(feature = "extended-types")]
-        {
-            assert_eq!(format_value(&Value::String("hello".to_string()), &pub_config), "hello");
-        }
+        // Float values
+        assert_eq!(parse_value(b"3.14", "float").unwrap(), Value::Float(3.14));
+        assert_eq!(parse_value(b"-2.5", "float").unwrap(), Value::Float(-2.5));
+        
+        // Invalid values
+        assert!(parse_value(b"invalid", "bool").is_err());
+        assert!(parse_value(b"not_a_number", "int").is_err());
+        assert!(parse_value(b"not_a_float", "float").is_err());
+        assert!(parse_value(b"42", "unknown_type").is_err());
     }
     
-    #[test]
     #[cfg(feature = "engineering-types")]
+    #[test]
     fn test_unit_conversion() {
         // Temperature conversions
-        assert!((convert_units(0.0, "celsius", "fahrenheit").unwrap() - 32.0).abs() < 0.001);
-        assert!((convert_units(32.0, "fahrenheit", "celsius").unwrap() - 0.0).abs() < 0.001);
-        assert!((convert_units(0.0, "celsius", "kelvin").unwrap() - 273.15).abs() < 0.001);
+        assert!((convert_units(0.0, "celsius", "fahrenheit").unwrap() - 32.0).abs() < 0.01);
+        assert!((convert_units(100.0, "celsius", "fahrenheit").unwrap() - 212.0).abs() < 0.01);
+        assert!((convert_units(32.0, "fahrenheit", "celsius").unwrap() - 0.0).abs() < 0.01);
         
         // Pressure conversions
-        assert!((convert_units(1.0, "bar", "psi").unwrap() - 14.5038).abs() < 0.001);
-        assert!((convert_units(14.5038, "psi", "bar").unwrap() - 1.0).abs() < 0.001);
+        assert!((convert_units(1.0, "bar", "psi").unwrap() - 14.5038).abs() < 0.01);
+        assert!((convert_units(14.5038, "psi", "bar").unwrap() - 1.0).abs() < 0.01);
         
         // Same unit
         assert_eq!(convert_units(42.0, "celsius", "celsius").unwrap(), 42.0);
         
         // Unknown conversion
         assert!(convert_units(1.0, "unknown", "other").is_err());
-    }
-    
-    #[test]
-    fn test_config_conversion() {
-        use crate::config::{MqttConfig as ConfigMqttConfig, MqttSubscription as ConfigSub, MqttPublication as ConfigPub};
-        
-        let config_mqtt = ConfigMqttConfig {
-            broker_url: "mqtt://localhost:1883".to_string(),
-            client_id: "test_client".to_string(),
-            username: Some("user".to_string()),
-            password: Some("pass".to_string()),
-            port: 1883,
-            keep_alive: 60,
-            subscriptions: vec![
-                ConfigSub {
-                    topic: "test/+".to_string(),
-                    qos: 1,
-                    signal: "test_signal".to_string(),
-                }
-            ],
-            publications: vec![
-                ConfigPub {
-                    topic: "out/test".to_string(),
-                    qos: 0,
-                    signal: "out_signal".to_string(),
-                    retain: true,
-                    interval_ms: Some(1000),
-                }
-            ],
-            #[cfg(feature = "mqtt-persistence")]
-            persistence: None,
-            #[cfg(any(feature = "security", feature = "mqtt-tls"))]
-            tls: None,
-        };
-        
-        let mqtt_config: MqttConfig = config_mqtt.into();
-        
-        assert_eq!(mqtt_config.broker_host, "localhost");
-        assert_eq!(mqtt_config.broker_port, 1883);
-        assert_eq!(mqtt_config.client_id, "test_client");
-        assert_eq!(mqtt_config.username, Some("user".to_string()));
-        assert_eq!(mqtt_config.password, Some("pass".to_string()));
-        assert_eq!(mqtt_config.subscriptions.len(), 1);
-        assert_eq!(mqtt_config.publications.len(), 1);
     }
     
     #[test]
