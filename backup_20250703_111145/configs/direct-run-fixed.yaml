@@ -1,0 +1,78 @@
+# Petra Direct Run Configuration (Fixed)
+# This config avoids features that require external services
+
+# Basic runtime configuration
+scan_time_ms: 100
+
+# Signal definitions
+signals:
+  - name: test_temperature
+    data_type: float
+    initial_value: 20.5
+    unit: "°C"
+    
+  - name: test_pressure
+    data_type: float
+    initial_value: 1.013
+    unit: "bar"
+    
+  - name: test_counter
+    data_type: int
+    initial_value: 0
+    
+  - name: system_ready
+    data_type: bool
+    initial_value: true
+
+# Simple processing blocks for testing
+blocks:
+  - name: counter_increment
+    type: COUNTER
+    outputs:
+      count: test_counter
+    parameters:
+      increment: 1
+      
+  - name: temp_monitor
+    type: THRESHOLD
+    inputs:
+      value: test_temperature
+    outputs:
+      alarm: temp_alarm
+    parameters:
+      high_limit: 80.0
+      low_limit: -10.0
+
+# Health API configuration
+health:
+  enabled: true
+  port: 8080
+  endpoint: "/health"
+
+# Metrics configuration  
+metrics:
+  enabled: true
+  port: 9090
+  endpoint: "/metrics"
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "pretty"
+  targets:
+    - console
+    
+# Engine configuration
+engine:
+  worker_threads: 2
+  max_scan_time_ms: 50
+  
+# Disable features that require external services
+mqtt:
+  enabled: false
+  
+storage:
+  enabled: false
+  
+alarms:
+  enabled: false

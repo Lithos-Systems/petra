@@ -1,0 +1,52 @@
+# configs/production-clickhouse.yaml
+signals:
+  - name: "temperature"
+    type: "float"
+    initial: 20.0
+  
+  - name: "pressure"
+    type: "float"
+    initial: 100.0
+  
+  - name: "motor_current"
+    type: "float"
+    initial: 0.0
+
+blocks:
+  # Your blocks here...
+
+scan_time_ms: 100
+
+mqtt:
+  broker_host: "mqtt.lithos.systems"
+  broker_port: 1883
+  client_id: "petra-production"
+  topic_prefix: "petra/plc"
+
+storage:
+  strategy: "local_first"  # local_first, remote_first, or parallel
+  
+  local:
+    data_dir: "./data/local"
+    max_file_size_mb: 100
+    compression: "zstd"
+    retention_days: 7  # Keep local for 1 week
+    compact_after_hours: 24
+    
+  remote:
+    type: "clickhouse"
+    url: "http://clickhouse:8123"
+    database: "petra_timeseries"
+    username: "petra"
+    password: "${CLICKHOUSE_PASSWORD}"  # From environment
+    batch_size: 10000
+    max_retries: 3
+    retry_delay_ms: 1000
+    compression: true
+    async_insert: true
+      
+  wal:
+    wal_dir: "./data/wal"  # Should be on different disk
+    max_wal_size_mb: 100
+    sync_on_write: true
+    retention_hours: 48

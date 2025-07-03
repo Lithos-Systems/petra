@@ -293,42 +293,42 @@ path = "src/main.rs"
 
 [[bin]]
 name = "storage_test"
-path = "src/bin/storage_test.rs"
+path = "tools/bin/storage_test.rs"
 required-features = ["history"]
 
 [[bin]]
 name = "parquet_viewer"
-path = "src/bin/parquet_viewer.rs"
+path = "tools/bin/parquet_viewer.rs"
 required-features = ["parquet"]
 
 [[bin]]
 name = "mqtt_publisher"
-path = "src/bin/mqtt_publisher.rs"
+path = "tools/bin/mqtt_publisher.rs"
 required-features = ["mqtt"]
 
 [[bin]]
 name = "generate_schema"
-path = "src/bin/generate_schema.rs"
+path = "tools/bin/generate_schema.rs"
 required-features = ["json-schema"]
 
 [[bin]]
 name = "petra_dashboard"
-path = "src/bin/petra_dashboard.rs"
+path = "tools/bin/petra_dashboard.rs"
 required-features = ["gui"]
 
 [[bin]]
 name = "twilio_test"
-path = "src/bin/twilio_test.rs"
+path = "tools/bin/twilio_test.rs"
 required-features = ["twilio"]
 
 [[bin]]
 name = "s7_test"
-path = "src/bin/s7_test.rs"
+path = "tools/bin/s7_test.rs"
 required-features = ["s7-support"]
 
 [[bin]]
 name = "simple_s7_test"
-path = "src/bin/simple_s7_test.rs"
+path = "tools/bin/simple_s7_test.rs"
 required-features = ["s7-support"]
 
 [profile.release]
