@@ -15,7 +15,7 @@ use petra::engine::EngineConfig;
 use std::path::PathBuf;
 use std::process;
 use tokio::signal;
-use tracing::{info, warn, error, debug};
+use tracing::{info, error, debug};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[cfg(feature = "metrics")]
@@ -23,7 +23,6 @@ use petra::metrics_server::MetricsServer;
 
 #[cfg(feature = "health")]
 use petra::health::HealthMonitor;
-use std::net::SocketAddr;
 
 // ============================================================================
 // CLI ARGUMENT DEFINITIONS
@@ -469,9 +468,9 @@ async fn run_engine(
     config_path: PathBuf,
     scan_time_override: Option<u64>,
     enhanced_monitoring: bool,
-    circuit_breakers: bool,
-    cpu_affinity: Option<String>,
-    thread_priority: Option<i32>,
+    _circuit_breakers: bool,
+    _cpu_affinity: Option<String>,
+    _thread_priority: Option<i32>,
 ) -> Result<()> {
     info!("Loading configuration from: {}", config_path.display());
     
@@ -490,19 +489,19 @@ async fn run_engine(
     
     #[cfg(feature = "circuit-breaker")]
     {
-        engine_config.circuit_breaker_enabled = circuit_breakers;
+        engine_config.circuit_breaker_enabled = _circuit_breakers;
     }
     
     #[cfg(feature = "realtime")]
     {
-        if let Some(affinity_str) = cpu_affinity {
+        if let Some(affinity_str) = _cpu_affinity {
             let affinity = u64::from_str_radix(&affinity_str, 16)
                 .map_err(|e| PlcError::Config(format!("Invalid CPU affinity mask: {}", e)))?;
             engine_config.cpu_affinity = Some(affinity);
             engine_config.realtime_enabled = true;
         }
         
-        if let Some(priority) = thread_priority {
+        if let Some(priority) = _thread_priority {
             if priority < 1 || priority > 99 {
                 return Err(PlcError::Config("Thread priority must be between 1 and 99".to_string()));
             }
@@ -517,12 +516,12 @@ async fn run_engine(
           config.signals.len(), config.blocks.len(), config.scan_time_ms);
     
     // Create and start engine
-    let metrics_enabled = engine_config.metrics_enabled;
-    let mut engine = Engine::new_with_engine_config(config, engine_config)?;
+    let _metrics_enabled = engine_config.metrics_enabled;
+    let engine = Engine::new_with_engine_config(config, engine_config)?;
     
     // Start auxiliary services
     #[cfg(feature = "metrics")]
-    let _metrics_server = if metrics_enabled {
+    let _metrics_server = if _metrics_enabled {
         Some(start_metrics_service()?)
     } else {
         None
@@ -532,7 +531,7 @@ async fn run_engine(
     start_health_service().await?;
     
     // Setup signal handling for graceful shutdown
-    let running = engine.is_running();
+    let _running = engine.is_running();
     tokio::spawn(async move {
         if let Err(e) = signal::ctrl_c().await {
             error!("Failed to listen for shutdown signal: {}", e);
@@ -823,7 +822,7 @@ fn start_metrics_service() -> Result<MetricsServer> {
 
 #[cfg(feature = "metrics")]
 async fn start_metrics_server(port: u16, bind: String) -> Result<()> {
-    let addr: SocketAddr = format!("{}:{}", bind, port).parse()
+    let addr: std::net::SocketAddr = format!("{}:{}", bind, port).parse()
         .map_err(|e| PlcError::Config(format!("Invalid address: {}", e)))?;
 
     info!("Starting standalone metrics server on {}", addr);
@@ -847,7 +846,7 @@ async fn start_health_service() -> Result<()> {
 
 #[cfg(feature = "health")]
 async fn start_health_server(port: u16, bind: String) -> Result<()> {
-    let addr: SocketAddr = format!("{}:{}", bind, port).parse()
+    let addr: std::net::SocketAddr = format!("{}:{}", bind, port).parse()
         .map_err(|e| PlcError::Config(format!("Invalid address: {}", e)))?;
 
     info!("Starting standalone health server on {}", addr);
