@@ -198,6 +198,11 @@ impl Value {
             }
         }
     }
+
+    /// Alias for [`Self::as_int`].
+    pub fn as_i64(&self) -> Option<i64> {
+        self.as_int()
+    }
     
     /// Convert to float if possible
     pub fn as_float(&self) -> Option<f64> {
@@ -214,6 +219,11 @@ impl Value {
                 value.as_float()
             }
         }
+    }
+
+    /// Alias for [`Self::as_float`].
+    pub fn as_f64(&self) -> Option<f64> {
+        self.as_float()
     }
     
     /// Convert to string representation
