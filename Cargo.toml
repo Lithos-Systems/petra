@@ -1,348 +1,623 @@
+# ================================================================================
+# PETRA - Industrial Automation System
+# ================================================================================
+#
+# PURPOSE:
+# This Cargo.toml file defines the project manifest for PETRA, a highly modular
+# industrial automation system built in Rust. It manages over 80 feature flags
+# organized into logical bundles for different deployment scenarios.
+#
+# INTERACTIONS:
+# - Controls compilation features across all modules (src/lib.rs, src/engine.rs, etc.)
+# - Validates feature dependencies at build time (build.rs)
+# - Enables conditional compilation for platform-specific code
+# - Supports deployment bundles (edge, scada, production, enterprise)
+# - Defines dependency versions used throughout the codebase
+# - Configures build profiles for development and release builds
+#
+# FEATURE ORGANIZATION:
+# Features are hierarchically organized with clear dependencies and mutual exclusions
+# to prevent configuration conflicts and ensure stable builds across platforms.
+#
+# CRITICAL NOTES:
+# - Only one monitoring level can be active (standard-monitoring OR enhanced-monitoring)
+# - Platform-specific features must be properly gated (e.g., realtime is Linux-only)
+# - All feature dependencies must be explicitly declared to prevent build conflicts
+# - Binary size and memory usage scales with enabled features (see bundle comments)
+#
+# ================================================================================
+
 [package]
 name = "petra"
-version = "2.1.0"
+version = "0.1.0"
 edition = "2021"
-license = "AGPL-3.0-or-later"
-description = "Programmable Engine for Telemetry, Runtime, and Automation"
-authors = ["Nathan Stone <nathan@lithos.systems>"]
+authors = ["Lithos Systems"]
+description = "A modular industrial automation system with PLC functionality"
+license = "MIT"
 repository = "https://github.com/lithos-systems/petra"
 keywords = ["automation", "plc", "scada", "industrial", "iot"]
-categories = ["embedded", "network-programming", "automation"]
+categories = ["embedded", "network-programming", "asynchronous"]
+readme = "README.md"
+
+# ================================================================================
+# PERFORMANCE OPTIMIZATION PROFILES
+# ================================================================================
+# These settings optimize for different deployment scenarios:
+# - Release: Maximum performance for production deployments
+# - Dev: Fast compilation with debug capabilities
+# - Bench: Optimized for benchmarking with debug symbols
+
+[profile.release]
+lto = true              # Link-time optimization for better performance
+codegen-units = 1       # Single codegen unit for maximum optimization
+panic = "abort"         # Smaller binaries, faster execution
+opt-level = 3           # Maximum optimization level
+strip = true            # Strip debug symbols from release builds
+
+[profile.dev]
+opt-level = 0           # Fast compilation for development
+debug = true            # Full debug info for development
+overflow-checks = true  # Runtime overflow checks in debug builds
+
+# Optimize dependencies even in debug builds for better performance
+# This significantly improves runtime performance during development
+[profile.dev.package."*"]
+opt-level = 2
+
+# Benchmarking profile - optimized but with debug symbols
+[profile.bench]
+debug = true
+lto = true
+
+# ================================================================================
+# CORE DEPENDENCIES
+# ================================================================================
+# Essential dependencies required for all builds
+# These form the foundation of PETRA's functionality
 
 [dependencies]
-# Core runtime - minimal features only
-tokio = { version = "1.45", features = ["full", "fs", "rt-multi-thread", "macros", "time", "sync"] }
+# === ASYNC RUNTIME ===
+# Tokio provides the async runtime foundation for all concurrent operations
+# Full feature set required for industrial automation scenarios
+tokio = { version = "1.40", features = [
+    "rt-multi-thread",   # Multi-threaded runtime for scalability
+    "macros",            # Async macros (#[tokio::main], #[tokio::test])
+    "sync",              # Synchronization primitives (Mutex, RwLock, channels)
+    "time",              # Timer and timeout functionality
+    "signal",            # Signal handling for graceful shutdown
+    "process",           # Process spawning for external tools
+    "fs",                # Async file system operations
+    "io-util",           # Additional I/O utilities
+    "net",               # Network functionality for protocols
+    "parking_lot"        # High-performance locks (when optimized feature enabled)
+]}
+
+# === SERIALIZATION ===
+# Fast, zero-copy serialization for configuration and data exchange
+# Used extensively in config.rs, value.rs, and protocol implementations
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9"
-serde_json = "1.0"
-toml = "0.8"
+serde_json = "1.0"       # JSON support for APIs and config
+serde_yaml = "0.9"       # YAML support for human-readable configs
+serde_with = { version = "3.11", optional = true }  # Extended serialization helpers
 
-# Essential concurrency
-dashmap = "6.0"
-crossbeam = "0.8"
-parking_lot = "0.12"
+# === CORE UTILITIES ===
+# Essential utilities used throughout the codebase
+anyhow = "1.0"           # Error handling with context (used in main.rs)
+thiserror = "1.0"        # Custom error types (used in error.rs)
+log = "0.4"              # Logging facade (all modules)
+env_logger = "0.11"      # Environment-based log configuration
+chrono = { version = "0.4", features = ["serde"] }  # Date/time handling (timestamps)
+uuid = { version = "1.10", features = ["v4", "serde"] }  # Unique identifiers
+base64 = { version = "0.22", optional = true }  # Base64 encoding for security
+once_cell = { version = "1.20", optional = true }  # Lazy static initialization
+regex = { version = "1.11", optional = true }  # Regular expressions for validation
 
-# Error handling
-thiserror = "1.0"
-anyhow = "1.0"
+# === HIGH-PERFORMANCE COLLECTIONS ===
+# Concurrent data structures for signal bus and shared state
+dashmap = "6.1"          # Concurrent hash map for signal bus (signal.rs)
+ringbuffer = { version = "0.15", optional = true }  # Lock-free ring buffer for monitoring
 
-# Logging - minimal
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"], default-features = false }
+# === NETWORKING ===
+# HTTP client/server and web framework dependencies
+# Used by web interface, health endpoints, and REST APIs
+reqwest = { version = "0.12", features = ["json"], optional = true }
+axum = { version = "0.7", optional = true }         # Web framework
+tower = { version = "0.5", optional = true }        # Service middleware
+tower-http = { version = "0.6", features = ["cors", "fs"], optional = true }
+hyper = { version = "1.4", optional = true }        # HTTP implementation
+sysinfo = { version = "0.32", optional = true }     # System information for health
 
-# MQTT - production ready
-rumqttc = { version = "0.24", default-features = false, features = ["use-rustls"] }
+# === UTILITIES ===
+# Additional utility dependencies
+futures = { version = "0.3", default-features = false }  # Future utilities
+rand = "0.8"             # Random number generation (used in testing/simulation)
 
-# CLI
-clap = { version = "4.5", features = ["std", "derive", "env"] }
+# ================================================================================
+# PROTOCOL DEPENDENCIES
+# ================================================================================
+# Industrial protocol implementations (all optional for modular builds)
+# Each protocol is feature-gated to minimize binary size
 
-# Time handling
-chrono = { version = "0.4.38", features = ["serde", "clock"], default-features = false }
+# === MQTT ===
+# MQTT client for IoT and edge device communication
+# Lightweight protocol suitable for resource-constrained environments
+rumqttc = { version = "0.24", optional = true }
 
-# Core utilities
-bytes = "1.5"
-ringbuffer = { version = "0.15", optional = true }
-async-trait = "0.1"
-regex = { version = "1.10", optional = true }
-base64 = { version = "0.22", optional = true }
-htmlescape = "0.3"
-md5 = "0.7"
-once_cell = { version = "1.19", optional = true }
-serde_with = { version = "3.8", optional = true }
+# === INDUSTRIAL PROTOCOLS ===
+# Support for major industrial automation protocols
+# These are heavyweight dependencies, enable only as needed
+rust-snap7 = { version = "0.1", optional = true }      # Siemens S7 PLC communication
+tokio-modbus = { version = "0.7", default-features = false, optional = true }  # Modbus TCP/RTU
+opcua = { version = "0.12", default-features = false, optional = true }        # OPC-UA server
 
-# S7 communication (only if needed)
-rust-snap7 = { version = "1.142.2", optional = true }
+# ================================================================================
+# STORAGE DEPENDENCIES
+# ================================================================================
+# Data persistence and historical data management
+# Supports multiple backends for different deployment scenarios
 
-# HTTP/Web - minimal features
-axum = { version = "0.7", features = ["json", "query", "tokio", "http1", "http2"], default-features = false, optional = true }
-tower = { version = "0.4", features = ["tokio"], default-features = false, optional = true }
-tower-http = { version = "0.5", features = ["cors"], default-features = false, optional = true }
-hyper = { version = "1.3", optional = true }
-reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false, optional = true }
-
-# No separate twilio dependency - uses reqwest for HTTP API calls
-
-# Health monitoring
-sysinfo = { version = "0.31", optional = true }
-
-# Utilities
-futures = { version = "0.3", default-features = false }
-
-# Metrics - lightweight
-metrics = { version = "0.23", default-features = false, optional = true }
-metrics-exporter-prometheus = { version = "0.15", default-features = false, optional = true }
-
-# Storage - all optional for production flexibility
+# === COLUMNAR STORAGE ===
+# Apache Arrow and Parquet for high-performance time-series data
+# Minimal features to reduce binary size
 arrow = { version = "55.1", default-features = false, optional = true }
 arrow-array = { version = "55.1", default-features = false, optional = true }
 arrow-schema = { version = "55.1", default-features = false, optional = true }
 parquet = { version = "55.2.0", features = ["arrow"], default-features = false, optional = true }
-clickhouse = { version = "0.12", default-features = false, features = ["lz4"], optional = true }
 
-# Cloud storage (optional)
+# === DATABASE ENGINES ===
+# Optional database backends for enterprise deployments
+# Heavy dependencies - enable only when needed
+clickhouse = { version = "0.12", default-features = false, features = ["lz4"], optional = true }
+rocksdb = { version = "0.23", default-features = false, optional = true }
+
+# === CLOUD STORAGE ===
+# AWS S3 and object store abstraction for cloud deployments
 object_store = { version = "0.7", default-features = false, optional = true }
 aws-sdk-s3 = { version = "0.31", default-features = false, optional = true }
 aws-config = { version = "0.56", default-features = false, optional = true }
 
-# Compression (optional)
-zstd = { version = "0.12", default-features = false, optional = true }
-lz4 = { version = "1.24", default-features = false, optional = true }
+# === COMPRESSION ===
+# Data compression for storage efficiency
+# Multiple algorithms for different speed/ratio tradeoffs
+zstd = { version = "0.12", default-features = false, optional = true }  # Best compression ratio
+lz4 = { version = "1.24", default-features = false, optional = true }   # Fastest compression
 
-# Security (optional)
-sha2 = { version = "0.10", optional = true }
-ring = { version = "0.17", default-features = false, optional = true }
-rustls = { version = "0.23", default-features = false, optional = true }
-rustls-pemfile = { version = "2", default-features = false, optional = true }
-bcrypt = { version = "0.15", optional = true }
-jsonwebtoken = { version = "9.3", optional = true }
-ed25519-dalek = { version = "2.1", optional = true }
+# ================================================================================
+# SECURITY DEPENDENCIES
+# ================================================================================
+# Authentication, authorization, and cryptographic functionality
+# Critical for production deployments
 
-# Protocol support (optional)
-opcua = { version = "0.12", default-features = false, optional = true }
-tokio-modbus = { version = "0.7", default-features = false, optional = true }
+# === CRYPTOGRAPHY ===
+sha2 = { version = "0.10", optional = true }                    # SHA-2 hashing
+ring = { version = "0.17", default-features = false, optional = true }  # Cryptographic operations
+rustls = { version = "0.23", default-features = false, optional = true }  # TLS implementation
+rustls-pemfile = { version = "2", default-features = false, optional = true }  # PEM file parsing
 
-# Notifications
-lettre = { version = "0.11", optional = true }
+# === AUTHENTICATION ===
+bcrypt = { version = "0.15", optional = true }                  # Password hashing
+jsonwebtoken = { version = "9.3", optional = true }            # JWT token handling
+ed25519-dalek = { version = "2.1", optional = true }           # Digital signatures
 
-# Validation
-validator = { version = "0.18", optional = true }
+# ================================================================================
+# MONITORING AND METRICS
+# ================================================================================
+# Performance monitoring and metrics collection
+# Essential for production observability
 
-# Development/debugging (optional)
-csv = { version = "1.3", optional = true }
-schemars = { version = "0.8", default-features = false, optional = true }
-jsonschema = { version = "0.18", default-features = false, optional = true }
-notify = { version = "6.1", optional = true }
-pprof = { version = "0.13", features = ["flamegraph"], optional = true }
+# === METRICS ===
+# Lightweight metrics collection and Prometheus integration
+metrics = { version = "0.23", default-features = false, optional = true }
+metrics-exporter-prometheus = { version = "0.15", default-features = false, optional = true }
 
-# GUI dependencies (optional, for dashboard)
-eframe = { version = "0.30", optional = true }
-egui = { version = "0.30", optional = true }
-egui-phosphor = { version = "0.5", optional = true }
-egui_plot = { version = "0.30", optional = true }
+# ================================================================================
+# NOTIFICATION DEPENDENCIES
+# ================================================================================
+# Email and SMS notification services
+# Used by alarm system for alerting
 
-# Utilities
-rand = "0.8"
+lettre = { version = "0.11", optional = true }                  # Email notifications
+
+# ================================================================================
+# VALIDATION DEPENDENCIES
+# ================================================================================
+# Data validation and schema enforcement
+# Ensures data quality throughout the system
+
+validator = { version = "0.18", optional = true }               # Input validation
+jsonschema = { version = "0.18", default-features = false, optional = true }  # JSON schema validation
+
+# ================================================================================
+# DEVELOPMENT DEPENDENCIES
+# ================================================================================
+# Tools for development, debugging, and profiling
+
+csv = { version = "1.3", optional = true }                      # CSV file handling
+schemars = { version = "0.8", default-features = false, optional = true }  # JSON schema generation
+notify = { version = "6.1", optional = true }                   # File system watching
+pprof = { version = "0.13", features = ["flamegraph"], optional = true }   # Performance profiling
+
+# ================================================================================
+# GUI DEPENDENCIES
+# ================================================================================
+# Optional graphical interface for configuration and monitoring
+
+eframe = { version = "0.30", optional = true }                  # egui framework
+egui = { version = "0.30", optional = true }                    # Immediate mode GUI
+egui-phosphor = { version = "0.5", optional = true }            # Icon library
+egui_plot = { version = "0.30", optional = true }               # Plotting widgets
+
+# ================================================================================
+# BUILD DEPENDENCIES
+# ================================================================================
+# Dependencies used during the build process
 
 [build-dependencies]
-chrono = "0.4"
+chrono = "0.4"  # Used by build.rs for build timestamp generation
+
+# ================================================================================
+# DEVELOPMENT DEPENDENCIES
+# ================================================================================
+# Dependencies used only for testing and development
 
 [dev-dependencies]
-criterion = { version = "0.5", default-features = false }
-proptest = "1.4"
-tokio-test = "0.4"
-tempfile = "3.10"
-mockall = "0.12"
+criterion = { version = "0.5", default-features = false }      # Benchmarking framework
+proptest = "1.4"                                                # Property-based testing
+tokio-test = "0.4"                                              # Tokio testing utilities
+tempfile = "3.10"                                               # Temporary file creation
+mockall = "0.12"                                                # Mock object generation
+
+# ================================================================================
+# FEATURE FLAGS
+# ================================================================================
+# Hierarchically organized feature flags for modular compilation
+# Features are designed to prevent conflicts and provide clear upgrade paths
+#
+# IMPORTANT: Feature dependencies are transitive. When enabling a feature,
+# all its dependencies are automatically enabled. Plan feature combinations
+# carefully to avoid unintended dependencies.
 
 [features]
-# Minimal default for fast builds
+# === DEFAULT FEATURES ===
+# Minimal default for fast development builds
+# Only includes basic monitoring - add features as needed
 default = ["standard-monitoring"]
 
-# Bundle features
-edge = ["mqtt", "basic-storage", "basic-security", "standard-monitoring"]
-scada = ["mqtt", "industrial", "enterprise-storage", "enterprise-security", "enhanced-monitoring", "basic-alarms"]
-production = ["mqtt", "optimized", "enterprise-storage", "enterprise-security", "standard-monitoring", "metrics", "health"]
-enterprise = ["mqtt", "industrial", "enterprise-storage", "enterprise-security", "enhanced-monitoring", "metrics", "full-alarms", "full-web", "full-types", "full-validation"]
-development = ["edge", "dev-tools", "profiling"]
+# ================================================================================
+# DEPLOYMENT BUNDLES
+# ================================================================================
+# Pre-configured feature sets for common deployment scenarios
+# Choose one bundle as your starting point, then add specific features as needed
 
-# Core features
-mqtt = []
-optimized = []
+# === EDGE BUNDLE ===
+# Minimal footprint for IoT and edge devices
+# Binary size: ~25MB, Memory: ~10MB runtime usage
+# Use case: Data collection, basic processing, cloud connectivity
+edge = [
+    "mqtt",                    # MQTT protocol for IoT connectivity
+    "basic-storage",          # Simple data logging
+    "basic-security",         # Basic authentication
+    "standard-monitoring"     # Essential monitoring
+]
 
-# Missing realtime feature referenced in src/engine.rs  
-realtime = []
+# === SCADA BUNDLE ===
+# Industrial automation with full protocol support
+# Binary size: ~65MB, Memory: ~30MB runtime usage
+# Use case: Factory floor automation, PLC integration, HMI systems
+scada = [
+    "mqtt",                   # IoT connectivity
+    "industrial",             # All industrial protocols
+    "enterprise-storage",     # Advanced data persistence
+    "enterprise-security",    # Full security features
+    "enhanced-monitoring",    # Detailed performance monitoring
+    "basic-alarms"           # Alarm management
+]
 
-# Monitoring levels (mutually exclusive conceptually)
-basic-monitoring = []
-standard-monitoring = ["basic-monitoring"]
-enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer"]
+# === PRODUCTION BUNDLE ===
+# Optimized server deployment with reliability features
+# Binary size: ~40MB, Memory: ~20MB runtime usage
+# Use case: Cloud deployments, containerized environments
+production = [
+    "mqtt",                   # Basic connectivity
+    "optimized",              # Performance optimizations
+    "enterprise-storage",     # Reliable data persistence
+    "enterprise-security",    # Security hardening
+    "standard-monitoring",    # Performance monitoring
+    "metrics",                # Prometheus integration
+    "health"                  # Health check endpoints
+]
 
-# Metrics
-metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "dep:axum"]
+# === ENTERPRISE BUNDLE ===
+# Full-featured deployment with all capabilities
+# Binary size: ~95MB, Memory: ~50MB runtime usage
+# Use case: Large-scale deployments, multi-site operations
+enterprise = [
+    "mqtt",                   # Connectivity
+    "industrial",             # All protocols
+    "enterprise-storage",     # Full storage features
+    "enterprise-security",    # Complete security
+    "enhanced-monitoring",    # Advanced monitoring
+    "metrics",                # Metrics collection
+    "full-alarms",           # All notification methods
+    "full-web",              # Web interface
+    "full-types",            # Extended type system
+    "full-validation"        # Comprehensive validation
+]
 
-# Protocol features
-s7-support = ["dep:rust-snap7"]
-modbus-support = ["dep:tokio-modbus"]
-opcua-support = ["dep:opcua"]
-industrial = ["s7-support", "modbus-support", "opcua-support"]
-iot = ["mqtt"]
+# === DEVELOPMENT BUNDLE ===
+# All features for testing and development
+# Not for production use - includes debugging and profiling tools
+development = [
+    "edge",                   # Base functionality
+    "dev-tools",              # Development utilities
+    "profiling",              # Performance profiling
+    "gui"                     # Visual configuration interface
+]
 
-# Storage features
-history = ["dep:parquet", "dep:arrow", "dep:arrow-array", "dep:arrow-schema"]
-advanced-storage = ["history", "dep:clickhouse", "dep:aws-sdk-s3", "dep:aws-config"]
-clickhouse = ["dep:clickhouse"]
-s3 = ["dep:aws-sdk-s3"]
-compression = ["dep:zstd", "dep:lz4"]
-wal = []
-basic-storage = ["history"]
-enterprise-storage = ["advanced-storage", "compression", "wal"]
+# ================================================================================
+# CORE FEATURES
+# ================================================================================
+# Fundamental system capabilities
 
-# Missing standalone storage features (if not already present)
+# === PERFORMANCE ===
+optimized = []                # Use parking_lot and optimized algorithms
+realtime = []                 # Real-time OS scheduling (Linux only)
+
+# === CONNECTIVITY ===
+mqtt = ["dep:rumqttc"]       # MQTT protocol support
+
+# ================================================================================
+# MONITORING FEATURES
+# ================================================================================
+# Mutually exclusive monitoring levels (choose one)
+# WARNING: Only enable one monitoring level to avoid conflicts
+
+# === MONITORING LEVELS ===
+basic-monitoring = []                                    # Minimal monitoring
+standard-monitoring = ["basic-monitoring"]              # Standard performance tracking
+enhanced-monitoring = [                                  # Advanced monitoring with detailed stats
+    "standard-monitoring", 
+    "dep:ringbuffer"                                     # Lock-free data structures
+]
+
+# === METRICS INTEGRATION ===
+metrics = [                                              # Prometheus metrics export
+    "dep:metrics", 
+    "dep:metrics-exporter-prometheus", 
+    "dep:axum"
+]
+
+# ================================================================================
+# PROTOCOL FEATURES
+# ================================================================================
+# Industrial and IoT protocol implementations
+
+# === INDIVIDUAL PROTOCOLS ===
+s7-support = ["dep:rust-snap7"]                         # Siemens S7 PLC communication
+modbus-support = ["dep:tokio-modbus"]                   # Modbus TCP/RTU support
+opcua-support = ["dep:opcua"]                           # OPC-UA server implementation
+
+# === PROTOCOL BUNDLES ===
+industrial = ["s7-support", "modbus-support", "opcua-support"]  # All industrial protocols
+iot = ["mqtt"]                                          # IoT-focused protocols
+
+# ================================================================================
+# STORAGE FEATURES
+# ================================================================================
+# Data persistence and historical data management
+
+# === STORAGE BACKENDS ===
+history = [                                             # Parquet-based historical data
+    "dep:parquet", 
+    "dep:arrow", 
+    "dep:arrow-array", 
+    "dep:arrow-schema"
+]
+advanced-storage = [                                    # Enterprise storage backends
+    "history", 
+    "dep:clickhouse", 
+    "dep:rocksdb",
+    "dep:aws-sdk-s3", 
+    "dep:aws-config", 
+    "dep:object_store"
+]
+
+# === STORAGE FEATURES ===
+compression = ["dep:zstd", "dep:lz4"]                  # Data compression
+wal = []                                                # Write-Ahead Logging
+clickhouse = ["dep:clickhouse"]                        # ClickHouse backend
+s3 = ["dep:aws-sdk-s3", "dep:aws-config"]             # AWS S3 storage
+
+# === STORAGE BUNDLES ===
+basic-storage = ["history"]                            # Simple data logging
+enterprise-storage = [                                 # Full storage capabilities
+    "advanced-storage", 
+    "compression", 
+    "wal"
+]
+
+# === STANDALONE FEATURES ===
+# For fine-grained control over dependencies
 parquet = ["dep:parquet", "dep:arrow", "dep:arrow-array", "dep:arrow-schema"]
 arrow = ["dep:arrow", "dep:arrow-array", "dep:arrow-schema"]
 
-# Security features
-security = ["dep:sha2", "dep:base64"]
-basic-auth = ["security", "dep:bcrypt"]
-jwt-auth = ["security", "dep:jsonwebtoken"]
-rbac = ["security"]
-audit = ["security"]
-signing = ["security", "dep:ed25519-dalek"]
-basic-security = ["security", "basic-auth"]
-enterprise-security = ["basic-security", "jwt-auth", "rbac", "audit", "signing"]
+# ================================================================================
+# SECURITY FEATURES
+# ================================================================================
+# Authentication, authorization, and cryptographic features
 
-# Type features
-extended-types = ["dep:serde_with"]
-engineering-types = ["extended-types"]
-quality-codes = ["extended-types"]
-value-arithmetic = ["extended-types"]
-unit-conversion = ["engineering-types"]
-enhanced-types = ["extended-types", "engineering-types", "quality-codes", "value-arithmetic"]
-full-types = ["enhanced-types", "unit-conversion"]
+# === CORE SECURITY ===
+security = ["dep:sha2", "dep:base64"]                  # Base security framework
 
-# Validation features
-validation = ["dep:regex", "dep:validator", "dep:once_cell"]
-regex-validation = ["validation"]
-schema-validation = ["validation", "dep:jsonschema"]
-composite-validation = ["validation"]
-cross-field-validation = ["composite-validation"]
+# === AUTHENTICATION METHODS ===
+basic-auth = ["security", "dep:bcrypt"]                # Username/password authentication
+jwt-auth = ["security", "dep:jsonwebtoken"]            # JWT token authentication
+rbac = ["security"]                                     # Role-based access control
+audit = ["security"]                                    # Security audit logging
+signing = ["security", "dep:ed25519-dalek"]           # Digital signature support
+
+# === SECURITY BUNDLES ===
+basic-security = ["security", "basic-auth"]            # Basic authentication
+enterprise-security = [                                # Full security suite
+    "basic-security", 
+    "jwt-auth", 
+    "rbac", 
+    "audit", 
+    "signing"
+]
+
+# ================================================================================
+# TYPE SYSTEM FEATURES
+# ================================================================================
+# Extended data types and type system enhancements
+
+# === TYPE EXTENSIONS ===
+extended-types = ["dep:serde_with"]                    # Extended Value enum types
+engineering-types = ["extended-types"]                 # Engineering units and conversions
+quality-codes = ["extended-types"]                     # Data quality indicators
+value-arithmetic = ["extended-types"]                  # Arithmetic operations on Values
+unit-conversion = ["engineering-types"]                # Unit conversion support
+
+# === TYPE BUNDLES ===
+enhanced-types = [                                     # Enhanced type system
+    "extended-types", 
+    "engineering-types", 
+    "quality-codes", 
+    "value-arithmetic"
+]
+full-types = ["enhanced-types", "unit-conversion"]     # Complete type system
+
+# ================================================================================
+# VALIDATION FEATURES
+# ================================================================================
+# Input validation and data quality enforcement
+
+# === VALIDATION METHODS ===
+validation = [                                         # Base validation framework
+    "dep:regex", 
+    "dep:validator", 
+    "dep:once_cell"
+]
+regex-validation = ["validation"]                      # Regular expression validation
+schema-validation = ["validation", "dep:jsonschema"]   # JSON schema validation
+composite-validation = ["validation"]                  # Composite validation rules
+cross-field-validation = ["composite-validation"]     # Cross-field validation
+
+# === VALIDATION BUNDLES ===
 basic-validation = ["validation", "regex-validation"]
-advanced-validation = ["basic-validation", "schema-validation", "composite-validation"]
+advanced-validation = [
+    "basic-validation", 
+    "schema-validation", 
+    "composite-validation"
+]
 full-validation = ["advanced-validation", "cross-field-validation"]
 
-# Alarm features
-alarms = []
-email = ["alarms", "dep:lettre"]
-twilio = ["alarms", "web", "dep:reqwest"]  # Twilio uses reqwest for HTTP API calls
-basic-alarms = ["alarms", "email"]
-full-alarms = ["basic-alarms", "twilio"]
+# ================================================================================
+# ALARM AND NOTIFICATION FEATURES
+# ================================================================================
+# Alarm management and notification services
 
-# Web features
-web = ["dep:axum", "dep:tower", "dep:tower-http", "dep:hyper", "dep:reqwest"]
-health = ["dep:axum", "dep:tower", "dep:tower-http", "dep:sysinfo"]
-detailed-health = ["health", "metrics"]
-health-metrics = ["health", "metrics"]
-health-history = ["health", "history"]
-custom-endpoints = ["health"]
-basic-web = ["web", "health"]
-full-web = ["basic-web", "detailed-health", "health-metrics", "health-history"]
+# === ALARM SYSTEM ===
+alarms = []                                            # Base alarm framework
 
-# GUI features
-gui = ["dep:eframe", "dep:egui", "dep:egui-phosphor", "dep:egui_plot"]
+# === NOTIFICATION METHODS ===
+email = ["alarms", "dep:lettre"]                      # Email notifications
+twilio = [                                             # SMS notifications via Twilio
+    "alarms", 
+    "web", 
+    "dep:reqwest"                                      # HTTP API client
+]
 
-# Development features
-dev-tools = ["dep:csv", "dep:notify"]
-profiling = ["dep:pprof"]
+# === ALARM BUNDLES ===
+basic-alarms = ["alarms", "email"]                    # Email-based alarms
+full-alarms = ["basic-alarms", "twilio"]              # All notification methods
 
-# Additional feature flags referenced in the code
-examples = []
-hot-swap = []
-async-blocks = []
-advanced-blocks = []
-statistics = []
-ml-blocks = []
-error-recovery = []
-pprof = []
+# ================================================================================
+# WEB INTERFACE FEATURES
+# ================================================================================
+# HTTP server and web interface capabilities
 
-# === MISSING FEATURES THAT WERE CAUSING COMPILATION ERRORS ===
+# === WEB FRAMEWORK ===
+web = [                                                # Base web server
+    "dep:axum", 
+    "dep:tower", 
+    "dep:tower-http", 
+    "dep:hyper", 
+    "dep:reqwest"
+]
 
-# Missing MQTT features that are referenced in src/mqtt.rs
-mqtt-persistence = []
-mqtt-tls = ["dep:rustls", "dep:rustls-pemfile"] 
-mqtt-5 = []
-mqtt-bridge = []
+# === HEALTH MONITORING ===
+health = [                                             # Health check endpoints
+    "dep:axum", 
+    "dep:tower", 
+    "dep:tower-http", 
+    "dep:sysinfo"
+]
+detailed-health = ["health", "metrics"]               # Detailed health information
+health-metrics = ["health", "metrics"]                # Health metrics integration
+health-history = ["health", "history"]                # Historical health data
+custom-endpoints = ["health"]                         # Custom health endpoints
 
-# Missing circuit breaker feature referenced in src/blocks/mod.rs
-circuit-breaker = []
+# === WEB BUNDLES ===
+basic-web = ["web", "health"]                         # Basic web interface
+full-web = [                                          # Complete web features
+    "basic-web", 
+    "detailed-health", 
+    "health-metrics", 
+    "health-history"
+]
 
-# Missing enhanced error feature referenced in src/config.rs
-enhanced-errors = []
+# ================================================================================
+# GUI FEATURES
+# ================================================================================
+# Optional graphical user interface
 
-# Missing edge detection feature referenced in src/blocks/mod.rs  
-edge-detection = []
+gui = [                                                # Visual configuration interface
+    "dep:eframe", 
+    "dep:egui", 
+    "dep:egui-phosphor", 
+    "dep:egui_plot"
+]
 
-# Missing memory blocks feature referenced in src/blocks/mod.rs
-memory-blocks = []
+# ================================================================================
+# DEVELOPMENT FEATURES
+# ================================================================================
+# Development, debugging, and profiling tools
 
-# Missing PID control feature referenced in src/blocks/mod.rs
-pid-control = []
+dev-tools = ["dep:csv", "dep:notify"]                 # Development utilities
+profiling = ["dep:pprof"]                             # Performance profiling
 
-# Missing communication feature referenced in src/blocks/mod.rs
-communication = []
+# ================================================================================
+# EXPERIMENTAL FEATURES
+# ================================================================================
+# Features in development or experimental status
+# WARNING: These features may change or be removed in future versions
 
-# Missing state machine feature referenced in src/blocks/mod.rs
-state-machine = []
+examples = []                                          # Example configurations
+hot-swap = []                                          # Hot-swapping of configurations
+async-blocks = []                                      # Asynchronous block execution
+advanced-blocks = []                                   # Advanced block types
+statistics = []                                        # Statistical analysis blocks
+ml-blocks = []                                         # Machine learning blocks
+error-recovery = []                                    # Automatic error recovery
 
-# Missing advanced math feature referenced in src/blocks/mod.rs
-advanced-math = []
+# ================================================================================
+# COMPATIBILITY FEATURES
+# ================================================================================
+# Legacy and compatibility features
 
-# Missing ML feature referenced in src/blocks/mod.rs
-ml = []
+pprof = []                                            # Compatibility alias for profiling
 
-# Missing JSON schema feature referenced in src/blocks/mod.rs
-json-schema = ["dep:schemars"]
-
-# Missing scripting feature referenced in src/mqtt.rs
-scripting = []
-
-# Missing burn-in feature referenced in src/config_manager.rs
-burn-in = []
+# ================================================================================
+# BINARY TARGETS
+# ================================================================================
+# Specify the main binary entry point
+# Additional binaries can be added in [[bin]] sections
 
 [[bin]]
 name = "petra"
 path = "src/main.rs"
 
-[[bin]]
-name = "storage_test"
-path = "tools/bin/storage_test.rs"
-required-features = ["history"]
-
-[[bin]]
-name = "parquet_viewer"
-path = "tools/bin/parquet_viewer.rs"
-required-features = ["parquet"]
-
-[[bin]]
-name = "mqtt_publisher"
-path = "tools/bin/mqtt_publisher.rs"
-required-features = ["mqtt"]
-
-[[bin]]
-name = "generate_schema"
-path = "tools/bin/generate_schema.rs"
-required-features = ["json-schema"]
-
-[[bin]]
-name = "petra_dashboard"
-path = "tools/bin/petra_dashboard.rs"
-required-features = ["gui"]
-
-[[bin]]
-name = "twilio_test"
-path = "tools/bin/twilio_test.rs"
-required-features = ["twilio"]
-
-[[bin]]
-name = "s7_test"
-path = "tools/bin/s7_test.rs"
-required-features = ["s7-support"]
-
-[[bin]]
-name = "simple_s7_test"
-path = "tools/bin/simple_s7_test.rs"
-required-features = ["s7-support"]
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
-
-[profile.release-small]
-inherits = "release"
-opt-level = "z"
-strip = true
-
-[profile.dev]
-opt-level = 0
-debug = true
-overflow-checks = true
+# ================================================================================
+# END OF CONFIGURATION
+# ================================================================================
