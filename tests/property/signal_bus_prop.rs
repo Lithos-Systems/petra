@@ -13,7 +13,7 @@ proptest! {
                 prop_oneof![
                     Just(Value::Bool(true)),
                     Just(Value::Bool(false)),
-                    any::<i32>().prop_map(Value::Int),
+                    any::<i32>().prop_map(|v| Value::Integer(v as i64)),
                     any::<f64>().prop_map(Value::Float),
                 ]
             ), 
@@ -82,7 +82,7 @@ proptest! {
         updates in prop::collection::vec(
             (
                 "[a-z]{3,10}",
-                any::<i32>().prop_map(Value::Int)
+                any::<i32>().prop_map(|v| Value::Integer(v as i64))
             ),
             1..20
         )

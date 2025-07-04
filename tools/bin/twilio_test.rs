@@ -196,7 +196,7 @@ async fn test_signal(config_path: String, signal: String, value_str: String) -> 
     } else if value_str == "false" {
         Value::Bool(false)
     } else if let Ok(i) = value_str.parse::<i32>() {
-        Value::Int(i)
+        Value::Integer(i as i64)
     } else if let Ok(f) = value_str.parse::<f64>() {
         Value::Float(f)
     } else {
@@ -207,7 +207,7 @@ async fn test_signal(config_path: String, signal: String, value_str: String) -> 
     for sig in &config.signals {
         let initial = match sig.signal_type.as_str() {
             "bool" => Value::Bool(false),
-            "int" => Value::Int(0),
+            "int" => Value::Integer(0),
             "float" => Value::Float(0.0),
             _ => continue,
         };

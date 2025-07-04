@@ -124,7 +124,7 @@ impl WriteAheadLog {
                 buf.put_u8(0);
                 buf.put_u8(*b as u8);
             }
-            Value::Int(i) => {
+            Value::Integer(i) => {
                 buf.put_u8(1);
                 buf.put_i64(*i); // Fixed: use i64 instead of i32
             }
@@ -194,7 +194,7 @@ impl WriteAheadLog {
                         "WAL entry truncated",
                     )));
                 }
-                Value::Int(buf.get_i64()) // Fixed: use get_i64 instead of get_i32
+                Value::Integer(buf.get_i64()) // Fixed: use get_i64 instead of get_i32
             }
             2 => {
                 if buf.remaining() < 8 {

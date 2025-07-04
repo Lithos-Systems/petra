@@ -250,23 +250,23 @@ impl S7Connector {
             }
             S7DataType::Byte => {
                 let val = utils::getters::get_byte(&buffer, 0);
-                Value::Int(val as i32)
+                Value::Integer(val as i64)
             }
             S7DataType::Word => {
                 let val = utils::getters::get_word(&buffer, 0);
-                Value::Int(val as i32)
+                Value::Integer(val as i64)
             }
             S7DataType::Int => {
                 let val = utils::getters::get_int(&buffer, 0);
-                Value::Int(val as i32)
+                Value::Integer(val as i64)
             }
             S7DataType::DWord => {
                 let val = utils::getters::get_dword(&buffer, 0);
-                Value::Int(val as i32)
+                Value::Integer(val as i64)
             }
             S7DataType::DInt => {
                 let val = utils::getters::get_dint(&buffer, 0);
-                Value::Int(val)
+                Value::Integer(val as i64)
             }
             S7DataType::Real => {
                 let val = utils::getters::get_real(&buffer, 0);

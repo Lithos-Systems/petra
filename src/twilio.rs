@@ -241,14 +241,14 @@ impl TwilioConnector {
             // Trigger on rising edge of truthy value
             let is_truthy = match current_value {
                 Value::Bool(b) => b,
-                Value::Int(i) => i != 0,
+                Value::Integer(i) => *i != 0,
                 Value::Float(f) => f.abs() > f64::EPSILON,
             };
             
             let was_truthy = state.last_value.as_ref()
                 .map(|last| match last {
                     Value::Bool(b) => b,
-                    Value::Int(i) => i != 0,
+                    Value::Integer(i) => *i != 0,
                     Value::Float(f) => f.abs() > f64::EPSILON,
                 })
                 .unwrap_or(false);
