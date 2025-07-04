@@ -18,11 +18,8 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
             signal_type: "float".to_string(),
             description: Some(format!("Test signal {}", i)),
             initial: Some(serde_yaml::Value::from(0.0f64)),
-            category: Some("Benchmark".to_string()),
-            source: Some("Generator".to_string()),
-            update_frequency_ms: Some(100),
-            tags: vec!["benchmark".to_string()],
             metadata: HashMap::new(),
+            tags: vec![],
         });
     }
 
@@ -44,21 +41,11 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
         blocks.push(BlockConfig {
             name: format!("block_{}", i),
             block_type: "AND".to_string(),
+            description: Some(format!("Test AND block {}", i)),
             inputs,
             outputs,
             params: HashMap::new(),
-            priority: 0,
-            enabled: true,
-            description: Some(format!("Test AND block {}", i)),
-            category: None,
             tags: vec![],
-            #[cfg(feature = "enhanced-errors")]
-            error_handling: None,
-            #[cfg(feature = "circuit-breaker")]
-            circuit_breaker: None,
-            #[cfg(feature = "enhanced-monitoring")]
-            enhanced_monitoring: false,
-            metadata: HashMap::new(),
         });
     }
 
@@ -68,8 +55,6 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
         scan_time_ms: 50,
         max_scan_jitter_ms: 50,
         error_recovery: true,
-        max_consecutive_errors: 10,
-        restart_delay_ms: 1000,
         // Feature-gated fields
         #[cfg(feature = "mqtt")]
         mqtt: None,
@@ -82,19 +67,6 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
         #[cfg(feature = "web")]
         web: None,
         protocols: None,
-        #[cfg(feature = "validation")]
-        validation: None,
-        #[cfg(feature = "metrics")]
-        metrics: None,
-        #[cfg(feature = "realtime")]
-        realtime: None,
-        version: "1.0".to_string(),
-        description: None,
-        author: None,
-        created_at: None,
-        modified_at: None,
-        tags: Vec::new(),
-        metadata: HashMap::new(),
     }
 }
 
@@ -252,21 +224,11 @@ fn benchmark_block_execution(c: &mut Criterion) {
         let config = BlockConfig {
             name: "test_and".to_string(),
             block_type: "AND".to_string(),
+            description: Some("Test AND block".to_string()),
             inputs,
             outputs,
             params: HashMap::new(),
-            priority: 0,
-            enabled: true,
-            description: Some("Test AND block".to_string()),
-            category: None,
             tags: vec![],
-            #[cfg(feature = "enhanced-errors")]
-            error_handling: None,
-            #[cfg(feature = "circuit-breaker")]
-            circuit_breaker: None,
-            #[cfg(feature = "enhanced-monitoring")]
-            enhanced_monitoring: false,
-            metadata: HashMap::new(),
         };
 
         let mut block = petra::blocks::create_block(&config).expect("Failed to create block");
@@ -297,21 +259,11 @@ fn benchmark_block_execution(c: &mut Criterion) {
         let config = BlockConfig {
             name: "test_pid".to_string(),
             block_type: "PID".to_string(),
+            description: Some("Test PID block".to_string()),
             inputs,
             outputs,
             params,
-            priority: 0,
-            enabled: true,
-            description: Some("Test PID block".to_string()),
-            category: None,
             tags: vec![],
-            #[cfg(feature = "enhanced-errors")]
-            error_handling: None,
-            #[cfg(feature = "circuit-breaker")]
-            circuit_breaker: None,
-            #[cfg(feature = "enhanced-monitoring")]
-            enhanced_monitoring: false,
-            metadata: HashMap::new(),
         };
 
         let mut block = petra::blocks::create_block(&config).expect("Failed to create block");
@@ -341,8 +293,8 @@ fn benchmark_value_operations(c: &mut Criterion) {
         let bool_val = Value::Bool(true);
 
         b.iter(|| {
-            let _ = black_box(float_val.as_float());
-            let _ = black_box(int_val.as_integer());
+            let _ = black_box(float_val.as_f64());
+            let _ = black_box(int_val.as_i64());
             let _ = black_box(bool_val.as_bool());
         });
     });
