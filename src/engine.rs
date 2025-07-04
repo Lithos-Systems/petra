@@ -47,7 +47,8 @@
 
 use crate::{
     blocks::{create_block, Block},
-    config::{BlockConfig, Config, from_yaml_value},
+    config::{BlockConfig, Config},
+    value::from_yaml_value,
     error::PlcError,
     signal::SignalBus,
     value::Value,
@@ -128,6 +129,7 @@ pub struct EngineConfig {
     pub watchdog_timeout_ms: u64,
     
     /// Behavior when scan cycle is missed
+    #[serde(skip)]
     pub missed_tick_behavior: MissedTickBehavior,
 }
 
@@ -322,7 +324,7 @@ pub struct Engine {
     /// 
     /// Protected by Arc<Mutex<>> to allow safe async access for hot-reload
     /// and runtime block management.
-    blocks: Arc<Mutex<Vec<Box<dyn Block + Send + Sync>>>>,
+    blocks: Arc<Mutex<Vec<Box<dyn Block>>>>,
     
     /// System configuration
     config: Config,
@@ -540,7 +542,7 @@ impl Engine {
         for signal_config in &config.signals {
             // Convert initial value from configuration
             let value = if let Some(initial_yaml) = &signal_config.initial {
-                from_yaml_value(initial_yaml, &signal_config.signal_type)
+                from_yaml_value(initial_yaml.clone())
                     .map_err(|e| PlcError::Config(format!(
                         "Signal '{}' initial value conversion failed: {}",
                         signal_config.name, e
@@ -571,7 +573,7 @@ impl Engine {
     }
     
     /// Create and initialize all blocks from configuration
-    fn create_blocks(config: &Config) -> Result<Vec<Box<dyn Block + Send + Sync>>, PlcError> {
+    fn create_blocks(config: &Config) -> Result<Vec<Box<dyn Block>>, PlcError> {
         let _span = span!(Level::DEBUG, "create_blocks").entered();
         
         let mut blocks = Vec::with_capacity(config.blocks.len());
@@ -1180,7 +1182,7 @@ impl Engine {
     /// Add a new block to the running engine
     /// 
     /// This method allows adding new blocks dynamically without restart.
-    pub async fn add_block(&self, block: Box<dyn Block + Send + Sync>) -> Result<(), PlcError> {
+    pub async fn add_block(&self, block: Box<dyn Block>) -> Result<(), PlcError> {
         let mut blocks = self.blocks.lock().await;
         let block_name = block.name().to_string();
         

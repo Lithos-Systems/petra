@@ -738,6 +738,7 @@ pub struct MqttConfig {
     pub reconnect_delay_secs: u64,
 }
 
+#[cfg(feature = "mqtt")]
 impl Default for MqttConfig {
     fn default() -> Self {
         Self {
@@ -760,6 +761,7 @@ impl Default for MqttConfig {
     }
 }
 
+#[cfg(feature = "mqtt")]
 impl MqttConfig {
     /// Validate MQTT configuration
     pub fn validate(&self) -> Result<(), PlcError> {
@@ -2244,19 +2246,22 @@ impl Validatable for SignalConfig {
             "bool" | "int" | "integer" | "float" => {}
             #[cfg(feature = "extended-types")]
             "string" | "binary" | "timestamp" | "array" | "object" => {}
-            _ => return Err(PlcError::Config(format!(
-                "Unknown signal type: '{}' (valid types: bool, int, float{})",
-                self.signal_type,
-                #[cfg(feature = "extended-types")]
-                ", string, binary, timestamp, array, object",
-                #[cfg(not(feature = "extended-types"))]
-                ""
-            ))),
+            _ => {
+                let valid_types = if cfg!(feature = "extended-types") {
+                    "bool, int, float, string, binary, timestamp, array, object"
+                } else {
+                    "bool, int, float"
+                };
+                return Err(PlcError::Config(format!(
+                    "Unknown signal type: '{}' (valid types: {})",
+                    self.signal_type, valid_types
+                )));
+            }
         }
         
         // Initial value type consistency check
         if let Some(initial) = &self.initial {
-            let type_matches = match (&self.signal_type.to_lowercase().as_str(), initial) {
+            let type_matches = match (self.signal_type.to_lowercase().as_str(), initial) {
                 ("bool", serde_yaml::Value::Bool(_)) => true,
                 ("int" | "integer", serde_yaml::Value::Number(n)) => n.is_i64(),
                 ("float", serde_yaml::Value::Number(_)) => true,

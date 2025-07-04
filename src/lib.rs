@@ -77,6 +77,7 @@ pub mod error;
 pub mod value;
 
 /// Memory pool for Value allocations
+#[cfg(feature = "memory-pools")]
 pub mod memory_pool;
 
 /// Thread-safe signal bus for inter-component communication
@@ -160,6 +161,7 @@ pub mod protocols {
     pub mod opcua;
 
     /// Zero-copy protocol utilities and traits
+    #[cfg(feature = "zero-copy-protocols")]
     pub mod zero_copy;
 }
 
@@ -359,8 +361,9 @@ pub mod gui;
 // Core types and functions available to all users
 pub use error::{PlcError, Result};
 pub use value::{Value, ValueType};
-pub use signal::{SignalBus, SignalConfig};
-pub use config::{Config, BlockConfig, EngineConfig};
+pub use signal::SignalBus;
+pub use config::{Config, BlockConfig, SignalConfig};
+pub use engine::EngineConfig;
 pub use engine::Engine;
 pub use features::{Features, RuntimeFeatures};
 

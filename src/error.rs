@@ -500,8 +500,12 @@ impl PlcError {
     /// Higher severity errors trigger more urgent notifications.
     pub fn severity(&self) -> ErrorSeverity {
         match self {
-            Self::Config(_) | Self::Security(_) => ErrorSeverity::Fatal,
-            Self::Io(_) | Self::Storage(_) => ErrorSeverity::Critical,
+            Self::Config(_) => ErrorSeverity::Fatal,
+            #[cfg(feature = "security")]
+            Self::Security(_) => ErrorSeverity::Fatal,
+            Self::Io(_) => ErrorSeverity::Critical,
+            #[cfg(feature = "history")]
+            Self::Storage(_) => ErrorSeverity::Critical,
             Self::Runtime(_) | Self::Protocol(_) => ErrorSeverity::Error,
             Self::Validation(_) | Self::TypeMismatch { .. } => ErrorSeverity::Warning,
             Self::SignalNotFound(_) | Self::NotFound(_) => ErrorSeverity::Info,
@@ -524,9 +528,15 @@ impl PlcError {
         match self {
             Self::Config(_) => ErrorCategory::Configuration,
             Self::Runtime(_) | Self::Block(_) | Self::Signal(_) => ErrorCategory::Runtime,
-            Self::Protocol(_) | Self::Mqtt(_) => ErrorCategory::Communication,
+            Self::Protocol(_) => ErrorCategory::Communication,
+            #[cfg(feature = "mqtt")]
+            Self::Mqtt(_) => ErrorCategory::Communication,
+            #[cfg(feature = "history")]
             Self::Storage(_) => ErrorCategory::Storage,
-            Self::Security(_) | Self::AuthenticationFailed(_) => ErrorCategory::Security,
+            #[cfg(feature = "security")]
+            Self::Security(_) => ErrorCategory::Security,
+            #[cfg(feature = "security")]
+            Self::AuthenticationFailed(_) => ErrorCategory::Security,
             Self::Validation(_) | Self::TypeMismatch { .. } => ErrorCategory::Validation,
             Self::Io(_) => ErrorCategory::System,
             
@@ -549,9 +559,15 @@ impl PlcError {
     /// for automatic error recovery and resilience.
     pub fn recovery_strategy(&self) -> RecoveryStrategy {
         match self {
-            Self::Config(_) | Self::Security(_) => RecoveryStrategy::Fatal,
-            Self::Io(_) | Self::Storage(_) => RecoveryStrategy::RetryWithDelay,
-            Self::Protocol(_) | Self::Mqtt(_) => RecoveryStrategy::Retry,
+            Self::Config(_) => RecoveryStrategy::Fatal,
+            #[cfg(feature = "security")]
+            Self::Security(_) => RecoveryStrategy::Fatal,
+            Self::Io(_) => RecoveryStrategy::RetryWithDelay,
+            #[cfg(feature = "history")]
+            Self::Storage(_) => RecoveryStrategy::RetryWithDelay,
+            Self::Protocol(_) => RecoveryStrategy::Retry,
+            #[cfg(feature = "mqtt")]
+            Self::Mqtt(_) => RecoveryStrategy::Retry,
             Self::Validation(_) | Self::TypeMismatch { .. } => RecoveryStrategy::Manual,
             Self::SignalNotFound(_) => RecoveryStrategy::Continue,
             
@@ -852,7 +868,7 @@ impl ErrorRecovery for PlcError {
                 "Consider manual circuit breaker reset if appropriate".to_string(),
             ],
             
-            #[cfg(feature = "storage")]
+            #[cfg(feature = "history")]
             Self::Storage(msg) => vec![
                 "Check database connectivity and permissions".to_string(),
                 "Verify sufficient disk space".to_string(),
@@ -889,13 +905,17 @@ impl ErrorRecovery for PlcError {
     fn is_recoverable(&self) -> bool {
         !matches!(
             self,
-            Self::Config(_) | Self::Security(_) | Self::Io(_)
+            Self::Config(_) | Self::Io(_)
+            #[cfg(feature = "security")] | Self::Security(_)
         )
     }
     
     fn retry_delay(&self) -> Option<std::time::Duration> {
         match self {
-            Self::Protocol(_) | Self::Mqtt(_) => Some(std::time::Duration::from_secs(5)),
+            Self::Protocol(_) => Some(std::time::Duration::from_secs(5)),
+            #[cfg(feature = "mqtt")]
+            Self::Mqtt(_) => Some(std::time::Duration::from_secs(5)),
+            #[cfg(feature = "history")]
             Self::Storage(_) => Some(std::time::Duration::from_secs(10)),
             Self::Http(_) => Some(std::time::Duration::from_secs(2)),
             

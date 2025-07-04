@@ -1,3 +1,5 @@
+#![cfg(feature = "zero-copy-protocols")]
+
 use bytes::{Bytes, BytesMut};
 use crate::{Value, PlcError, Result};
 
