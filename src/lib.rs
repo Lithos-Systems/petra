@@ -76,6 +76,9 @@ pub mod error;
 /// String, Binary, Array, Object types when extended-types feature is enabled.
 pub mod value;
 
+/// Memory pool for Value allocations
+pub mod memory_pool;
+
 /// Thread-safe signal bus for inter-component communication
 /// 
 /// Central nervous system using DashMap for lock-free concurrent access.
@@ -151,10 +154,13 @@ pub mod protocols {
     #[cfg(feature = "opcua-support")]
     #[cfg_attr(docsrs, doc(cfg(feature = "opcua-support")))]
     /// OPC-UA server implementation
-    /// 
+    ///
     /// Full OPC-UA server with subscription support, security,
     /// and standards-compliant information modeling.
     pub mod opcua;
+
+    /// Zero-copy protocol utilities and traits
+    pub mod zero_copy;
 }
 
 // ============================================================================

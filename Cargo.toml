@@ -181,6 +181,10 @@ futures = {
     default-features = false 
 }  # Future utilities
 rand = "0.8"             # Random number generation (used in testing/simulation)
+num_cpus = {
+    version = "1.16",
+    optional = true
+}
 
 # ================================================================================
 # PROTOCOL DEPENDENCIES
@@ -543,7 +547,9 @@ development = [
 # === PERFORMANCE ===
 optimized = []                # Use parking_lot and optimized algorithms
 realtime = []                 # Real-time OS scheduling (Linux only)
-parallel-execution = []       # Execute blocks in parallel
+=======
+parallel-execution = ["tokio/rt-multi-thread", "num_cpus"]
+
 
 # === CONNECTIVITY ===
 mqtt = ["dep:rumqttc"]       # MQTT protocol support
@@ -782,6 +788,7 @@ advanced-blocks = []                                   # Advanced block types
 statistics = []                                        # Statistical analysis blocks
 ml-blocks = []                                         # Machine learning blocks
 error-recovery = []                                    # Automatic error recovery
+simd-math = []                                         # SIMD optimized math blocks
 
 # ================================================================================
 # COMPATIBILITY FEATURES
