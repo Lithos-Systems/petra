@@ -64,3 +64,5 @@ fn benchmark_simd_math(c: &mut Criterion) {
     
     group.finish();
 }
+criterion_group!(benches, benchmark_parallel_vs_sequential, benchmark_simd_math);
+criterion_main!(benches);
