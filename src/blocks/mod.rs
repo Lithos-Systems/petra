@@ -142,6 +142,21 @@ pub trait Block: Send + Sync {
     fn state(&self) -> HashMap<String, Value> {
         HashMap::new()
     }
+
+    /// Get input dependencies for this block
+    fn input_dependencies(&self) -> Vec<&str> {
+        vec![]
+    }
+
+    /// Get output signals this block writes
+    fn output_signals(&self) -> Vec<&str> {
+        vec![]
+    }
+
+    /// Can this block be executed in parallel with others?
+    fn is_parallelizable(&self) -> bool {
+        true
+    }
 }
 
 /// Block factory function - creates blocks based on configuration
