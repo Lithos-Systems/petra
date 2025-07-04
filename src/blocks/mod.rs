@@ -4,6 +4,7 @@ pub mod base;
 pub mod timer;
 pub mod arithmetic;  // Changed from math to arithmetic
 pub mod data;
+pub mod cache_optimized;
 
 #[cfg(feature = "edge-detection")]
 pub mod edge;
