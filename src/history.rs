@@ -522,7 +522,7 @@ mod tests {
             let entry = HistoryEntry {
                 timestamp: Utc::now(),
                 signal_name: if i % 2 == 0 { "even".to_string() } else { "odd".to_string() },
-                value: Value::Int(i),
+                value: Value::Integer(i as i64),
                 quality: None,
                 metadata: None,
             };

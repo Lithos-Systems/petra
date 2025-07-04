@@ -78,7 +78,7 @@ pub struct BlockStatus {
 #[serde(tag = "type", content = "value")]
 pub enum ValueDto {
     Bool(bool),
-    Int(i32),
+    Int(i64),
     Float(f64),
     String(String),
 }
@@ -87,7 +87,7 @@ impl From<&Value> for ValueDto {
     fn from(value: &Value) -> Self {
         match value {
             Value::Bool(b) => ValueDto::Bool(*b),
-            Value::Int(i) => ValueDto::Int(*i),
+            Value::Integer(i) => ValueDto::Int(*i),
             Value::Float(f) => ValueDto::Float(*f),
             _ => ValueDto::String(format!("{:?}", value)),
         }
@@ -295,7 +295,7 @@ impl StatusServer {
                     serde_json::Value::Bool(b) => Value::Bool(b),
                     serde_json::Value::Number(n) => {
                         if let Some(i) = n.as_i64() {
-                            Value::Int(i as i32)
+                            Value::Integer(i)
                         } else if let Some(f) = n.as_f64() {
                             Value::Float(f)
                         } else {

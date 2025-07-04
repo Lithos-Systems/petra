@@ -169,7 +169,7 @@ impl ClickHouseStorage {
         entries.iter().map(|(ts, signal, value)| {
             let (value_type, value_bool, value_int, value_float) = match value {
                 Value::Bool(b) => ("bool", Some(*b), None, None),
-                Value::Int(i) => ("int", None, Some(*i), None),
+                Value::Integer(i) => ("int", None, Some(*i), None),
                 Value::Float(f) => ("float", None, None, Some(*f)),
             };
             

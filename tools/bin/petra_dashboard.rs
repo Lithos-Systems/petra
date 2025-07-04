@@ -189,7 +189,7 @@ impl eframe::App for PetraApp {
                                     format!("{}", b)
                                 );
                             }
-                            Value::Int(i) => {
+                            Value::Integer(i) => {
                                 ui.label(format!("{}", i));
                             }
                             Value::Float(f) => {

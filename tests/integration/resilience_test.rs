@@ -93,7 +93,7 @@ async fn test_signal_bus_overflow_handling() {
         let handle = tokio::spawn(async move {
             for j in 0..1000 {
                 let signal = format!("signal_{}_{}", i, j);
-                let _ = bus_clone.write_signal(&signal, petra::Value::Int(j));
+                let _ = bus_clone.write_signal(&signal, petra::Value::Integer(j as i64));
             }
         });
         handles.push(handle);

@@ -564,8 +564,8 @@ impl MqttClient {
         // Try to parse as different value types
         if let Ok(b) = text.parse::<bool>() {
             Ok(Value::Bool(b))
-        } else if let Ok(i) = text.parse::<i64>() {  // FIXED: use i64 instead of i32
-            Ok(Value::Int(i))
+        } else if let Ok(i) = text.parse::<i64>() {  // FIXED: use i64 for Integer
+            Ok(Value::Integer(i))
         } else if let Ok(f) = text.parse::<f64>() {
             Ok(Value::Float(f))
         } else {
@@ -690,7 +690,7 @@ impl MqttClient {
     fn format_value_for_mqtt(&self, value: &Value) -> Result<String> {
         match value {
             Value::Bool(b) => Ok(b.to_string()),
-            Value::Int(i) => Ok(i.to_string()),
+            Value::Integer(i) => Ok(i.to_string()),
             Value::Float(f) => Ok(f.to_string()),
             #[cfg(feature = "extended-types")]
             Value::String(s) => Ok(s.clone()),
@@ -811,7 +811,7 @@ fn parse_value(payload: &[u8], data_type: &str) -> Result<Value> {
                 .map_err(|e| PlcError::Protocol(format!(
                     "Invalid integer value '{}': {}", payload_str, e
                 )))?;
-            Ok(Value::Int(i))  // Value::Int takes i64
+            Ok(Value::Integer(i))  // Integer variant holds i64
         }
         "float" | "real" | "double" => {
             let f = payload_str.parse::<f64>()
@@ -983,8 +983,8 @@ mod tests {
         assert_eq!(parse_value(b"0", "bool").unwrap(), Value::Bool(false));
         
         // Integer values - FIXED: now returns i64
-        assert_eq!(parse_value(b"42", "int").unwrap(), Value::Int(42));
-        assert_eq!(parse_value(b"-123", "int").unwrap(), Value::Int(-123));
+        assert_eq!(parse_value(b"42", "int").unwrap(), Value::Integer(42));
+        assert_eq!(parse_value(b"-123", "int").unwrap(), Value::Integer(-123));
         
         // Float values
         assert_eq!(parse_value(b"3.14", "float").unwrap(), Value::Float(3.14));

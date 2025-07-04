@@ -22,7 +22,7 @@ impl Block for ConvertBlock {
         let output_value = match self.target_type.as_str() {
             "bool" => match input_value {
                 Value::Bool(b) => Value::Bool(b),
-                Value::Int(i) => Value::Bool(i != 0),
+                Value::Integer(i) => Value::Bool(i != 0),
                 Value::Float(f) => Value::Bool(f != 0.0 && !f.is_nan()),
                 #[cfg(feature = "extended-types")]
                 Value::String(s) => Value::Bool(
@@ -34,17 +34,17 @@ impl Block for ConvertBlock {
                 }),
             },
             "int" => match input_value {
-                Value::Int(i) => Value::Int(i),
-                Value::Bool(b) => Value::Int(if b { 1 } else { 0 }),
+                Value::Integer(i) => Value::Integer(i),
+                Value::Bool(b) => Value::Integer(if b { 1 } else { 0 }),
                 Value::Float(f) => {
                     if f.is_finite() {
-                        Value::Int(f as i64)
+                        Value::Integer(f as i64)
                     } else {
                         return Err(PlcError::Runtime("Cannot convert non-finite float to int".to_string()));
                     }
                 },
                 #[cfg(feature = "extended-types")]
-                Value::String(s) => Value::Int(
+                Value::String(s) => Value::Integer(
                     s.parse::<i64>()
                         .map_err(|e| PlcError::Runtime(format!("Cannot parse '{}' as int: {}", s, e)))?
                 ),
@@ -55,7 +55,7 @@ impl Block for ConvertBlock {
             },
             "float" => match input_value {
                 Value::Float(f) => Value::Float(f),
-                Value::Int(i) => Value::Float(i as f64),
+                Value::Integer(i) => Value::Float(i as f64),
                 Value::Bool(b) => Value::Float(if b { 1.0 } else { 0.0 }),
                 #[cfg(feature = "extended-types")]
                 Value::String(s) => Value::Float(

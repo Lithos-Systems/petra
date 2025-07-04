@@ -64,8 +64,13 @@ impl Block for AndBlock {
     #[cfg(feature = "enhanced-monitoring")]
     fn state(&self) -> HashMap<String, Value> {
         let mut state = HashMap::new();
-        state.insert("execution_count".to_string(), 
-            Value::Int(self.execution_count.load(std::sync::atomic::Ordering::Relaxed) as i64));
+        state.insert(
+            "execution_count".to_string(),
+            Value::Integer(
+                self.execution_count
+                    .load(std::sync::atomic::Ordering::Relaxed) as i64,
+            ),
+        );
         state
     }
 }

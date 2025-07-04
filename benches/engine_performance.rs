@@ -142,15 +142,15 @@ fn benchmark_signal_bus_operations(c: &mut Criterion) {
 
         // Pre-populate
         for i in 0..100 {
-            let _ = bus.set(&format!("counter_{}", i), Value::Int(0));
+            let _ = bus.set(&format!("counter_{}", i), Value::Integer(0));
         }
 
         b.iter(|| {
             for i in 0..100 {
                 let _ = bus.update(&format!("counter_{}", i), |old| {
                     match old {
-                        Some(Value::Int(n)) => Value::Int(n + 1),
-                        _ => Value::Int(1),
+                        Some(Value::Integer(n)) => Value::Integer(n + 1),
+                        _ => Value::Integer(1),
                     }
                 });
             }
@@ -286,14 +286,14 @@ fn benchmark_value_operations(c: &mut Criterion) {
     group.bench_function("value_creation", |b| {
         b.iter(|| {
             black_box(Value::Float(42.0));
-            black_box(Value::Int(42));
+            black_box(Value::Integer(42));
             black_box(Value::Bool(true));
         });
     });
 
     group.bench_function("value_conversion", |b| {
         let float_val = Value::Float(42.5);
-        let int_val = Value::Int(42);
+        let int_val = Value::Integer(42);
         let bool_val = Value::Bool(true);
 
         b.iter(|| {

@@ -125,7 +125,7 @@ async fn write_to_parquet(data_points: &[(f64, String, Value)], file_number: i32
                 int_builder.append_null();
                 float_builder.append_null();
             }
-            Value::Int(i) => {
+            Value::Integer(i) => {
                 value_type_builder.append_value("int");
                 bool_builder.append_null();
                 int_builder.append_value(*i as i32);

@@ -70,7 +70,7 @@ impl LocalStorage {
                     int_builder.append_null();
                     float_builder.append_null();
                 }
-                Value::Int(i) => {
+                Value::Integer(i) => {
                     value_type_builder.append_value("int");
                     bool_builder.append_null();
                     int_builder.append_value(i);

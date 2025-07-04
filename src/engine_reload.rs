@@ -117,7 +117,7 @@ impl crate::engine::Engine {
     fn add_signal(&mut self, signal_config: SignalConfig, report: &mut ReloadReport) -> Result<()> {
         let value = match signal_config.signal_type.as_str() {
             "bool" => crate::value::Value::Bool(signal_config.initial.as_bool().unwrap_or(false)),
-            "int" => crate::value::Value::Int(signal_config.initial.as_i64().unwrap_or(0) as i32),
+            "int" => crate::value::Value::Integer(signal_config.initial.as_i64().unwrap_or(0)),
             "float" => crate::value::Value::Float(signal_config.initial.as_f64().unwrap_or(0.0)),
             _ => {
                 let msg = format!("Invalid signal type: {}", signal_config.signal_type);

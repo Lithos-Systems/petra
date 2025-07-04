@@ -240,7 +240,7 @@ async fn test_write(
     let value = match type_enum {
         S7DataType::Bool => Value::Bool(value_str.parse::<bool>()?),
         S7DataType::Real => Value::Float(value_str.parse::<f64>()?),
-        _ => Value::Int(value_str.parse::<i64>()?),
+        _ => Value::Integer(value_str.parse::<i64>()?),
     };
     
     info!("Writing {} = {} to {}{}:{} bit {}", 
@@ -311,7 +311,7 @@ async fn monitor_values(
         let initial = match mapping.data_type {
             S7DataType::Bool => Value::Bool(false),
             S7DataType::Real => Value::Float(0.0),
-            _ => Value::Int(0),
+            _ => Value::Integer(0),
         };
         bus.set(&mapping.signal, initial)?;
     }
