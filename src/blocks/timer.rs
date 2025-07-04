@@ -100,7 +100,7 @@ impl Block for TimerOnBlock {
         self.last_input = input;
 
         // Calculate output based on timer state
-        let (output, elapsed_ms) = if let Some(start) = self.start_time {
+        let (output, _elapsed_ms) = if let Some(start) = self.start_time {
             let elapsed = start.elapsed();
             let elapsed_ms = elapsed.as_millis() as u64;
             

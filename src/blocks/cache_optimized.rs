@@ -1,5 +1,5 @@
-use super::{Block, BlockConfig};
-use crate::{SignalBus, Result, Value};
+use super::BlockConfig;
+use crate::Value;
 use std::collections::HashMap;
 use std::mem::MaybeUninit;
 

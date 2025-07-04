@@ -500,6 +500,7 @@ impl Value {
     /// - `String("false"|"no"|"off"|"0"|"")` → `Some(false)` (case-insensitive)
     /// - Other types → `None`
     pub fn as_bool(&self) -> Option<bool> {
+        #[allow(unreachable_patterns)]
         match self {
             Self::Bool(b) => Some(*b),
             Self::Integer(i) => Some(*i != 0),
@@ -540,6 +541,7 @@ impl Value {
     /// - `String(s)` → Parsed integer if valid
     /// - Other types → `None`
     pub fn as_integer(&self) -> Option<i64> {
+        #[allow(unreachable_patterns)]
         match self {
             Self::Integer(i) => Some(*i),
             Self::Bool(b) => Some(if *b { 1 } else { 0 }),
@@ -585,6 +587,7 @@ impl Value {
     /// - `String(s)` → Parsed float if valid
     /// - Other types → `None`
     pub fn as_float(&self) -> Option<f64> {
+        #[allow(unreachable_patterns)]
         match self {
             Self::Float(f) => Some(*f),
             Self::Integer(i) => Some(*i as f64),
@@ -1155,7 +1158,7 @@ pub fn from_yaml_value(yaml: serde_yaml::Value) -> Result<Value> {
                 Value::from_str(&s)
             }
         }
-        serde_yaml::Value::Sequence(seq) => {
+        serde_yaml::Value::Sequence(_seq) => {
             #[cfg(feature = "extended-types")]
             {
                 let values: Result<Vec<Value>> = seq
@@ -1171,7 +1174,7 @@ pub fn from_yaml_value(yaml: serde_yaml::Value) -> Result<Value> {
                 ))
             }
         }
-        serde_yaml::Value::Mapping(map) => {
+        serde_yaml::Value::Mapping(_map) => {
             #[cfg(feature = "extended-types")]
             {
                 let mut object = HashMap::new();

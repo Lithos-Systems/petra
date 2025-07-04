@@ -528,7 +528,16 @@ memory-blocks = []                                     # Memory-related blocks
 pid-control = []                                       # PID control blocks
 communication = []                                     # Communication blocks
 state-machine = []                                     # State machine blocks
+enhanced-errors = []                                   # Detailed error support
+circuit-breaker = []                                   # Circuit breaker logic
 error-recovery = []                                    # Automatic error recovery
+config-migration = []                                  # Configuration migration support
+mqtt-tls = []                                          # TLS support for MQTT
+s3-storage = []                                        # AWS S3 storage integration
+web-tls = []                                           # TLS support for web server
+hot-reload = []                                        # Hot-reloading of configuration
+burn-in = []                                           # Burn-in testing utilities
+json-schema = []                                       # JSON schema generation
 
 # ================================================================================
 # COMPATIBILITY FEATURES

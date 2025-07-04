@@ -86,16 +86,19 @@
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
 #![allow(clippy::module_name_repetitions)] // Config types naturally repeat "Config"
+#![allow(dead_code)]
 
 use crate::{
     error::{PlcError, Result},
-    value::{Value, ValueType, from_yaml_value},
     Features,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, Duration};
+use std::time::SystemTime;
+#[cfg(feature = "mqtt")]
+use std::time::Duration;
+#[cfg(feature = "mqtt")]
 use uuid::Uuid;
 use tracing::{debug, info, warn};
 
@@ -1995,8 +1998,10 @@ impl Config {
     /// 
     /// Returns errors if the configuration requires features that are
     /// not available in the current build.
+    #[allow(unused_variables)]
     pub fn check_feature_compatibility(&self, features: &Features) -> Result<()> {
         // Check protocol features
+        #[allow(unused_variables)]
         if let Some(protocols) = &self.protocols {
             #[cfg(feature = "s7-support")]
             if protocols.s7.is_some() && !features.has_s7() {
@@ -2322,27 +2327,28 @@ impl Validatable for BlockConfig {
 
 impl Validatable for ProtocolConfig {
     fn validate(&self) -> Result<()> {
-        let mut protocol_count = 0;
+        #[allow(unused_mut)]
+        let mut _protocol_count = 0;
         
         #[cfg(feature = "s7-support")]
         if let Some(s7) = &self.s7 {
             s7.validate()?;
-            protocol_count += 1;
+            _protocol_count += 1;
         }
         
         #[cfg(feature = "modbus-support")]
         if let Some(modbus) = &self.modbus {
             modbus.validate()?;
-            protocol_count += 1;
+            _protocol_count += 1;
         }
         
         #[cfg(feature = "opcua-support")]
         if let Some(opcua) = &self.opcua {
             opcua.validate()?;
-            protocol_count += 1;
+            _protocol_count += 1;
         }
         
-        if protocol_count == 0 {
+        if _protocol_count == 0 {
             warn!("No protocols configured - system will only use internal signals");
         }
         

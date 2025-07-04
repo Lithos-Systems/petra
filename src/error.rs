@@ -41,8 +41,6 @@
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
 
-use std::collections::HashMap;
-use std::fmt;
 use thiserror::Error;
 
 // ============================================================================
