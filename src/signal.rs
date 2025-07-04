@@ -40,7 +40,7 @@
 
 use crate::{
     error::{PlcError, Result},
-    value::{Value, ValueType},
+    value::Value,
 };
 use dashmap::DashMap;
 use std::collections::HashMap;
@@ -48,7 +48,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
-use std::time::{Duration, Instant, SystemTime};
+use std::time::SystemTime;
 use tracing::{debug, trace, warn};
 
 // Feature-gated imports for enhanced functionality
@@ -381,7 +381,7 @@ impl SignalBus {
         &self,
         name: impl AsRef<str>,
         value: Value,
-        source: Option<&str>,
+        _source: Option<&str>,
     ) -> Result<()> {
         let name = name.as_ref();
         let now = SystemTime::now();
@@ -400,6 +400,7 @@ impl SignalBus {
             })?;
         }
         
+        #[allow(unused_variables)]
         let old_value = self.signals.get(name).map(|entry| entry.value.clone());
         
         // Update or insert signal
@@ -446,7 +447,7 @@ impl SignalBus {
                 old_value,
                 new_value: value,
                 timestamp: now,
-                source: source.map(|s| s.to_string()),
+                source: _source.map(|s| s.to_string()),
             };
             
             // Non-blocking send - if no receivers, that's fine

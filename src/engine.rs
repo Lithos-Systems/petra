@@ -47,13 +47,12 @@
 
 use crate::{
     blocks::{create_block, Block},
-    config::{BlockConfig, Config},
+    config::Config,
     value::from_yaml_value,
     error::PlcError,
     signal::SignalBus,
     value::Value,
 };
-use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
