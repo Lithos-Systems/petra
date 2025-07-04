@@ -557,6 +557,10 @@ name = "petra"
 path = "src/main.rs"
 required-features = ["cli"]
 
+[[bench]]
+name = "engine_performance"
+harness = false
+
 # ================================================================================
 # END OF CONFIGURATION
 # ================================================================================
