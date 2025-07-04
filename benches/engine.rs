@@ -9,6 +9,8 @@ fn create_test_config(num_blocks: usize) -> Config {
         scan_time_ms: 10,
         max_scan_jitter_ms: 50,
         error_recovery: true,
+        max_consecutive_errors: 10,
+        restart_delay_ms: 1000,
         signals: Vec::new(),
         blocks: Vec::new(),
         #[cfg(feature = "mqtt")]
@@ -22,8 +24,21 @@ fn create_test_config(num_blocks: usize) -> Config {
         #[cfg(feature = "web")]
         web: None,
         protocols: None,
+        #[cfg(feature = "validation")]
+        validation: None,
+        #[cfg(feature = "metrics")]
+        metrics: None,
+        #[cfg(feature = "realtime")]
+        realtime: None,
+        version: "1.0".to_string(),
+        description: None,
+        author: None,
+        created_at: None,
+        modified_at: None,
+        tags: Vec::new(),
+        metadata: Default::default(),
     };
-    
+
     // Add signals
     for i in 0..num_blocks * 2 {
         config.signals.push(petra::config::SignalConfig {
@@ -31,17 +46,30 @@ fn create_test_config(num_blocks: usize) -> Config {
             signal_type: "bool".to_string(),
             initial: Some(serde_yaml::Value::Bool(false)),
             description: Some(format!("Test signal {}", i)),
-            tags: Vec::new(),
             #[cfg(feature = "engineering-types")]
             units: None,
+            #[cfg(feature = "engineering-types")]
+            min_value: None,
+            #[cfg(feature = "engineering-types")]
+            max_value: None,
             #[cfg(feature = "quality-codes")]
             quality_enabled: false,
+            #[cfg(feature = "history")]
+            log_to_history: false,
+            #[cfg(feature = "history")]
+            log_interval_ms: 0,
+            #[cfg(feature = "alarms")]
+            enable_alarms: false,
+            category: None,
+            source: None,
+            update_frequency_ms: None,
+            tags: Vec::new(),
             #[cfg(feature = "validation")]
             validation: None,
             metadata: Default::default(),
         });
     }
-    
+
     // Add AND blocks
     for i in 0..num_blocks {
         let mut inputs = std::collections::HashMap::new();
@@ -57,72 +85,81 @@ fn create_test_config(num_blocks: usize) -> Config {
             inputs,
             outputs,
             params: std::collections::HashMap::new(),
+            priority: 0,
+            enabled: true,
             description: Some(format!("Test AND block {}", i)),
+            category: None,
             tags: Vec::new(),
             #[cfg(feature = "enhanced-errors")]
             error_handling: None,
             #[cfg(feature = "circuit-breaker")]
             circuit_breaker: None,
+            #[cfg(feature = "enhanced-monitoring")]
+            enhanced_monitoring: false,
+            metadata: Default::default(),
         });
     }
-    
+
     config
 }
 
 fn benchmark_engine_scan(c: &mut Criterion) {
     let mut group = c.benchmark_group("engine_scan");
-    
+
     for block_count in [10, 50, 100, 500].iter() {
         group.bench_function(format!("{}_blocks", block_count), |b| {
             let config = create_test_config(*block_count);
             let engine = Engine::new(config).expect("Failed to create engine");
-            
+            let rt = tokio::runtime::Runtime::new().unwrap();
+
             b.iter(|| {
-                black_box(engine.scan_once());
+                rt.block_on(async {
+                    let _ = black_box(engine.execute_scan_cycle().await);
+                });
             });
         });
     }
-    
+
     group.finish();
 }
 
 fn benchmark_signal_bus(c: &mut Criterion) {
     let mut group = c.benchmark_group("signal_bus");
-    
+
     group.bench_function("write_1000_signals", |b| {
         let bus = SignalBus::new();
-        
+
         b.iter(|| {
             for i in 0..1000 {
                 bus.write(&format!("signal_{}", i), Value::Float(i as f64));
             }
         });
     });
-    
+
     group.bench_function("read_1000_signals", |b| {
         let bus = SignalBus::new();
-        
+
         // Pre-populate signals
         for i in 0..1000 {
             bus.write(&format!("signal_{}", i), Value::Float(i as f64));
         }
-        
+
         b.iter(|| {
             for i in 0..1000 {
                 black_box(bus.read(&format!("signal_{}", i)));
             }
         });
     });
-    
+
     group.bench_function("concurrent_access", |b| {
         use std::sync::Arc;
         use std::thread;
-        
+
         let bus = Arc::new(SignalBus::new());
-        
+
         b.iter(|| {
             let mut handles = vec![];
-            
+
             for thread_id in 0..4 {
                 let bus_clone = Arc::clone(&bus);
                 let handle = thread::spawn(move || {
@@ -136,21 +173,21 @@ fn benchmark_signal_bus(c: &mut Criterion) {
                 });
                 handles.push(handle);
             }
-            
+
             for handle in handles {
                 handle.join().unwrap();
             }
         });
     });
-    
+
     group.finish();
 }
 
 fn benchmark_block_execution(c: &mut Criterion) {
     use petra::blocks::Block;
-    
+
     let mut group = c.benchmark_group("block_execution");
-    
+
     group.bench_function("and_block", |b| {
         let mut inputs = std::collections::HashMap::new();
         inputs.insert("in1".to_string(), "in1".to_string());
@@ -165,26 +202,31 @@ fn benchmark_block_execution(c: &mut Criterion) {
             inputs,
             outputs,
             params: std::collections::HashMap::new(),
+            priority: 0,
+            enabled: true,
             description: Some(String::new()),
+            category: None,
             tags: Vec::new(),
             #[cfg(feature = "enhanced-errors")]
             error_handling: None,
             #[cfg(feature = "circuit-breaker")]
             circuit_breaker: None,
+            #[cfg(feature = "enhanced-monitoring")]
+            enhanced_monitoring: false,
+            metadata: Default::default(),
         };
-        
-        let mut block = petra::blocks::create_block(&config)
-            .expect("Failed to create block");
+
+        let mut block = petra::blocks::create_block(&config).expect("Failed to create block");
         let bus = SignalBus::new();
-        
+
         bus.write("in1", Value::Bool(true));
         bus.write("in2", Value::Bool(true));
-        
+
         b.iter(|| {
             black_box(block.execute(&bus));
         });
     });
-    
+
     #[cfg(feature = "pid-control")]
     group.bench_function("pid_block", |b| {
         let mut params = std::collections::HashMap::new();
@@ -192,7 +234,7 @@ fn benchmark_block_execution(c: &mut Criterion) {
         params.insert("ki".to_string(), serde_json::json!(0.1));
         params.insert("kd".to_string(), serde_json::json!(0.01));
         params.insert("setpoint".to_string(), serde_json::json!(100.0));
-        
+
         let mut inputs = std::collections::HashMap::new();
         inputs.insert("pv".to_string(), "process_value".to_string());
 
@@ -205,31 +247,36 @@ fn benchmark_block_execution(c: &mut Criterion) {
             inputs,
             outputs,
             params,
+            priority: 0,
+            enabled: true,
             description: Some(String::new()),
+            category: None,
             tags: Vec::new(),
             #[cfg(feature = "enhanced-errors")]
             error_handling: None,
             #[cfg(feature = "circuit-breaker")]
             circuit_breaker: None,
+            #[cfg(feature = "enhanced-monitoring")]
+            enhanced_monitoring: false,
+            metadata: Default::default(),
         };
-        
-        let mut block = petra::blocks::create_block(&config)
-            .expect("Failed to create block");
+
+        let mut block = petra::blocks::create_block(&config).expect("Failed to create block");
         let bus = SignalBus::new();
-        
+
         bus.write("process_value", Value::Float(95.0));
-        
+
         b.iter(|| {
             black_box(block.execute(&bus));
         });
     });
-    
+
     group.finish();
 }
 
 fn benchmark_value_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("value_operations");
-    
+
     group.bench_function("value_creation", |b| {
         b.iter(|| {
             black_box(Value::Float(42.0));
@@ -237,30 +284,30 @@ fn benchmark_value_operations(c: &mut Criterion) {
             black_box(Value::Bool(true));
         });
     });
-    
+
     group.bench_function("value_conversion", |b| {
         let float_val = Value::Float(42.5);
         let int_val = Value::Integer(42);
         let bool_val = Value::Bool(true);
-        
+
         b.iter(|| {
             black_box(float_val.as_float());
-            black_box(int_val.as_int());
+            black_box(int_val.as_integer());
             black_box(bool_val.as_bool());
         });
     });
-    
+
     #[cfg(feature = "value-arithmetic")]
     group.bench_function("value_arithmetic", |b| {
         let val1 = Value::Float(10.0);
         let val2 = Value::Float(20.0);
-        
+
         b.iter(|| {
             black_box(val1.add(&val2));
             black_box(val1.multiply(&val2));
         });
     });
-    
+
     group.finish();
 }
 
