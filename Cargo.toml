@@ -69,6 +69,15 @@ opt-level = 2
 debug = true
 lto = true
 
+# New profile for maximum performance
+[profile.performance]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+# Enable CPU-specific optimizations
+# Users should set RUSTFLAGS="-C target-cpu=native" when building
+
 # ================================================================================
 # CORE DEPENDENCIES
 # ================================================================================
@@ -139,10 +148,19 @@ regex = {
 # === HIGH-PERFORMANCE COLLECTIONS ===
 # Concurrent data structures for signal bus and shared state
 dashmap = "6.1"          # Concurrent hash map for signal bus (signal.rs)
-ringbuffer = { 
-    version = "0.15", 
-    optional = true 
+ringbuffer = {
+    version = "0.15",
+    optional = true
 }  # Lock-free ring buffer for monitoring
+bytes = { version = "1.5", optional = true }
+tokio-util = { version = "0.7", features = ["codec"], optional = true }
+parking_lot = { version = "0.12", optional = true }
+crossbeam-queue = { version = "0.3", optional = true }
+
+# JIT compilation (experimental)
+cranelift = { version = "0.100", optional = true }
+cranelift-module = { version = "0.100", optional = true }
+cranelift-jit = { version = "0.100", optional = true }
 
 # === NETWORKING ===
 # HTTP client/server and web framework dependencies
@@ -545,11 +563,25 @@ development = [
 # Fundamental system capabilities
 
 # === PERFORMANCE ===
+# === PERFORMANCE ===
 optimized = []                # Use parking_lot and optimized algorithms
 realtime = []                 # Real-time OS scheduling (Linux only)
-=======
-parallel-execution = ["tokio/rt-multi-thread", "num_cpus"]
+parallel-execution = ["tokio/rt-multi-thread", "num_cpus", "dashmap"]
+simd-math = ["extended-types"]
+zero-copy-protocols = ["bytes", "tokio-util"]
+memory-pools = ["parking_lot", "crossbeam-queue"]
+cache-optimization = []
+jit-compilation = ["cranelift", "cranelift-module", "cranelift-jit"]
 
+# Performance bundle
+high-performance = [
+    "parallel-execution",
+    "simd-math",
+    "zero-copy-protocols",
+    "memory-pools",
+    "cache-optimization",
+    "optimized"
+]
 
 # === CONNECTIVITY ===
 mqtt = ["dep:rumqttc"]       # MQTT protocol support
@@ -788,7 +820,7 @@ advanced-blocks = []                                   # Advanced block types
 statistics = []                                        # Statistical analysis blocks
 ml-blocks = []                                         # Machine learning blocks
 error-recovery = []                                    # Automatic error recovery
-simd-math = []                                         # SIMD optimized math blocks
+simd-math = ["extended-types"]                         # SIMD optimized math blocks
 
 # ================================================================================
 # COMPATIBILITY FEATURES
