@@ -29,6 +29,9 @@ pub mod ml;
 #[cfg(feature = "circuit-breaker")]
 pub mod circuit_breaker;
 
+#[cfg(feature = "simd-math")]
+pub mod simd_math;
+
 use crate::{
     config::BlockConfig,
     error::{PlcError, Result},
@@ -257,6 +260,20 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
         "ML_INFERENCE" => ml::create_ml_inference_block(config),
         #[cfg(feature = "ml")]
         "ANOMALY_DETECT" => ml::create_anomaly_detect_block(config),
+
+        // SIMD math blocks (feature-gated)
+        #[cfg(feature = "simd-math")]
+        "SIMD_ARRAY_ADD" => {
+            let input_a = get_input_signal(config, "a", true)?.unwrap();
+            let input_b = get_input_signal(config, "b", true)?.unwrap();
+            let output = get_output_signal(config, "out", true)?.unwrap();
+            Ok(Box::new(simd_math::SimdArrayAdd::new(
+                config.name.clone(),
+                input_a,
+                input_b,
+                output,
+            )))
+        }
         
         _ => Err(PlcError::Config(format!(
             "Unknown block type: '{}'. Available types: {}",
@@ -312,9 +329,11 @@ pub fn get_available_block_types() -> Vec<&'static str> {
         #[cfg(feature = "advanced-math")]
         "STATISTICS",
         #[cfg(feature = "ml")]
-        "ML_INFERENCE",
+        "ML_INFERENCE", 
         #[cfg(feature = "ml")]
         "ANOMALY_DETECT",
+        #[cfg(feature = "simd-math")]
+        "SIMD_ARRAY_ADD",
     ];
 
     types
