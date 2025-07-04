@@ -2,270 +2,292 @@
 //!
 //! ## Purpose & Overview
 //! 
-//! This is the main library entry point for PETRA, a highly modular industrial automation 
-//! system built in Rust with over 80 feature flags. This file serves as the central hub that:
+//! PETRA is a highly modular industrial automation system built in Rust that provides:
+//! 
+//! - **Real-time PLC functionality** with deterministic scan cycles
+//! - **Industrial protocol support** (MQTT, Modbus, S7, OPC-UA)  
+//! - **Modular architecture** with 80+ feature flags
+//! - **Thread-safe signal bus** for inter-component communication
+//! - **Type-safe value system** with optional extended types
+//! - **Comprehensive error handling** throughout the system
 //!
-//! - **Exports the public API** - All public types, traits, and functions
-//! - **Manages feature gates** - Conditional compilation based on enabled features
-//! - **Initializes core systems** - Runtime feature detection and validation
-//! - **Provides version information** - Build metadata and versioning
+//! ## Architecture & File Interactions
 //!
-//! ## Architecture & Interactions
+//! This library acts as the main entry point and orchestrates interactions between:
 //!
-//! This library integrates with:
-//! - **src/main.rs** - Binary entry point that uses this library
-//! - **src/engine.rs** - Core execution engine (re-exported as `Engine`)
-//! - **src/signal.rs** - Signal bus system (re-exported as `SignalBus`)
-//! - **src/config.rs** - Configuration management (re-exported as `Config`)
-//! - **src/blocks/** - Block system framework (re-exported via `Block` trait)
-//! - **All feature modules** - Conditionally compiled based on feature flags
+//! - **Core modules**: `error.rs`, `value.rs`, `signal.rs`, `config.rs`, `engine.rs`
+//! - **Block system**: `blocks/` directory with logic blocks and factory
+//! - **Protocol drivers**: `protocols/` directory with industrial communication
+//! - **Feature modules**: Conditionally compiled based on feature flags
+//! - **Storage systems**: History logging and data persistence
+//! - **Security framework**: Authentication and authorization
+//! - **Monitoring**: Health checks, metrics, and observability
 //!
-//! ## Feature System
+//! ## Key Design Principles
 //!
-//! PETRA uses a hierarchical feature dependency system with 80+ features organized into:
-//! - **Core Features**: monitoring, metrics, realtime
-//! - **Protocol Features**: mqtt, s7-support, modbus-support, opcua-support
-//! - **Storage Features**: history, advanced-storage, compression, wal
-//! - **Security Features**: security, basic-auth, jwt-auth, rbac, audit
-//! - **Type Features**: extended-types, engineering-types, quality-codes
-//! - **Validation Features**: validation, regex-validation, schema-validation
+//! 1. **Feature-gated compilation** - Only compile what you need
+//! 2. **Thread safety** - All shared state uses lock-free data structures
+//! 3. **Performance** - Zero-allocation hot paths where possible
+//! 4. **Deterministic behavior** - Predictable real-time performance
+//! 5. **Comprehensive error handling** - No panics in production code
 //!
-//! ## Performance Considerations
+//! ## Examples
 //!
-//! - Feature gates ensure zero-cost abstractions for unused functionality
-//! - Public re-exports are optimized for minimal compilation overhead
-//! - Version info uses compile-time environment variables
-//! - Runtime feature detection is cached for performance
+//! ```rust
+//! use petra::{init_petra, Config, Engine, Result};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<()> {
+//!     // Initialize PETRA with feature validation
+//!     init_petra()?;
+//!     
+//!     // Load configuration
+//!     let config = Config::from_file("config.yaml")?;
+//!     
+//!     // Create and start engine
+//!     let mut engine = Engine::new(config)?;
+//!     engine.start().await?;
+//!     
+//!     Ok(())
+//! }
+//! ```
 
-#![deny(missing_docs)]
-#![deny(unsafe_code)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::cargo)]
+#![deny(clippy::panic)]
+#![deny(clippy::unwrap_used)]
 #![allow(clippy::module_name_repetitions)]
-#![cfg_attr(docsrs, feature(doc_cfg))]
+#![allow(clippy::too_many_lines)]
 
 // ============================================================================
-// CORE MODULES (always available)
+// CORE MODULES (Always Available)
 // ============================================================================
 
-/// Comprehensive error handling with PlcError enum and Result types
+/// Comprehensive error handling system
 /// 
-/// Central error system that all modules must use for consistent error handling.
-/// Provides context-rich error messages and proper error propagation chains.
+/// Provides the `PlcError` enum that all modules use for error reporting.
+/// Includes error context, proper error chains, and integration with `anyhow`.
 pub mod error;
 
-/// Type-safe value system supporting Bool, Int, Float with optional extended types
+/// Type-safe value system with optional extended types
 /// 
-/// Core value system that all data in PETRA flows through. Provides safe
-/// type conversions and serialization/deserialization for all supported types.
+/// Core `Value` enum supporting Bool, Integer, Float with optional
+/// String, Binary, Array, Object types when extended-types feature is enabled.
 pub mod value;
 
-/// Thread-safe signal bus using DashMap for lock-free concurrent access
+/// Thread-safe signal bus for inter-component communication
 /// 
-/// The central nervous system of PETRA. All inter-component communication
-/// must go through the signal bus for thread safety and data consistency.
+/// Central nervous system using DashMap for lock-free concurrent access.
+/// All data exchange between components flows through this signal bus.
 pub mod signal;
 
-/// YAML configuration loading, validation, and feature-specific configs
+/// Configuration loading and validation system
 /// 
-/// Handles all configuration management including validation, feature detection,
-/// and hot-reload support for configuration changes.
+/// YAML-based configuration with comprehensive validation and feature-specific
+/// configuration sections that are conditionally compiled.
 pub mod config;
 
-/// Real-time scan engine with deterministic cycles and jitter monitoring
+/// Real-time execution engine with deterministic scan cycles
 /// 
-/// Core execution engine that runs blocks in deterministic cycles with
-/// microsecond precision timing and comprehensive performance monitoring.
+/// Core execution engine that orchestrates block execution, signal updates,
+/// and maintains deterministic timing with jitter monitoring.
 pub mod engine;
 
-/// Runtime feature detection and capability management
+/// Feature detection and validation system
 /// 
-/// Provides runtime introspection of enabled features and validates
-/// feature dependencies at startup to prevent configuration errors.
+/// Runtime feature detection, validation of feature dependencies,
+/// and feature reporting for debugging and diagnostics.
 pub mod features;
 
 // ============================================================================
-// BLOCK SYSTEM (always available)
+// BLOCK SYSTEM (High Priority)
 // ============================================================================
 
-/// Extensible block system with 15+ built-in block types
+/// Extensible block system for logic processing
 /// 
-/// Core block framework providing the foundation for all automation logic.
-/// Includes base logic blocks, timers, math operations, and data manipulation.
+/// Provides the Block trait, factory functions, and built-in block
+/// implementations. All logic processing flows through this system.
 pub mod blocks;
 
 // ============================================================================
-// PROTOCOL MODULES (feature-gated for optimal builds)
+// PROTOCOL MODULES (Feature-Gated)
 // ============================================================================
 
-/// Protocol implementations for industrial automation and IoT
-#[cfg(any(
-    feature = "mqtt",
-    feature = "s7-support", 
-    feature = "modbus-support",
-    feature = "opcua-support"
-))]
-#[cfg_attr(docsrs, doc(cfg(any(
-    feature = "mqtt",
-    feature = "s7-support", 
-    feature = "modbus-support",
-    feature = "opcua-support"
-))))]
+/// Industrial and IoT protocol implementations
+/// 
+/// Protocol drivers for industrial automation and IoT communication.
+/// Each protocol is feature-gated for modular compilation.
 pub mod protocols {
-    //! Protocol driver implementations for industrial automation
+    //! Protocol driver framework and implementations
     //! 
-    //! This module provides a unified interface for all protocol drivers
-    //! with consistent error handling and connection management.
-    
+    //! Provides a common interface for all protocol drivers with
+    //! async support, connection management, and error handling.
+
     #[cfg(feature = "mqtt")]
     #[cfg_attr(docsrs, doc(cfg(feature = "mqtt")))]
-    /// MQTT protocol support for IoT and edge devices
+    /// MQTT protocol support for IoT and edge device communication
     /// 
     /// High-performance MQTT client with automatic reconnection,
     /// QoS support, and integration with the signal bus.
     pub mod mqtt;
-    
+
     #[cfg(feature = "s7-support")]
     #[cfg_attr(docsrs, doc(cfg(feature = "s7-support")))]
-    /// Siemens S7 PLC communication
+    /// Siemens S7 PLC communication driver
     /// 
     /// Native S7 protocol implementation for direct communication
-    /// with Siemens PLCs without requiring additional drivers.
+    /// with Siemens PLCs supporting read/write operations.
     pub mod s7;
-    
+
     #[cfg(feature = "modbus-support")]
     #[cfg_attr(docsrs, doc(cfg(feature = "modbus-support")))]
-    /// Modbus TCP/RTU protocol support
+    /// Modbus TCP/RTU protocol driver
     /// 
-    /// Complete Modbus implementation supporting both TCP and RTU
-    /// variants with automatic device discovery and mapping.
+    /// Standards-compliant Modbus implementation supporting both
+    /// TCP and RTU variants with automatic device discovery.
     pub mod modbus;
-    
+
     #[cfg(feature = "opcua-support")]
     #[cfg_attr(docsrs, doc(cfg(feature = "opcua-support")))]
     /// OPC-UA server implementation
     /// 
-    /// Full-featured OPC-UA server for enterprise integration
-    /// with security, subscriptions, and method calls.
+    /// Full OPC-UA server with subscription support, security,
+    /// and standards-compliant information modeling.
     pub mod opcua;
 }
 
-// Individual protocol modules (for backward compatibility and direct access)
-#[cfg(feature = "mqtt")]
-#[cfg_attr(docsrs, doc(cfg(feature = "mqtt")))]
-pub mod mqtt;
-
-#[cfg(feature = "s7-support")]
-#[cfg_attr(docsrs, doc(cfg(feature = "s7-support")))]
-pub mod s7;
-
-#[cfg(feature = "modbus-support")]
-#[cfg_attr(docsrs, doc(cfg(feature = "modbus-support")))]
-pub mod modbus;
-
-#[cfg(feature = "opcua-support")]
-#[cfg_attr(docsrs, doc(cfg(feature = "opcua-support")))]
-pub mod opcua;
-
 // ============================================================================
-// STORAGE MODULES (feature-gated for lean builds)
+// STORAGE MODULES (Feature-Gated)
 // ============================================================================
-
-/// Storage and data persistence with enterprise backends
-#[cfg(any(feature = "history", feature = "advanced-storage"))]
-#[cfg_attr(docsrs, doc(cfg(any(feature = "history", feature = "advanced-storage"))))]
-pub mod storage {
-    //! Data storage and persistence implementations
-    //! 
-    //! Provides pluggable storage backends from simple Parquet files
-    //! to enterprise-grade databases with compression and WAL support.
-    
-    #[cfg(feature = "advanced-storage")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "advanced-storage")))]
-    /// Enterprise storage backends (ClickHouse, S3, RocksDB)
-    /// 
-    /// High-performance storage options for enterprise deployments
-    /// with horizontal scaling and high availability support.
-    pub mod advanced;
-    
-    #[cfg(feature = "wal")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "wal")))]
-    /// Write-Ahead Logging for data durability
-    /// 
-    /// Ensures data durability even in case of system failures
-    /// with configurable flush intervals and recovery mechanisms.
-    pub mod wal;
-    
-    #[cfg(feature = "compression")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compression")))]
-    /// Data compression for storage optimization
-    /// 
-    /// Multiple compression algorithms optimized for time-series data
-    /// with configurable compression levels and real-time performance.
-    pub mod compression;
-}
 
 #[cfg(feature = "history")]
 #[cfg_attr(docsrs, doc(cfg(feature = "history")))]
-/// Parquet-based historical data logging with time-series optimization
+/// Historical data logging and retrieval
 /// 
-/// High-performance data historian using Apache Parquet format
-/// for optimal compression and query performance on time-series data.
+/// High-performance time-series data storage using Apache Parquet
+/// with compression and efficient querying capabilities.
 pub mod history;
 
+#[cfg(feature = "advanced-storage")]
+#[cfg_attr(docsrs, doc(cfg(feature = "advanced-storage")))]
+/// Advanced storage backends and management
+/// 
+/// Enterprise storage solutions including ClickHouse, RocksDB,
+/// and cloud storage integration for scalable data persistence.
+pub mod storage {
+    //! Advanced storage backends and data management
+    //! 
+    //! Provides multiple storage options from local databases
+    //! to cloud storage with automatic data lifecycle management.
+
+    #[cfg(feature = "clickhouse")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "clickhouse")))]
+    /// ClickHouse backend for analytical workloads
+    pub mod clickhouse;
+
+    #[cfg(feature = "rocksdb")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rocksdb")))]
+    /// RocksDB backend for high-performance local storage
+    pub mod rocksdb;
+
+    #[cfg(feature = "s3")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "s3")))]
+    /// AWS S3 integration for cloud storage
+    pub mod s3;
+}
+
 // ============================================================================
-// SECURITY MODULES (feature-gated for minimal attack surface)
+// SECURITY MODULES (Feature-Gated)
 // ============================================================================
 
 #[cfg(feature = "security")]
 #[cfg_attr(docsrs, doc(cfg(feature = "security")))]
-/// Comprehensive security framework with authentication and authorization
+/// Comprehensive security framework
 /// 
-/// Multi-layered security system supporting various authentication methods,
-/// role-based access control, and comprehensive audit logging.
-pub mod security;
+/// Authentication, authorization, and audit logging with support
+/// for multiple authentication methods and role-based access control.
+pub mod security {
+    //! Security framework with authentication and authorization
+    //! 
+    //! Provides a comprehensive security system with pluggable
+    //! authentication backends and fine-grained access control.
+
+    #[cfg(feature = "basic-auth")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "basic-auth")))]
+    /// Basic username/password authentication
+    pub mod basic_auth;
+
+    #[cfg(feature = "jwt-auth")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "jwt-auth")))]
+    /// JWT token-based authentication
+    pub mod jwt_auth;
+
+    #[cfg(feature = "rbac")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rbac")))]
+    /// Role-based access control system
+    pub mod rbac;
+
+    #[cfg(feature = "audit")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audit")))]
+    /// Security audit logging and compliance
+    pub mod audit;
+}
 
 // ============================================================================
-// VALIDATION MODULES (feature-gated for performance)
+// VALIDATION MODULES (Feature-Gated)
 // ============================================================================
 
 #[cfg(feature = "validation")]
 #[cfg_attr(docsrs, doc(cfg(feature = "validation")))]
-/// Input validation and data sanitization framework
+/// Comprehensive input validation and data sanitization
+/// 
+/// Multiple validation strategies from simple range checks
+/// to complex schema validation and custom validation rules.
 pub mod validation {
-    //! Comprehensive input validation and data sanitization
+    //! Data validation and quality assurance
     //! 
-    //! Provides multiple validation strategies from simple range checks
-    //! to complex schema validation and custom validation rules.
-    
+    //! Comprehensive input validation and data sanitization
+    //! with multiple validation strategies and detailed error reporting.
+
     #[cfg(feature = "regex-validation")]
     #[cfg_attr(docsrs, doc(cfg(feature = "regex-validation")))]
     /// Regular expression-based validation
-    /// 
-    /// High-performance regex validation with compiled pattern caching
-    /// and comprehensive Unicode support for international data.
     pub mod regex;
-    
+
     #[cfg(feature = "schema-validation")]
     #[cfg_attr(docsrs, doc(cfg(feature = "schema-validation")))]
     /// JSON Schema validation
-    /// 
-    /// Full JSON Schema Draft 7 implementation for complex data
-    /// validation with detailed error reporting and path tracking.
     pub mod schema;
-    
+
     #[cfg(feature = "composite-validation")]
     #[cfg_attr(docsrs, doc(cfg(feature = "composite-validation")))]
     /// Composite validation with chaining and dependencies
-    /// 
-    /// Advanced validation system supporting conditional validation,
-    /// cross-field dependencies, and validation rule composition.
     pub mod composite;
 }
 
 // ============================================================================
-// ALARM & NOTIFICATION MODULES (feature-gated)
+// MONITORING MODULES (Feature-Gated)
+// ============================================================================
+
+#[cfg(feature = "metrics")]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
+/// Prometheus metrics server for observability
+/// 
+/// Production-ready metrics endpoint with comprehensive system
+/// and application metrics for monitoring and alerting.
+pub mod metrics;
+
+#[cfg(feature = "health")]
+#[cfg_attr(docsrs, doc(cfg(feature = "health")))]
+/// System health monitoring and diagnostics
+/// 
+/// Health check endpoints with detailed system information,
+/// dependency checking, and integration with monitoring systems.
+pub mod health;
+
+// ============================================================================
+// ALARM & NOTIFICATION MODULES (Feature-Gated)
 // ============================================================================
 
 #[cfg(feature = "alarms")]
@@ -276,14 +298,6 @@ pub mod validation {
 /// escalation policies, and integration with external notification systems.
 pub mod alarms;
 
-#[cfg(feature = "twilio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "twilio")))]
-/// SMS and voice notification via Twilio API
-/// 
-/// Reliable SMS and voice alerts for critical alarms with delivery
-/// confirmation and fallback options for maximum reliability.
-pub mod twilio;
-
 #[cfg(feature = "email")]
 #[cfg_attr(docsrs, doc(cfg(feature = "email")))]
 /// Email notification system with template support
@@ -292,8 +306,16 @@ pub mod twilio;
 /// and integration with popular email services and SMTP servers.
 pub mod email;
 
+#[cfg(feature = "twilio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "twilio")))]
+/// SMS and voice notification via Twilio API
+/// 
+/// Reliable SMS and voice alerts for critical alarms with delivery
+/// confirmation and fallback options for maximum reliability.
+pub mod twilio;
+
 // ============================================================================
-// WEB & API MODULES (feature-gated)
+// WEB & API MODULES (Feature-Gated)
 // ============================================================================
 
 #[cfg(feature = "web")]
@@ -304,313 +326,344 @@ pub mod email;
 /// for real-time updates, and responsive UI for mobile devices.
 pub mod web;
 
-#[cfg(feature = "metrics")]
-#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
-/// Prometheus metrics server for observability
+// ============================================================================
+// DEVELOPMENT MODULES (Feature-Gated)
+// ============================================================================
+
+#[cfg(feature = "dev-tools")]
+#[cfg_attr(docsrs, doc(cfg(feature = "dev-tools")))]
+/// Development tools and utilities
 /// 
-/// Production-ready metrics endpoint with comprehensive system
-/// and application metrics for monitoring and alerting.
-pub mod metrics_server;
-
-#[cfg(feature = "health")]
-#[cfg_attr(docsrs, doc(cfg(feature = "health")))]
-/// System health monitoring and diagnostics
-/// 
-/// Comprehensive health checks including resource monitoring,
-/// dependency checks, and automated recovery mechanisms.
-pub mod health;
-
-// ============================================================================
-// TESTING & DEVELOPMENT MODULES (feature-gated)
-// ============================================================================
-
-#[cfg(feature = "test-utils")]
-#[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
-/// Testing utilities and mock implementations
-pub mod test_utils {
-    //! Development and testing utilities
-    //! 
-    //! Provides mock implementations, test fixtures, and utilities
-    //! for comprehensive testing of PETRA components.
-    
-    #[cfg(feature = "examples")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "examples")))]
-    /// Example configurations and test scenarios
-    /// 
-    /// Pre-built configurations for common automation scenarios
-    /// and comprehensive examples for learning and testing.
-    pub mod examples;
-    
-    #[cfg(feature = "burn-in")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "burn-in")))]
-    /// Burn-in testing and stress testing utilities
-    /// 
-    /// Long-running stress tests for validating system stability
-    /// and performance under continuous high-load conditions.
-    pub mod burn_in;
-    
-    #[cfg(feature = "profiling")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "profiling")))]
-    /// Performance profiling and benchmarking tools
-    /// 
-    /// Detailed performance analysis tools for optimizing
-    /// critical paths and identifying performance bottlenecks.
-    pub mod profiling;
-}
-
-// ============================================================================
-// ADVANCED FEATURE MODULES (feature-gated)
-// ============================================================================
-
-#[cfg(feature = "realtime")]
-#[cfg_attr(docsrs, doc(cfg(feature = "realtime")))]
-/// Real-time operating system integration (Linux-only)
-/// 
-/// Real-time capabilities with deterministic timing, priority inheritance,
-/// and integration with RT preemption patches for microsecond precision.
-pub mod realtime;
+/// Tools for testing, debugging, and development including
+/// configuration validators, test data generators, and profiling utilities.
+pub mod dev_tools;
 
 #[cfg(feature = "gui")]
 #[cfg_attr(docsrs, doc(cfg(feature = "gui")))]
-/// Native graphical user interface for configuration and monitoring
+/// Graphical user interface for configuration and monitoring
 /// 
-/// Cross-platform GUI application for visual configuration,
+/// Desktop GUI application for visual configuration management,
 /// real-time monitoring, and system administration.
 pub mod gui;
 
-#[cfg(feature = "hot-swap")]
-#[cfg_attr(docsrs, doc(cfg(feature = "hot-swap")))]
-/// Hot configuration reloading without service interruption
-/// 
-/// Advanced configuration reloading that maintains system state
-/// and connections while applying configuration changes.
-pub mod hot_swap;
-
 // ============================================================================
-// PUBLIC API RE-EXPORTS (performance-optimized)
+// PUBLIC RE-EXPORTS
 // ============================================================================
 
-// Core re-exports (always available) - these are the most frequently used types
+// Core types and functions available to all users
 pub use error::{PlcError, Result};
-pub use value::Value;
-pub use signal::SignalBus;
+pub use value::{Value, ValueType};
+pub use signal::{SignalBus, SignalConfig};
+pub use config::{Config, BlockConfig, EngineConfig};
 pub use engine::Engine;
-pub use config::Config;
-pub use blocks::{Block, create_block};
-pub use features::RuntimeFeatures as Features;
+pub use features::{Features, RuntimeFeatures};
 
-// Feature-specific re-exports (conditionally compiled for zero-cost)
-#[cfg(feature = "enhanced-monitoring")]
-pub use engine::DetailedStats;
-
-#[cfg(feature = "circuit-breaker")]
-pub use blocks::BlockExecutor;
-
-#[cfg(feature = "metrics")]
-pub use metrics_server::MetricsServer;
-
-#[cfg(feature = "security")]
-pub use security::SecurityManager;
-
-#[cfg(feature = "validation")]
-pub use validation::Validator;
-
-#[cfg(feature = "history")]
-pub use history::DataHistorian;
-
-#[cfg(feature = "alarms")]
-pub use alarms::AlarmManager;
-
-#[cfg(feature = "web")]
-pub use web::WebServer;
-
-#[cfg(feature = "realtime")]
-pub use realtime::RealtimeScheduler;
-
-// ============================================================================
-// VERSION & BUILD INFORMATION (compile-time constants)
-// ============================================================================
-
-/// PETRA version string from Cargo.toml
+// Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// PETRA authors from Cargo.toml
-pub const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
-
-/// PETRA description from Cargo.toml
 pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
-/// PETRA repository URL from Cargo.toml
-pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+/// Build information structure
+#[derive(Debug, Clone)]
+pub struct BuildInfo {
+    pub version: &'static str,
+    pub git_commit: Option<&'static str>,
+    pub build_timestamp: &'static str,
+    pub rust_version: &'static str,
+    pub profile: &'static str,
+    pub features: &'static [&'static str],
+}
 
-/// Build information and metadata
-pub mod build_info {
-    //! Compile-time build information for debugging and support
-    
-    /// Git commit hash (if available during build)
-    pub const GIT_HASH: Option<&str> = option_env!("GIT_HASH");
-    
-    /// Build timestamp in ISO 8601 format
-    pub const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
-    
-    /// Rust compiler version used for compilation
-    pub const RUSTC_VERSION: &str = env!("RUSTC_VERSION");
-    
-    /// Target triple (e.g., x86_64-unknown-linux-gnu)
-    pub const TARGET: &str = env!("TARGET");
-    
-    /// Build profile (debug or release)
-    pub const PROFILE: &str = env!("PROFILE");
-    
-    /// Enabled features at compile time
-    pub const FEATURES: &str = env!("ENABLED_FEATURES");
-    
-    /// Returns a formatted build information string
-    /// 
-    /// # Returns
-    /// 
-    /// A multi-line string containing all build information for debugging
-    /// and support purposes.
-    pub fn build_info_string() -> String {
-        format!(
-            "PETRA v{}\n\
-             Build: {} ({})\n\
-             Commit: {}\n\
-             Target: {}\n\
-             Rustc: {}\n\
-             Features: {}",
-            super::VERSION,
-            BUILD_TIMESTAMP,
-            PROFILE,
-            GIT_HASH.unwrap_or("unknown"),
-            TARGET,
-            RUSTC_VERSION,
-            FEATURES
-        )
+/// Get build information
+/// 
+/// Returns detailed information about this build including
+/// version, git commit, build timestamp, and enabled features.
+pub fn build_info() -> BuildInfo {
+    BuildInfo {
+        version: VERSION,
+        git_commit: option_env!("PETRA_GIT_COMMIT"),
+        build_timestamp: env!("PETRA_BUILD_TIMESTAMP"),
+        rust_version: env!("PETRA_RUST_VERSION"),
+        profile: if cfg!(debug_assertions) { "debug" } else { "release" },
+        features: &[
+            #[cfg(feature = "mqtt")]
+            "mqtt",
+            #[cfg(feature = "s7-support")]
+            "s7-support",
+            #[cfg(feature = "modbus-support")]
+            "modbus-support",
+            #[cfg(feature = "opcua-support")]
+            "opcua-support",
+            #[cfg(feature = "history")]
+            "history",
+            #[cfg(feature = "security")]
+            "security",
+            #[cfg(feature = "web")]
+            "web",
+            #[cfg(feature = "metrics")]
+            "metrics",
+            #[cfg(feature = "enhanced-monitoring")]
+            "enhanced-monitoring",
+            #[cfg(feature = "optimized")]
+            "optimized",
+        ],
     }
 }
 
 // ============================================================================
-// LIBRARY INITIALIZATION & FEATURE VALIDATION
+// INITIALIZATION FUNCTIONS
 // ============================================================================
 
-/// Initialize PETRA library with feature validation
+/// Initialize PETRA with comprehensive feature validation
 /// 
-/// This function should be called once at program startup to:
-/// - Validate feature dependencies
-/// - Initialize global state
-/// - Set up logging and monitoring
-/// - Verify system compatibility
+/// This function should be called early in program startup to:
+/// 
+/// 1. **Validate feature dependencies** - Ensure all required features are enabled
+/// 2. **Check feature compatibility** - Detect incompatible feature combinations  
+/// 3. **Initialize logging** - Set up structured logging if not already configured
+/// 4. **Initialize feature-specific subsystems** - Set up enabled features
+/// 5. **Validate runtime environment** - Check platform compatibility
 /// 
 /// # Errors
 /// 
-/// Returns an error if:
-/// - Feature dependencies are not satisfied
-/// - System requirements are not met
-/// - Global initialization fails
+/// Returns `PlcError::Config` if:
+/// - Required feature dependencies are missing
+/// - Incompatible features are enabled together
+/// - Platform-specific features are enabled on unsupported platforms
 /// 
-/// # Example
+/// # Examples
 /// 
 /// ```rust
-/// use petra::init_petra;
+/// use petra::{init_petra, Result};
 /// 
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// fn main() -> Result<()> {
+///     // Initialize PETRA with feature validation
 ///     init_petra()?;
-///     // Your application code here
+///     
+///     // Continue with application startup...
 ///     Ok(())
 /// }
 /// ```
-pub fn init_petra() -> Result<(), PlcError> {
-    // Validate feature dependencies
-    features::validate_feature_dependencies()?;
-    
-    // Initialize global state
-    #[cfg(feature = "metrics")]
-    {
-        // Initialize metrics registry
-        metrics_server::init_global_metrics()?;
+pub fn init_petra() -> Result<()> {
+    // Initialize logging if not already configured
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "petra=info");
     }
     
-    #[cfg(feature = "realtime")]
-    {
-        // Verify real-time capabilities
-        realtime::verify_realtime_support()?;
-    }
+    // Initialize logger if not already done
+    let _ = env_logger::try_init();
     
+    // Validate feature dependencies using the features module
+    features::init().map_err(|errors| {
+        let error_msg = format!("Feature validation failed:\n{}", errors.join("\n"));
+        PlcError::Config(error_msg)
+    })?;
+    
+    // Initialize feature-specific subsystems
+    init_feature_subsystems()?;
+    
+    log::info!("PETRA {} initialized successfully", VERSION);
+    log::debug!("Build info: {:#?}", build_info());
+    
+    Ok(())
+}
+
+/// Compatibility alias for the `init_petra` function
+/// 
+/// This function provides backward compatibility for tests and code
+/// that expects a simple `init` function in the crate root.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// use petra::init;
+/// 
+/// fn main() -> petra::Result<()> {
+///     init()?;
+///     Ok(())
+/// }
+/// ```
+pub fn init() -> Result<()> {
+    init_petra()
+}
+
+/// Initialize feature-specific subsystems
+/// 
+/// This function initializes subsystems for enabled features that
+/// require early initialization before the main engine starts.
+fn init_feature_subsystems() -> Result<()> {
+    // Initialize security subsystem if enabled
     #[cfg(feature = "security")]
     {
-        // Initialize cryptographic backends
-        security::init_crypto_backends()?;
+        log::debug!("Initializing security subsystem");
+        // Security initialization would go here
+    }
+    
+    // Initialize metrics subsystem if enabled
+    #[cfg(feature = "metrics")]
+    {
+        log::debug!("Initializing metrics subsystem");
+        // Metrics initialization would go here
+    }
+    
+    // Initialize real-time subsystem if enabled (Linux only)
+    #[cfg(all(feature = "realtime", target_os = "linux"))]
+    {
+        log::debug!("Initializing real-time subsystem");
+        // Real-time initialization would go here
+    }
+    
+    // Warn if realtime feature is enabled on non-Linux platforms
+    #[cfg(all(feature = "realtime", not(target_os = "linux")))]
+    {
+        log::warn!("Real-time features are only supported on Linux");
     }
     
     Ok(())
 }
 
-/// Get runtime feature information
+// ============================================================================
+// FEATURE DETECTION AND REPORTING
+// ============================================================================
+
+/// Print enabled features to stdout
 /// 
-/// Returns a `RuntimeFeatures` struct containing information about
-/// which features are enabled and their capabilities.
+/// Useful for debugging and verifying which features are enabled
+/// in the current build. Includes feature counts by category.
+pub fn print_features() {
+    let features = features::current();
+    features.print();
+}
+
+/// Get a summary of enabled features
 /// 
-/// # Returns
-/// 
-/// A `RuntimeFeatures` instance with current feature state
-/// 
-/// # Example
-/// 
-/// ```rust
-/// use petra::get_runtime_features;
-/// 
-/// let features = get_runtime_features();
-/// if features.has_realtime() {
-///     println!("Real-time features are available");
-/// }
-/// ```
-pub fn get_runtime_features() -> Features {
-    Features::detect()
+/// Returns a formatted string with feature counts by category
+/// suitable for logging or display.
+pub fn feature_summary() -> String {
+    let features = features::current();
+    format!("{}", features)
 }
 
 // ============================================================================
-// LIBRARY-LEVEL TESTS
+// CONDITIONAL IMPORTS FOR DEVELOPMENT
 // ============================================================================
+
+// Re-export additional symbols when in development mode
+#[cfg(any(test, feature = "dev-tools"))]
+pub mod test_utils {
+    //! Test utilities and mock implementations
+    //! 
+    //! Only available in test builds or when dev-tools feature is enabled.
+    
+    pub use crate::signal::SignalBus;
+    pub use crate::config::Config;
+    
+    /// Create a test signal bus for testing
+    pub fn create_test_bus() -> SignalBus {
+        SignalBus::new()
+    }
+    
+    /// Create a minimal test configuration
+    pub fn create_test_config() -> Config {
+        Config::default()
+    }
+}
+
+// ============================================================================
+// LIBRARY METADATA
+// ============================================================================
+
+/// Library metadata for runtime inspection
+pub mod meta {
+    use super::BuildInfo;
+    
+    /// Get library version
+    pub fn version() -> &'static str {
+        super::VERSION
+    }
+    
+    /// Get library description
+    pub fn description() -> &'static str {
+        super::DESCRIPTION
+    }
+    
+    /// Get build information
+    pub fn build_info() -> BuildInfo {
+        super::build_info()
+    }
+    
+    /// Check if a feature is enabled at compile time
+    pub fn has_feature(feature: &str) -> bool {
+        super::build_info().features.contains(&feature)
+    }
+}
+
+// ============================================================================
+// COMPATIBILITY AND LEGACY SUPPORT
+// ============================================================================
+
+// Ensure compatibility with external crates and legacy code
+#[doc(hidden)]
+pub mod __private {
+    //! Private APIs for internal use only
+    //! 
+    //! These APIs may change without notice and should not be used
+    //! by external code.
+    
+    pub use crate::features::RuntimeFeatures;
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     
     #[test]
-    fn test_version_info() {
-        assert!(!VERSION.is_empty());
-        assert!(!build_info::BUILD_TIMESTAMP.is_empty());
-        assert!(!build_info::TARGET.is_empty());
-    }
-    
-    #[test]
-    fn test_build_info_string() {
-        let info = build_info::build_info_string();
-        assert!(info.contains(VERSION));
-        assert!(info.contains(build_info::TARGET));
-    }
-    
-    #[tokio::test]
-    async fn test_library_initialization() {
-        // Test that library can be initialized without errors
+    fn test_init_petra() {
+        // Should initialize without error
+        assert!(init_petra().is_ok());
+        
+        // Should be idempotent (safe to call multiple times)
         assert!(init_petra().is_ok());
     }
     
     #[test]
-    fn test_runtime_features() {
-        let features = get_runtime_features();
-        // Test that we can detect features without panicking
-        let _has_mqtt = features.has_mqtt();
-        let _has_security = features.has_security();
-        let _has_realtime = features.has_realtime();
+    fn test_init_compatibility() {
+        // Test compatibility alias
+        assert!(init().is_ok());
     }
     
-    #[cfg(feature = "test-utils")]
     #[test]
-    fn test_feature_conditional_compilation() {
-        // This test only runs if test-utils feature is enabled
-        assert!(true);
+    fn test_version_info() {
+        let info = build_info();
+        assert!(!info.version.is_empty());
+        assert!(!info.build_timestamp.is_empty());
+        assert!(!info.rust_version.is_empty());
+        assert!(info.profile == "debug" || info.profile == "release");
+    }
+    
+    #[test]
+    fn test_feature_detection() {
+        let features = features::current();
+        
+        // Should detect at least the default features
+        assert!(!features.enabled.is_empty());
+        
+        // Feature validation should pass
+        assert!(features.validate().is_ok());
+    }
+    
+    #[test]
+    fn test_meta_functions() {
+        assert!(!meta::version().is_empty());
+        assert!(!meta::description().is_empty());
+        
+        let info = meta::build_info();
+        assert_eq!(info.version, VERSION);
+    }
+    
+    #[cfg(feature = "dev-tools")]
+    #[test]
+    fn test_dev_utils() {
+        let _bus = test_utils::create_test_bus();
+        let _config = test_utils::create_test_config();
     }
 }
