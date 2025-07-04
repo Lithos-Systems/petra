@@ -1,0 +1,34 @@
+# minimal.yaml
+version: "1.0"
+engine:
+  scan_time_ms: 100
+  
+blocks:
+  - name: input_signal
+    type: DATA_GENERATOR
+    outputs:
+      value: signals.input
+    parameters:
+      mode: sine
+      frequency: 1.0
+      
+  - name: threshold_check
+    type: GT
+    inputs:
+      in1: signals.input
+      in2: signals.threshold
+    outputs:
+      out: signals.alarm
+      
+  - name: alarm_timer
+    type: ON_DELAY
+    inputs:
+      in: signals.alarm
+    outputs:
+      out: signals.delayed_alarm
+    parameters:
+      delay_ms: 5000
+
+signals:
+  signals.threshold:
+    initial_value: 0.5
