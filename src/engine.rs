@@ -1,368 +1,197 @@
-//! # PETRA Real-Time Scan Engine
-//!
-//! ## Purpose & Overview
+// src/engine.rs
+//! PETRA Engine - Real-time Automation Execution Core
 //! 
-//! This module provides the core real-time execution engine for PETRA, serving as the central
-//! orchestrator that coordinates all system components in deterministic scan cycles. The engine
-//! is responsible for:
+//! This module implements the heart of PETRA: a deterministic, real-time capable
+//! automation engine that executes logic blocks in precise scan cycles.
+//! It provides real-time execution with precise timing control, comprehensive 
+//! error handling, and detailed performance monitoring.
 //!
-//! - **Deterministic Execution** - Executes automation logic in predictable, timed cycles
-//! - **Block Orchestration** - Manages execution order and data flow between logic blocks
-//! - **Real-Time Performance** - Maintains precise timing with jitter monitoring and compensation
-//! - **Error Recovery** - Handles transient errors gracefully without system shutdown
-//! - **Performance Monitoring** - Tracks execution metrics and identifies bottlenecks
-//! - **Graceful Degradation** - Continues operation even when individual blocks fail
-//! - **Resource Management** - Optimizes CPU usage and memory allocation patterns
+//! # Architecture Overview
 //!
-//! ## Architecture & Interactions
-//!
-//! The engine sits at the heart of PETRA's architecture, orchestrating all components:
+//! The engine operates as the central coordinator for all PETRA components:
 //!
 //! ```text
-//! ┌───────────────────────────────────────────────────────────────────────┐
-//! │                          PETRA Engine Core                            │
-//! │                        (src/engine.rs)                                │
-//! └─────────┬─────────────────────────┬─────────────────────────┬─────────┘
-//!           │                         │                         │
-//!           ▼                         ▼                         ▼
-//! ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-//! │  Signal Bus     │    │    Block System     │    │  Protocol Drivers   │
-//! │ (signal.rs)     │◄──►│   (blocks/*)        │◄──►│   (protocols/*)     │
-//! │                 │    │                     │    │                     │
-//! │ • Data Flow     │    │ • Logic Processing  │    │ • I/O Operations    │
-//! │ • State Storage │    │ • Control Algorithms│    │ • Communication     │
-//! │ • Thread Safety │    │ • Math Operations   │    │ • Data Acquisition  │
-//! └─────────────────┘    └─────────────────────┘    └─────────────────────┘
-//!           │                         │                         │
-//!           ▼                         ▼                         ▼
-//! ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-//! │   Monitoring    │    │      Storage        │    │      Security       │
-//! │ (metrics.rs)    │    │   (history.rs)      │    │   (security.rs)     │
-//! │                 │    │                     │    │                     │
-//! │ • Performance   │    │ • Data Logging      │    │ • Authentication    │
-//! │ • Alarms        │    │ • Trend Analysis    │    │ • Authorization     │
-//! │ • Diagnostics   │    │ • Backup/Recovery   │    │ • Audit Logging     │
-//! └─────────────────┘    └─────────────────────┘    └─────────────────────┘
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                           PETRA Engine                                  │
+//! ├─────────────────────────────────────────────────────────────────────────┤
+//! │                                                                         │
+//! │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐               │
+//! │  │ Signal Bus   │◄──►│ Scan Engine  │◄──►│ Block System │               │
+//! │  │              │    │              │    │              │               │
+//! │  │ • DashMap    │    │ • Timing     │    │ • Logic      │               │
+//! │  │ • Atomic Ops │    │ • Scheduling │    │ • Math       │               │
+//! │  │ • Events     │    │ • Error Mgmt │    │ • Control    │               │
+//! │  └──────────────┘    └──────────────┘    └──────────────┘               │
+//! │         ▲                    │                    │                     │
+//! │         │                    ▼                    ▼                     │
+//! │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐               │
+//! │  │ Protocol     │    │ Performance  │    │ Persistence  │               │
+//! │  │ Drivers      │    │ Monitoring   │    │ & History    │               │
+//! │  │              │    │              │    │              │               │
+//! │  │ • MQTT       │    │ • Metrics    │    │ • Parquet    │               │
+//! │  │ • Modbus     │    │ • Jitter     │    │ • WAL        │               │
+//! │  │ • S7/OPC-UA  │    │ • Profiling  │    │ • S3/Cloud   │               │
+//! │  └──────────────┘    └──────────────┘    └──────────────┘               │
+//! │                                                                         │
+//! └─────────────────────────────────────────────────────────────────────────┘
 //! ```
 //!
-//! ## Scan Cycle Architecture
+//! # Features
 //!
-//! The engine operates in deterministic scan cycles:
-//!
-//! ```text
-//! ┌───────────────────────────────────────────────────────────────────────┐
-//! │                        Scan Cycle (e.g., 100ms)                       │
-//! └─────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────┘
-//!       │         │         │         │         │         │         │
-//!       ▼         ▼         ▼         ▼         ▼         ▼         ▼
-//!   ┌──────┐ ┌─────────┐ ┌──────┐ ┌─────────┐ ┌──────┐ ┌─────────┐ ┌──────┐
-//!   │  I/O │ │ Blocks  │ │ Math │ │ Control │ │Alarms│ │ History │ │Stats │
-//!   │ Read │ │Logic Ex.│ │ Ops  │ │ Loops   │ │Check │ │ Logging │ │Update│
-//!   └──────┘ └─────────┘ └──────┘ └─────────┘ └──────┘ └─────────┘ └──────┘
-//!      ↑                                                                ↓
-//!      └────────────────── Feedback & Control Loop ─────────────────────┘
-//! ```
-//!
-//! ## Real-Time Performance Features
-//!
-//! - **Predictable Timing**: Fixed scan cycles with jitter monitoring
-//! - **Priority-Based Execution**: Blocks execute in order of priority
-//! - **Missed Tick Handling**: Configurable behavior for timing violations
-//! - **Resource Optimization**: Memory-efficient data structures and algorithms
-//! - **Lock-Free Operations**: Signal bus uses concurrent data structures
-//! - **Error Isolation**: Individual block failures don't affect others
-//!
-//! ## Performance Characteristics
-//!
-//! The engine is optimized for:
-//! - **Sub-microsecond jitter** in real-time mode with proper OS configuration
-//! - **10,000+ signals** with minimal memory overhead
-//! - **1,000+ blocks** executing per scan cycle
-//! - **100+ protocols** operating concurrently
-//! - **Deterministic execution** regardless of system load
-
-#![warn(clippy::all)]
-#![warn(clippy::pedantic)]
-#![warn(missing_docs)]
-#![allow(clippy::module_name_repetitions)] // Engine types naturally repeat "Engine"
+//! - **Deterministic Execution**: Fixed scan cycles with configurable timing
+//! - **Real-time Support**: Optional real-time scheduling with `realtime` feature
+//! - **Hot Reload**: Dynamic block and configuration updates without restart
+//! - **Error Recovery**: Comprehensive error handling with automatic recovery
+//! - **Performance Monitoring**: Detailed metrics including jitter analysis
+//! - **Thread Safety**: Safe concurrent access using Arc<Mutex<>> patterns
 
 use crate::{
-    blocks::{Block, create_block},
-    config::Config,
-    error::{PlcError, Result},
+    blocks::{create_block, Block},
+    config::{BlockConfig, Config, from_yaml_value},
+    error::PlcError,
     signal::SignalBus,
-    value::{Value, from_yaml_value},
+    value::Value,
 };
+use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
 use std::{
-    collections::{VecDeque, HashSet},
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tokio::{
     sync::{Mutex, RwLock},
-    time::{interval, MissedTickBehavior, sleep},
-    runtime::Runtime,
+    task::JoinHandle,
+    time::{interval, sleep, MissedTickBehavior},
 };
-use tracing::{info, warn, error, debug, trace, span, Level};
-
-// Feature-gated imports for enhanced functionality
-#[cfg(feature = "metrics")]
-use metrics::{counter, gauge, histogram};
-
-#[cfg(feature = "realtime")]
-use libc;
-
-#[cfg(feature = "circuit-breaker")]
-use crate::blocks::circuit_breaker::BlockExecutor;
+use tracing::{debug, error, info, warn, span, Level};
 
 #[cfg(feature = "enhanced-monitoring")]
-use std::collections::HashMap;
+use crate::metrics::EngineMetrics;
+
+#[cfg(feature = "realtime")]
+use libc::{sched_param, sched_setscheduler, SCHED_FIFO};
 
 // ============================================================================
-// ENGINE CONFIGURATION
+// CONFIGURATION STRUCTURES
 // ============================================================================
 
-/// Engine configuration parameters
+/// Engine-specific configuration parameters
 /// 
-/// Controls various aspects of engine behavior including monitoring, metrics,
-/// error handling, and performance tuning. These settings affect the runtime
-/// characteristics and can be tuned for different deployment scenarios.
-/// 
-/// # Examples
-/// 
-/// ```rust
-/// use petra::engine::EngineConfig;
-/// 
-/// // High-performance configuration
-/// let config = EngineConfig {
-///     enhanced_monitoring: false,  // Disable for better performance
-///     metrics_enabled: true,       // Keep basic metrics
-///     max_consecutive_errors: 5,   // Fail fast
-///     error_recovery_enabled: true,
-///     performance_logging: false,  // No extra logging overhead
-///     real_time_priority: Some(50),
-///     cpu_affinity: Some(vec![0, 1]),
-/// };
-/// ```
-#[derive(Debug, Clone)]
+/// These settings control the runtime behavior of the engine, separate from
+/// the system configuration loaded from YAML files.
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EngineConfig {
-    /// Enable enhanced monitoring with detailed execution tracking
-    /// 
-    /// When enabled, tracks execution order, block timing, and maintains
-    /// historical performance data. Adds ~5-10% overhead.
+    /// Enable enhanced performance monitoring
     pub enhanced_monitoring: bool,
     
-    /// Enable Prometheus-compatible metrics collection
-    /// 
-    /// Exports performance metrics for monitoring systems. Minimal overhead
-    /// when metrics are not actively scraped.
-    pub metrics_enabled: bool,
+    /// Enable automatic error recovery
+    pub error_recovery: bool,
     
-    /// Maximum consecutive errors before engine shutdown
-    /// 
-    /// Safety mechanism to prevent runaway error conditions. Lower values
-    /// provide faster failure detection but may be too aggressive.
+    /// Maximum consecutive errors before shutdown
     pub max_consecutive_errors: u64,
     
-    /// Enable automatic error recovery mechanisms
-    /// 
-    /// When enabled, the engine attempts to recover from transient errors
-    /// rather than immediately shutting down.
-    pub error_recovery_enabled: bool,
+    /// Delay between recovery attempts (ms)
+    pub recovery_delay_ms: u64,
     
-    /// Enable performance logging for diagnostics
-    /// 
-    /// Logs detailed performance warnings when timing thresholds are exceeded.
-    /// Useful for debugging but adds logging overhead.
-    pub performance_logging: bool,
+    /// Enable real-time thread priority (requires realtime feature)
+    pub realtime_priority: Option<i32>,
     
-    /// Real-time thread priority (1-99, Linux only)
-    /// 
-    /// Only available with the "realtime" feature. Higher values get higher
-    /// priority but require root privileges or capabilities.
-    #[cfg(feature = "realtime")]
-    pub real_time_priority: Option<u8>,
-    
-    /// CPU affinity mask for engine thread
-    /// 
-    /// Only available with the "realtime" feature. Pins the engine to specific
-    /// CPU cores for consistent performance.
-    #[cfg(feature = "realtime")]
+    /// CPU affinity mask for the engine thread
     pub cpu_affinity: Option<Vec<usize>>,
     
-    /// Engine watchdog timeout in milliseconds
-    /// 
-    /// If enabled, a watchdog thread monitors the engine and can restart it
-    /// if it becomes unresponsive.
-    pub watchdog_timeout_ms: Option<u64>,
+    /// Enable detailed performance profiling
+    pub profiling: bool,
     
-    /// Block execution timeout in microseconds
-    /// 
-    /// Maximum time allowed for a single block execution. Blocks exceeding
-    /// this limit are terminated and marked as failed.
-    pub block_timeout_us: Option<u64>,
+    /// Watchdog timeout (0 = disabled)
+    pub watchdog_timeout_ms: u64,
     
-    /// Scan cycle overrun tolerance percentage
-    /// 
-    /// Acceptable percentage of scan time overrun before warnings are generated.
-    /// For example, 10 means 10% overrun is acceptable.
-    pub overrun_tolerance_percent: u8,
+    /// Behavior when scan cycle is missed
+    pub missed_tick_behavior: MissedTickBehavior,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            enhanced_monitoring: cfg!(feature = "enhanced-monitoring"),
-            metrics_enabled: cfg!(feature = "metrics"),
+            enhanced_monitoring: false,
+            error_recovery: true,
             max_consecutive_errors: 10,
-            error_recovery_enabled: true,
-            performance_logging: cfg!(debug_assertions),
-            #[cfg(feature = "realtime")]
-            real_time_priority: None,
-            #[cfg(feature = "realtime")]
+            recovery_delay_ms: 1000,
+            realtime_priority: None,
             cpu_affinity: None,
-            watchdog_timeout_ms: None,
-            block_timeout_us: None,
-            overrun_tolerance_percent: 10,
+            profiling: false,
+            watchdog_timeout_ms: 0,
+            missed_tick_behavior: MissedTickBehavior::Burst,
         }
     }
 }
 
 impl EngineConfig {
     /// Create a high-performance configuration
-    /// 
-    /// Optimized for minimal overhead and maximum throughput.
     pub fn high_performance() -> Self {
         Self {
             enhanced_monitoring: false,
-            metrics_enabled: false,
-            max_consecutive_errors: 3,
-            error_recovery_enabled: true,
-            performance_logging: false,
-            #[cfg(feature = "realtime")]
-            real_time_priority: Some(80),
-            #[cfg(feature = "realtime")]
-            cpu_affinity: Some(vec![0]),
-            watchdog_timeout_ms: None,
-            block_timeout_us: Some(100), // 100µs max per block
-            overrun_tolerance_percent: 5,
+            error_recovery: true,
+            max_consecutive_errors: 5,
+            recovery_delay_ms: 100,
+            realtime_priority: Some(50),
+            cpu_affinity: Some(vec![0]), // Pin to first CPU
+            profiling: false,
+            watchdog_timeout_ms: 0,
+            missed_tick_behavior: MissedTickBehavior::Skip,
         }
     }
     
-    /// Create a development configuration
-    /// 
-    /// Optimized for debugging and development with full monitoring.
+    /// Create a development/debug configuration
     pub fn development() -> Self {
         Self {
             enhanced_monitoring: true,
-            metrics_enabled: true,
-            max_consecutive_errors: 100,
-            error_recovery_enabled: true,
-            performance_logging: true,
-            #[cfg(feature = "realtime")]
-            real_time_priority: None,
-            #[cfg(feature = "realtime")]
+            error_recovery: false,
+            max_consecutive_errors: 1,
+            recovery_delay_ms: 5000,
+            realtime_priority: None,
             cpu_affinity: None,
-            watchdog_timeout_ms: Some(30000), // 30 second timeout
-            block_timeout_us: Some(10000),    // 10ms max per block
-            overrun_tolerance_percent: 50,
+            profiling: true,
+            watchdog_timeout_ms: 30000,
+            missed_tick_behavior: MissedTickBehavior::Burst,
         }
     }
     
     /// Create a production configuration
-    /// 
-    /// Balanced settings for production deployments.
     pub fn production() -> Self {
         Self {
-            enhanced_monitoring: false,
-            metrics_enabled: true,
+            enhanced_monitoring: true,
+            error_recovery: true,
             max_consecutive_errors: 10,
-            error_recovery_enabled: true,
-            performance_logging: false,
-            #[cfg(feature = "realtime")]
-            real_time_priority: Some(50),
-            #[cfg(feature = "realtime")]
+            recovery_delay_ms: 1000,
+            realtime_priority: None,
             cpu_affinity: None,
-            watchdog_timeout_ms: Some(60000), // 1 minute timeout
-            block_timeout_us: Some(1000),     // 1ms max per block
-            overrun_tolerance_percent: 10,
+            profiling: false,
+            watchdog_timeout_ms: 60000,
+            missed_tick_behavior: MissedTickBehavior::Delay,
         }
     }
 }
 
 // ============================================================================
-// ENGINE STATISTICS
+// ENGINE STATE AND STATISTICS
 // ============================================================================
 
-/// Comprehensive engine performance statistics
-/// 
-/// Tracks detailed timing and execution metrics for performance analysis
-/// and system optimization. These statistics are used for monitoring,
-/// alerting, and performance tuning.
-#[derive(Debug, Default, Clone)]
-pub struct EngineStats {
-    /// Total number of completed scan cycles
-    pub scan_count: u64,
-    
-    /// Cumulative execution time across all scans
-    pub total_scan_time: Duration,
-    
-    /// Minimum observed scan time
-    pub min_scan_time: Duration,
-    
-    /// Maximum observed scan time
-    pub max_scan_time: Duration,
-    
-    /// Duration of the most recent scan
-    pub last_scan_time: Duration,
-    
-    /// Average scan time across all cycles
-    pub avg_scan_time: Duration,
-    
-    /// Current timing jitter (deviation from target)
-    pub jitter: Duration,
-    
-    /// Maximum jitter observed
-    pub max_jitter: Duration,
-    
-    /// Total number of block execution errors
-    pub block_errors: u64,
-    
-    /// Number of scan cycles that exceeded target time
-    pub scan_overruns: u64,
-    
-    /// Total number of blocks executed across all scans
-    pub blocks_executed: u64,
-    
-    /// Engine uptime since start
-    pub uptime: Duration,
-    
-    /// Current engine state
-    pub state: EngineState,
-    
-    /// Memory usage statistics
-    pub memory_stats: MemoryStats,
-    
-    /// Thread pool statistics
-    #[cfg(feature = "thread-pool")]
-    pub thread_pool_stats: ThreadPoolStats,
-}
-
-/// Engine operational state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Engine lifecycle state
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EngineState {
-    /// Engine is stopped and not processing
+    /// Engine is initialized but not started
     Stopped,
     /// Engine is starting up
     Starting,
     /// Engine is running normally
     Running,
-    /// Engine is stopping gracefully
+    /// Engine is shutting down
     Stopping,
-    /// Engine has encountered a fatal error
+    /// Engine encountered a fatal error
     Error,
     /// Engine is in recovery mode
     Recovering,
@@ -370,43 +199,69 @@ pub enum EngineState {
 
 impl Default for EngineState {
     fn default() -> Self {
-        Self::Stopped
+        EngineState::Stopped
     }
 }
 
-/// Memory usage statistics
-#[derive(Debug, Default, Clone)]
-pub struct MemoryStats {
-    /// Total heap memory allocated
-    pub heap_allocated: usize,
-    /// Peak heap memory usage
-    pub heap_peak: usize,
-    /// Signal bus memory usage
-    pub signal_bus_memory: usize,
-    /// Block system memory usage
-    pub blocks_memory: usize,
-}
-
-/// Thread pool statistics
-#[cfg(feature = "thread-pool")]
-#[derive(Debug, Default, Clone)]
-pub struct ThreadPoolStats {
-    /// Number of active worker threads
-    pub active_threads: usize,
-    /// Number of queued tasks
-    pub queued_tasks: usize,
-    /// Total tasks completed
-    pub completed_tasks: u64,
+/// Detailed engine performance statistics
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EngineStats {
+    /// Total scan cycles completed
+    pub scan_count: u64,
+    
+    /// Total errors encountered
+    pub error_count: u64,
+    
+    /// Errors by block name
+    pub block_errors: HashMap<String, u64>,
+    
+    /// Minimum scan time observed
+    pub min_scan_time: Duration,
+    
+    /// Maximum scan time observed
+    pub max_scan_time: Duration,
+    
+    /// Average scan time (exponential moving average)
+    pub avg_scan_time: Duration,
+    
+    /// Current scan time jitter
+    pub jitter: Duration,
+    
+    /// Maximum jitter observed
+    pub max_jitter: Duration,
+    
+    /// Number of scan overruns
+    pub scan_overruns: u64,
+    
+    /// Engine uptime
+    pub uptime: Duration,
+    
+    /// Current engine state
+    pub state: EngineState,
+    
+    /// Last error message
+    pub last_error: Option<String>,
+    
+    /// Timestamp of last successful scan
+    pub last_scan_time: Option<SystemTime>,
+    
+    #[cfg(feature = "enhanced-monitoring")]
+    /// Per-block execution times
+    pub block_execution_times: HashMap<String, Duration>,
+    
+    #[cfg(feature = "enhanced-monitoring")]
+    /// Signal update frequencies
+    pub signal_update_rates: HashMap<String, f64>,
 }
 
 // ============================================================================
-// MAIN ENGINE IMPLEMENTATION
+// MAIN ENGINE STRUCTURE
 // ============================================================================
 
-/// Main PETRA execution engine
+/// The PETRA automation engine
 /// 
-/// The engine is the central coordinator that orchestrates all PETRA components
-/// in deterministic scan cycles. It provides real-time execution with precise
+/// This is the core execution engine that manages the scan cycle, executes blocks,
+/// and coordinates all system components. It provides real-time execution with precise
 /// timing control, comprehensive error handling, and detailed performance monitoring.
 /// 
 /// # Thread Safety
@@ -417,27 +272,6 @@ pub struct ThreadPoolStats {
 /// - `blocks`: Protected by `Arc<Mutex<>>` for safe async access
 /// - `stats`: Protected by `Arc<RwLock<>>` for concurrent reads with exclusive writes
 /// - Atomic counters for lock-free metrics updates
-/// 
-/// # Examples
-/// 
-/// ```rust
-/// use petra::{Config, Engine, EngineConfig};
-/// 
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     // Load configuration
-///     let config = Config::from_file("petra.yaml")?;
-///     
-///     // Create engine with production settings
-///     let engine_config = EngineConfig::production();
-///     let engine = Engine::new_with_config(config, engine_config)?;
-///     
-///     // Start the engine (runs until stopped)
-///     engine.run().await?;
-///     
-///     Ok(())
-/// }
-/// ```
 pub struct Engine {
     // ========================================================================
     // CORE COMPONENTS
@@ -487,57 +321,40 @@ pub struct Engine {
     // PERFORMANCE MONITORING
     // ========================================================================
     
-    /// Comprehensive statistics tracking
+    /// Detailed performance statistics
     stats: Arc<RwLock<EngineStats>>,
     
-    /// Historical scan time data for trend analysis
-    #[cfg(feature = "enhanced-monitoring")]
-    scan_times: Arc<RwLock<VecDeque<Duration>>>,
+    /// Last scan cycle start time for jitter calculation
+    last_scan_start: Arc<RwLock<Instant>>,
     
-    /// Block execution order from last scan
-    #[cfg(feature = "enhanced-monitoring")]
-    execution_order: Arc<RwLock<Vec<String>>>,
-    
-    /// Failed blocks from last scan
-    #[cfg(feature = "enhanced-monitoring")]
-    failed_blocks: Arc<RwLock<Vec<String>>>,
-    
-    /// Individual block execution times
-    #[cfg(feature = "enhanced-monitoring")]
-    block_execution_times: Arc<RwLock<HashMap<String, Duration>>>,
+    /// Exponential moving average alpha for scan time
+    ema_alpha: f64,
     
     // ========================================================================
-    // ADVANCED FEATURES
+    // OPTIONAL FEATURES
     // ========================================================================
     
-    /// Circuit breaker for fault isolation
-    #[cfg(feature = "circuit-breaker")]
-    block_executor: Option<Arc<BlockExecutor>>,
+    #[cfg(feature = "enhanced-monitoring")]
+    /// Enhanced monitoring metrics collector
+    metrics: Arc<EngineMetrics>,
     
-    /// Watchdog timer for deadlock detection
-    watchdog_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Watchdog timer handle
+    watchdog_handle: Option<JoinHandle<()>>,
     
-    /// Last watchdog ping timestamp
+    /// Last watchdog ping time
     last_watchdog_ping: Arc<RwLock<Instant>>,
 }
 
 // ============================================================================
-// ENGINE LIFECYCLE MANAGEMENT
+// ENGINE CONSTRUCTION AND INITIALIZATION
 // ============================================================================
 
 impl Engine {
-    /// Create a new engine instance with default configuration
+    /// Create a new engine with default configuration
     /// 
     /// # Arguments
     /// 
-    /// * `config` - System configuration containing signals, blocks, and settings
-    /// 
-    /// # Errors
-    /// 
-    /// Returns errors for:
-    /// - Invalid signal configurations
-    /// - Block creation failures
-    /// - Signal bus initialization issues
+    /// * `config` - System configuration loaded from YAML
     /// 
     /// # Examples
     /// 
@@ -548,13 +365,38 @@ impl Engine {
     /// let engine = Engine::new(config)?;
     /// # Ok::<(), petra::PlcError>(())
     /// ```
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(config: Config) -> Result<Self, PlcError> {
         Self::new_with_config(config, EngineConfig::default())
     }
     
-    /// Create engine with custom engine configuration
+    /// Create a new engine with an existing signal bus
     /// 
-    /// Allows fine-tuning of engine behavior for specific deployment scenarios.
+    /// This constructor is useful for integration tests where you want to
+    /// pre-populate the signal bus or share it between components.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `config` - System configuration
+    /// * `bus` - Pre-initialized signal bus
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// use petra::{Config, Engine, SignalBus, Value};
+    /// 
+    /// let bus = SignalBus::new();
+    /// bus.set("test_signal", Value::Float(42.0))?;
+    /// 
+    /// let config = Config::from_file("petra.yaml")?;
+    /// let engine = Engine::new_with_bus(config, bus)?;
+    /// # Ok::<(), petra::PlcError>(())
+    /// ```
+    pub fn new_with_bus(config: Config, bus: SignalBus) -> Result<Self, PlcError> {
+        let engine_config = EngineConfig::default();
+        Self::new_with_bus_and_config(config, bus, engine_config)
+    }
+    
+    /// Create a new engine with custom engine configuration
     /// 
     /// # Arguments
     /// 
@@ -571,16 +413,31 @@ impl Engine {
     /// let engine = Engine::new_with_config(config, engine_config)?;
     /// # Ok::<(), petra::PlcError>(())
     /// ```
-    pub fn new_with_config(config: Config, engine_config: EngineConfig) -> Result<Self> {
+    pub fn new_with_config(config: Config, engine_config: EngineConfig) -> Result<Self, PlcError> {
+        let bus = SignalBus::new();
+        Self::new_with_bus_and_config(config, bus, engine_config)
+    }
+    
+    /// Create a new engine with both custom bus and engine configuration
+    /// 
+    /// This is the most flexible constructor, allowing full control over
+    /// all engine components.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `config` - System configuration
+    /// * `bus` - Pre-initialized signal bus
+    /// * `engine_config` - Engine-specific configuration
+    pub fn new_with_bus_and_config(
+        config: Config,
+        bus: SignalBus,
+        engine_config: EngineConfig,
+    ) -> Result<Self, PlcError> {
         let _span = span!(Level::INFO, "engine_init").entered();
         info!("Initializing PETRA engine v{}", env!("CARGO_PKG_VERSION"));
         
-        // Validate configuration for runtime use
-        config.validate_for_runtime()?;
-        
-        // Initialize signal bus
-        let bus = SignalBus::new();
-        debug!("Initialized signal bus");
+        // Validate configuration
+        config.validate()?;
         
         // Initialize signals from configuration
         Self::initialize_signals(&bus, &config)?;
@@ -588,22 +445,13 @@ impl Engine {
         // Create and initialize blocks
         let blocks = Self::create_blocks(&config)?;
         
-        // Calculate timing parameters
-        let target_scan_time = Duration::from_millis(config.scan_time_ms);
-        let start_time = Instant::now();
+        // Calculate EMA alpha based on scan time
+        let ema_alpha = 2.0 / (10.0 + 1.0); // 10-period EMA
         
-        // Initialize statistics
-        let stats = EngineStats {
-            min_scan_time: Duration::MAX,
-            max_scan_time: Duration::ZERO,
-            state: EngineState::Stopped,
-            ..Default::default()
-        };
-        
-        // Create engine instance
-        let mut engine = Self {
+        let engine = Self {
             bus,
             blocks: Arc::new(Mutex::new(blocks)),
+            target_scan_time: Duration::from_millis(config.scan_time_ms),
             config,
             engine_config,
             running: Arc::new(AtomicBool::new(false)),
@@ -611,36 +459,19 @@ impl Engine {
             scan_count: Arc::new(AtomicU64::new(0)),
             error_count: Arc::new(AtomicU64::new(0)),
             consecutive_errors: Arc::new(AtomicU64::new(0)),
-            start_time,
-            target_scan_time,
-            stats: Arc::new(RwLock::new(stats)),
-            
+            start_time: Instant::now(),
+            stats: Arc::new(RwLock::new(EngineStats {
+                min_scan_time: Duration::MAX,
+                max_scan_time: Duration::ZERO,
+                ..Default::default()
+            })),
+            last_scan_start: Arc::new(RwLock::new(Instant::now())),
+            ema_alpha,
             #[cfg(feature = "enhanced-monitoring")]
-            scan_times: Arc::new(RwLock::new(VecDeque::with_capacity(1000))),
-            #[cfg(feature = "enhanced-monitoring")]
-            execution_order: Arc::new(RwLock::new(Vec::new())),
-            #[cfg(feature = "enhanced-monitoring")]
-            failed_blocks: Arc::new(RwLock::new(Vec::new())),
-            #[cfg(feature = "enhanced-monitoring")]
-            block_execution_times: Arc::new(RwLock::new(HashMap::new())),
-            
-            #[cfg(feature = "circuit-breaker")]
-            block_executor: None,
-            
+            metrics: Arc::new(EngineMetrics::new()),
             watchdog_handle: None,
             last_watchdog_ping: Arc::new(RwLock::new(Instant::now())),
         };
-        
-        // Initialize advanced features
-        #[cfg(feature = "circuit-breaker")]
-        if engine.engine_config.enhanced_monitoring {
-            engine.block_executor = Some(Arc::new(BlockExecutor::new()));
-        }
-        
-        // Start watchdog if configured
-        if let Some(timeout_ms) = engine_config.watchdog_timeout_ms {
-            engine.start_watchdog(Duration::from_millis(timeout_ms));
-        }
         
         info!(
             "Engine initialized: {} signals, {} blocks, scan_time={}ms", 
@@ -653,7 +484,7 @@ impl Engine {
     }
     
     /// Initialize signals in the signal bus from configuration
-    fn initialize_signals(bus: &SignalBus, config: &Config) -> Result<()> {
+    fn initialize_signals(bus: &SignalBus, config: &Config) -> Result<(), PlcError> {
         let _span = span!(Level::DEBUG, "init_signals").entered();
         
         for signal_config in &config.signals {
@@ -681,7 +512,7 @@ impl Engine {
             // Set initial value in signal bus
             bus.set(&signal_config.name, value)?;
             
-            trace!("Initialized signal '{}' with type '{}'", 
+            debug!("Initialized signal '{}' with type '{}'", 
                 signal_config.name, signal_config.signal_type);
         }
         
@@ -690,7 +521,7 @@ impl Engine {
     }
     
     /// Create and initialize all blocks from configuration
-    fn create_blocks(config: &Config) -> Result<Vec<Box<dyn Block + Send + Sync>>> {
+    fn create_blocks(config: &Config) -> Result<Vec<Box<dyn Block + Send + Sync>>, PlcError> {
         let _span = span!(Level::DEBUG, "create_blocks").entered();
         
         let mut blocks = Vec::with_capacity(config.blocks.len());
@@ -778,8 +609,7 @@ impl Engine {
     /// The engine uses a multi-level error handling strategy:
     /// 1. Individual block errors are isolated and logged
     /// 2. Scan cycle errors increment the consecutive error counter
-    /// 3. When consecutive errors exceed the threshold, the engine stops
-    /// 4. If error recovery is enabled, the engine may attempt automatic recovery
+    /// 3. Too many consecutive errors trigger a shutdown or recovery
     /// 
     /// # Examples
     /// 
@@ -791,490 +621,351 @@ impl Engine {
     ///     let config = Config::from_file("petra.yaml")?;
     ///     let engine = Engine::new(config)?;
     ///     
-    ///     // This will run until the engine is stopped
+    ///     // Run until stopped (Ctrl+C)
     ///     engine.run().await?;
     ///     
     ///     Ok(())
     /// }
     /// ```
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<(), PlcError> {
         let _span = span!(Level::INFO, "engine_run").entered();
         
-        // Set engine state to starting
-        *self.state.write().await = EngineState::Starting;
-        
-        // Configure real-time settings if enabled
+        // Configure real-time scheduling if requested
         #[cfg(feature = "realtime")]
-        self.configure_realtime().await?;
-        
-        // Set running flag and engine state
-        self.running.store(true, Ordering::Relaxed);
-        *self.state.write().await = EngineState::Running;
-        
-        info!("Starting PETRA engine with scan time: {}ms", self.config.scan_time_ms);
-        
-        // Initialize scan interval with precise timing
-        let mut interval = interval(self.target_scan_time);
-        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        
-        // Initialize metrics if enabled
-        #[cfg(feature = "metrics")]
-        if self.engine_config.metrics_enabled {
-            gauge!("petra_engine_scan_time_ms").set(self.config.scan_time_ms as f64);
-            counter!("petra_engine_starts").increment(1);
-            gauge!("petra_engine_uptime_seconds").set(0.0);
+        if let Some(priority) = self.engine_config.realtime_priority {
+            self.set_realtime_priority(priority)?;
         }
         
-        // Main execution loop
-        while self.running.load(Ordering::Relaxed) {
-            // Wait for next scan interval
-            interval.tick().await;
-            
-            // Ping watchdog
-            self.ping_watchdog().await;
-            
-            // Execute scan cycle with timing measurement
-            let scan_start = Instant::now();
+        // Set CPU affinity if configured
+        #[cfg(feature = "realtime")]
+        if let Some(cpus) = &self.engine_config.cpu_affinity {
+            self.set_cpu_affinity(cpus)?;
+        }
+        
+        // Start watchdog if configured
+        if self.engine_config.watchdog_timeout_ms > 0 {
+            self.start_watchdog(Duration::from_millis(self.engine_config.watchdog_timeout_ms));
+        }
+        
+        // Update state
+        *self.state.write().await = EngineState::Starting;
+        self.running.store(true, Ordering::Release);
+        
+        info!("Engine starting with scan time: {:?}", self.target_scan_time);
+        
+        // Create scan interval with configured behavior
+        let mut scan_interval = interval(self.target_scan_time);
+        scan_interval.set_missed_tick_behavior(self.engine_config.missed_tick_behavior);
+        
+        // Update state to running
+        *self.state.write().await = EngineState::Running;
+        self.start_time = Instant::now();
+        
+        // Main scan loop
+        while self.running.load(Ordering::Acquire) {
+            scan_interval.tick().await;
             
             match self.execute_scan_cycle().await {
-                Ok(_) => {
-                    // Success: reset error counters and update metrics
-                    self.scan_count.fetch_add(1, Ordering::Relaxed);
+                Ok(()) => {
+                    // Reset consecutive error counter on success
                     self.consecutive_errors.store(0, Ordering::Relaxed);
                     
-                    #[cfg(feature = "metrics")]
-                    if self.engine_config.metrics_enabled {
-                        counter!("petra_successful_scans").increment(1);
-                    }
+                    // Ping watchdog
+                    self.ping_watchdog().await;
                 }
                 Err(e) => {
-                    // Error: increment counters and check thresholds
                     error!("Scan cycle error: {}", e);
                     self.error_count.fetch_add(1, Ordering::Relaxed);
-                    let consecutive_errors = self.consecutive_errors.fetch_add(1, Ordering::Relaxed) + 1;
                     
-                    #[cfg(feature = "metrics")]
-                    if self.engine_config.metrics_enabled {
-                        counter!("petra_scan_errors").increment(1);
-                        gauge!("petra_consecutive_errors").set(consecutive_errors as f64);
-                    }
+                    let consecutive = self.consecutive_errors.fetch_add(1, Ordering::Relaxed) + 1;
                     
-                    // Check if we should attempt recovery or stop
-                    if consecutive_errors >= self.engine_config.max_consecutive_errors {
-                        if self.engine_config.error_recovery_enabled {
-                            warn!("Attempting engine recovery after {} consecutive errors", consecutive_errors);
-                            match self.attempt_recovery().await {
-                                Ok(_) => {
-                                    info!("Engine recovery successful");
-                                    self.consecutive_errors.store(0, Ordering::Relaxed);
-                                    continue;
-                                }
-                                Err(recovery_err) => {
-                                    error!("Engine recovery failed: {}", recovery_err);
-                                }
-                            }
-                        }
+                    // Update stats with error
+                    let mut stats = self.stats.write().await;
+                    stats.error_count += 1;
+                    stats.last_error = Some(e.to_string());
+                    drop(stats);
+                    
+                    // Check if we should shutdown or recover
+                    if consecutive >= self.engine_config.max_consecutive_errors {
+                        error!(
+                            "Maximum consecutive errors ({}) reached, initiating shutdown",
+                            self.engine_config.max_consecutive_errors
+                        );
                         
-                        error!("Too many consecutive errors ({}), stopping engine", consecutive_errors);
-                        *self.state.write().await = EngineState::Error;
-                        self.stop().await;
-                        return Err(PlcError::Runtime(format!(
-                            "Too many consecutive errors: {}", consecutive_errors
-                        )));
+                        if self.engine_config.error_recovery {
+                            *self.state.write().await = EngineState::Recovering;
+                            warn!("Attempting recovery in {}ms", self.engine_config.recovery_delay_ms);
+                            sleep(Duration::from_millis(self.engine_config.recovery_delay_ms)).await;
+                            
+                            // Reset error counter for recovery attempt
+                            self.consecutive_errors.store(0, Ordering::Relaxed);
+                            *self.state.write().await = EngineState::Running;
+                        } else {
+                            *self.state.write().await = EngineState::Error;
+                            return Err(PlcError::Runtime(format!(
+                                "Engine shutdown due to {} consecutive errors", consecutive
+                            )));
+                        }
                     }
                 }
             }
-            
-            // Update timing statistics
-            let scan_duration = scan_start.elapsed();
-            self.update_timing_stats(scan_duration).await;
         }
         
-        // Engine stopped
-        *self.state.write().await = EngineState::Stopped;
-        info!("PETRA engine stopped");
+        // Graceful shutdown
+        *self.state.write().await = EngineState::Stopping;
+        info!("Engine shutting down gracefully");
         
         // Stop watchdog
-        if let Some(handle) = &self.watchdog_handle {
+        if let Some(handle) = self.watchdog_handle.take() {
             handle.abort();
         }
         
-        Ok(())
-    }
-    
-    /// Configure real-time operating system settings
-    #[cfg(feature = "realtime")]
-    async fn configure_realtime(&self) -> Result<()> {
-        if let Some(priority) = self.engine_config.real_time_priority {
-            info!("Configuring real-time priority: {}", priority);
-            
-            // Set real-time scheduling policy
-            unsafe {
-                let param = libc::sched_param {
-                    sched_priority: priority as i32,
-                };
-                
-                if libc::sched_setscheduler(0, libc::SCHED_FIFO, &param) != 0 {
-                    warn!("Failed to set real-time priority: {}", 
-                        std::io::Error::last_os_error());
-                }
-            }
-        }
-        
-        if let Some(ref cpu_mask) = self.engine_config.cpu_affinity {
-            info!("Configuring CPU affinity: {:?}", cpu_mask);
-            
-            // Set CPU affinity
-            let mut cpu_set: libc::cpu_set_t = unsafe { std::mem::zeroed() };
-            
-            for &cpu in cpu_mask {
-                unsafe {
-                    libc::CPU_SET(cpu, &mut cpu_set);
-                }
-            }
-            
-            unsafe {
-                if libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &cpu_set) != 0 {
-                    warn!("Failed to set CPU affinity: {}", 
-                        std::io::Error::last_os_error());
-                }
-            }
-        }
-        
+        *self.state.write().await = EngineState::Stopped;
         Ok(())
     }
     
     /// Execute a single scan cycle
     /// 
-    /// This method executes all enabled blocks in priority order, handling
-    /// individual block failures gracefully while maintaining overall system
-    /// operation. The scan cycle is designed to be deterministic and complete
-    /// within the target scan time.
-    /// 
-    /// # Block Execution Strategy
-    /// 
-    /// 1. **Priority-Based Ordering**: Blocks execute in descending priority order
-    /// 2. **Error Isolation**: Individual block failures don't stop the scan
-    /// 3. **Timeout Protection**: Blocks exceeding timeout limits are terminated
-    /// 4. **Performance Monitoring**: Execution times are tracked per block
-    /// 
-    /// # Performance Optimization
-    /// 
-    /// - Blocks are executed sequentially to maintain determinism
-    /// - Signal bus operations use lock-free data structures
-    /// - Memory allocations are minimized during execution
-    /// - Detailed timing is only collected when monitoring is enabled
-    pub async fn execute_scan_cycle(&self) -> Result<()> {
-        let _span = span!(Level::TRACE, "scan_cycle").entered();
+    /// This method executes all enabled blocks in priority order, updating
+    /// performance statistics and handling errors for individual blocks.
+    pub async fn execute_scan_cycle(&self) -> Result<(), PlcError> {
+        let scan_start = Instant::now();
+        let _span = span!(Level::TRACE, "scan_cycle", scan = %self.scan_count()).entered();
         
-        // Initialize monitoring data
-        #[cfg(feature = "enhanced-monitoring")]
-        let mut execution_order = Vec::new();
-        #[cfg(feature = "enhanced-monitoring")]
-        let mut failed_blocks = Vec::new();
-        #[cfg(feature = "enhanced-monitoring")]
-        let mut block_times = HashMap::new();
-        
-        let mut blocks_executed = 0u64;
-        let mut block_errors = 0u64;
-        
-        // Lock blocks for the duration of the scan cycle
+        // Execute all blocks
         let mut blocks = self.blocks.lock().await;
+        let mut block_errors = Vec::new();
         
-        // Execute all blocks in priority order
         for block in blocks.iter_mut() {
-            let block_name = block.name().to_string();
-            
-            #[cfg(feature = "enhanced-monitoring")]
-            if self.engine_config.enhanced_monitoring {
-                execution_order.push(block_name.clone());
-            }
-            
-            // Execute block with timing measurement
             let block_start = Instant::now();
             
-            let result = if let Some(timeout_us) = self.engine_config.block_timeout_us {
-                // Execute with timeout protection
-                self.execute_block_with_timeout(block.as_mut(), Duration::from_micros(timeout_us)).await
-            } else {
-                // Execute without timeout
-                block.execute(&self.bus)
-            };
-            
-            let block_duration = block_start.elapsed();
-            blocks_executed += 1;
-            
-            match result {
-                Ok(_) => {
-                    trace!("Block '{}' executed successfully in {:?}", block_name, block_duration);
+            match block.execute(&self.bus) {
+                Ok(()) => {
+                    let block_elapsed = block_start.elapsed();
                     
-                    #[cfg(feature = "metrics")]
-                    if self.engine_config.metrics_enabled {
-                        histogram!("petra_block_execution_time", "block" => block_name.clone())
-                            .record(block_duration.as_secs_f64());
+                    #[cfg(feature = "enhanced-monitoring")]
+                    {
+                        let mut stats = self.stats.write().await;
+                        stats.block_execution_times.insert(
+                            block.name().to_string(),
+                            block_elapsed,
+                        );
+                    }
+                    
+                    // Warn on slow blocks
+                    if block_elapsed > self.target_scan_time / 10 {
+                        warn!(
+                            "Slow block '{}' took {:?} (>10% of scan time)",
+                            block.name(),
+                            block_elapsed
+                        );
                     }
                 }
                 Err(e) => {
-                    warn!("Block '{}' failed: {}", block_name, e);
-                    block_errors += 1;
+                    error!("Block '{}' execution failed: {}", block.name(), e);
+                    block_errors.push((block.name().to_string(), e));
                     
-                    #[cfg(feature = "enhanced-monitoring")]
-                    if self.engine_config.enhanced_monitoring {
-                        failed_blocks.push(block_name.clone());
-                    }
-                    
-                    #[cfg(feature = "metrics")]
-                    if self.engine_config.metrics_enabled {
-                        counter!("petra_block_errors", "block" => block_name.clone()).increment(1);
-                    }
-                    
-                    // Individual block failures don't stop the scan cycle
-                    // This ensures partial functionality during errors
+                    // Update block error statistics
+                    let mut stats = self.stats.write().await;
+                    *stats.block_errors.entry(block.name().to_string()).or_insert(0) += 1;
                 }
             }
+        }
+        
+        drop(blocks); // Release lock
+        
+        // Update scan statistics
+        let scan_elapsed = scan_start.elapsed();
+        self.update_statistics(scan_elapsed).await;
+        
+        // Increment scan counter
+        self.scan_count.fetch_add(1, Ordering::Relaxed);
+        
+        // Return error if any blocks failed (but after completing the scan)
+        if !block_errors.is_empty() {
+            let error_msg = block_errors
+                .iter()
+                .map(|(name, err)| format!("{}: {}", name, err))
+                .collect::<Vec<_>>()
+                .join(", ");
             
-            #[cfg(feature = "enhanced-monitoring")]
-            if self.engine_config.enhanced_monitoring {
-                block_times.insert(block_name, block_duration);
-            }
+            return Err(PlcError::Runtime(format!(
+                "Block execution errors: {}", error_msg
+            )));
         }
-        
-        // Update monitoring data
-        #[cfg(feature = "enhanced-monitoring")]
-        if self.engine_config.enhanced_monitoring {
-            *self.execution_order.write().await = execution_order;
-            *self.failed_blocks.write().await = failed_blocks;
-            *self.block_execution_times.write().await = block_times;
-        }
-        
-        // Update statistics
-        {
-            let mut stats = self.stats.write().await;
-            stats.blocks_executed += blocks_executed;
-            stats.block_errors += block_errors;
-            stats.uptime = self.start_time.elapsed();
-        }
-        
-        #[cfg(feature = "metrics")]
-        if self.engine_config.metrics_enabled {
-            gauge!("petra_blocks_executed_total").set(blocks_executed as f64);
-            if block_errors > 0 {
-                gauge!("petra_block_errors_in_scan").set(block_errors as f64);
-            }
-        }
-        
-        trace!("Scan cycle completed: {} blocks executed, {} errors", 
-            blocks_executed, block_errors);
         
         Ok(())
     }
     
-    /// Execute a block with timeout protection
-    async fn execute_block_with_timeout(
-        &self,
-        block: &mut dyn Block,
-        timeout: Duration,
-    ) -> Result<()> {
-        let block_name = block.name().to_string();
+    /// Update performance statistics after a scan cycle
+    async fn update_statistics(&self, scan_elapsed: Duration) {
+        let mut stats = self.stats.write().await;
         
-        // Create a future for block execution
-        let execution_future = async {
-            block.execute(&self.bus)
+        // Update scan count
+        stats.scan_count = self.scan_count.load(Ordering::Relaxed);
+        
+        // Update min/max scan times
+        if scan_elapsed < stats.min_scan_time {
+            stats.min_scan_time = scan_elapsed;
+        }
+        if scan_elapsed > stats.max_scan_time {
+            stats.max_scan_time = scan_elapsed;
+        }
+        
+        // Calculate exponential moving average
+        if stats.avg_scan_time == Duration::ZERO {
+            stats.avg_scan_time = scan_elapsed;
+        } else {
+            let avg_nanos = stats.avg_scan_time.as_nanos() as f64;
+            let scan_nanos = scan_elapsed.as_nanos() as f64;
+            let new_avg_nanos = self.ema_alpha * scan_nanos + (1.0 - self.ema_alpha) * avg_nanos;
+            stats.avg_scan_time = Duration::from_nanos(new_avg_nanos as u64);
+        }
+        
+        // Calculate jitter
+        let last_start = *self.last_scan_start.read().await;
+        let actual_interval = last_start.elapsed();
+        let jitter = if actual_interval > self.target_scan_time {
+            actual_interval - self.target_scan_time
+        } else {
+            self.target_scan_time - actual_interval
         };
         
-        // Execute with timeout
-        match tokio::time::timeout(timeout, execution_future).await {
-            Ok(result) => result,
-            Err(_) => {
-                error!("Block '{}' exceeded timeout ({:?})", block_name, timeout);
-                Err(PlcError::Runtime(format!(
-                    "Block '{}' execution timeout", block_name
-                )))
-            }
-        }
-    }
-    
-    /// Attempt engine recovery after consecutive errors
-    async fn attempt_recovery(&self) -> Result<()> {
-        let _span = span!(Level::WARN, "engine_recovery").entered();
-        
-        *self.state.write().await = EngineState::Recovering;
-        
-        info!("Attempting engine recovery...");
-        
-        // Step 1: Reset all blocks
-        {
-            let mut blocks = self.blocks.lock().await;
-            for block in blocks.iter_mut() {
-                if let Err(e) = block.reset() {
-                    warn!("Failed to reset block '{}': {}", block.name(), e);
-                }
-            }
+        stats.jitter = jitter;
+        if jitter > stats.max_jitter {
+            stats.max_jitter = jitter;
         }
         
-        // Step 2: Verify signal bus integrity
-        let signal_count = self.bus.len();
-        if signal_count == 0 {
-            return Err(PlcError::Runtime("Signal bus is empty after recovery".to_string()));
+        // Check for scan overrun
+        if scan_elapsed > self.target_scan_time {
+            stats.scan_overruns += 1;
+            warn!(
+                "Scan overrun: {:?} > {:?} (target)",
+                scan_elapsed, self.target_scan_time
+            );
         }
         
-        // Step 3: Brief pause to allow system stabilization
-        sleep(Duration::from_millis(100)).await;
+        // Update timestamps
+        stats.uptime = self.start_time.elapsed();
+        stats.last_scan_time = Some(SystemTime::now());
         
-        // Step 4: Test scan cycle
-        match self.execute_scan_cycle().await {
-            Ok(_) => {
-                info!("Engine recovery successful");
-                *self.state.write().await = EngineState::Running;
-                Ok(())
-            }
-            Err(e) => {
-                error!("Engine recovery test failed: {}", e);
-                Err(e)
-            }
+        // Update last scan start for next jitter calculation
+        drop(stats);
+        *self.last_scan_start.write().await = Instant::now();
+        
+        // Log performance warnings
+        if jitter > self.target_scan_time / 5 {
+            warn!("High jitter detected: {:?} (>20% of scan time)", jitter);
         }
     }
     
     /// Stop the engine gracefully
     /// 
-    /// This method initiates a graceful shutdown of the engine, allowing
-    /// the current scan cycle to complete before stopping.
+    /// This method signals the engine to stop and waits for the current
+    /// scan cycle to complete before returning.
     pub async fn stop(&self) {
-        let _span = span!(Level::INFO, "engine_stop").entered();
+        info!("Engine stop requested");
+        self.running.store(false, Ordering::Release);
         
-        info!("Stopping PETRA engine");
-        *self.state.write().await = EngineState::Stopping;
-        
-        self.running.store(false, Ordering::Relaxed);
-        
-        #[cfg(feature = "metrics")]
-        if self.engine_config.metrics_enabled {
-            counter!("petra_engine_stops").increment(1);
-        }
+        // Give the engine time to complete current scan
+        sleep(self.target_scan_time * 2).await;
     }
     
-    /// Check if engine is currently running
-    pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::Relaxed)
-    }
-    
-    /// Get current engine state
-    pub async fn state(&self) -> EngineState {
-        *self.state.read().await
+    /// Force an immediate engine stop
+    /// 
+    /// This method immediately stops the engine without waiting for the
+    /// current scan cycle to complete. Use with caution.
+    pub fn force_stop(&self) {
+        warn!("Engine force stop requested");
+        self.running.store(false, Ordering::Release);
+        *self.state.try_write().unwrap() = EngineState::Stopped;
     }
 }
 
 // ============================================================================
-// PERFORMANCE MONITORING AND STATISTICS
+// REAL-TIME CONFIGURATION (Linux only)
+// ============================================================================
+
+#[cfg(feature = "realtime")]
+impl Engine {
+    /// Set real-time thread priority (requires root/CAP_SYS_NICE)
+    fn set_realtime_priority(&self, priority: i32) -> Result<(), PlcError> {
+        unsafe {
+            let param = sched_param {
+                sched_priority: priority,
+            };
+            
+            let result = sched_setscheduler(0, SCHED_FIFO, &param);
+            if result != 0 {
+                warn!("Failed to set real-time priority: {}", std::io::Error::last_os_error());
+                // Don't fail, just warn
+            } else {
+                info!("Set real-time priority to {}", priority);
+            }
+        }
+        Ok(())
+    }
+    
+    /// Set CPU affinity mask
+    fn set_cpu_affinity(&self, cpus: &[usize]) -> Result<(), PlcError> {
+        use libc::{cpu_set_t, sched_setaffinity, CPU_SET, CPU_ZERO};
+        use std::mem;
+        
+        unsafe {
+            let mut cpu_set: cpu_set_t = mem::zeroed();
+            CPU_ZERO(&mut cpu_set);
+            
+            for &cpu in cpus {
+                CPU_SET(cpu, &mut cpu_set);
+            }
+            
+            let result = sched_setaffinity(0, mem::size_of::<cpu_set_t>(), &cpu_set);
+            if result != 0 {
+                warn!("Failed to set CPU affinity: {}", std::io::Error::last_os_error());
+            } else {
+                info!("Set CPU affinity to {:?}", cpus);
+            }
+        }
+        Ok(())
+    }
+}
+
+// ============================================================================
+// ENGINE STATE QUERIES
 // ============================================================================
 
 impl Engine {
-    /// Update timing statistics after each scan cycle
-    async fn update_timing_stats(&self, scan_duration: Duration) {
-        let mut stats = self.stats.write().await;
-        
-        // Update basic timing stats
-        stats.scan_count += 1;
-        stats.total_scan_time += scan_duration;
-        stats.last_scan_time = scan_duration;
-        
-        // Update min/max tracking
-        if scan_duration < stats.min_scan_time {
-            stats.min_scan_time = scan_duration;
-        }
-        if scan_duration > stats.max_scan_time {
-            stats.max_scan_time = scan_duration;
-        }
-        
-        // Calculate rolling average
-        stats.avg_scan_time = stats.total_scan_time / stats.scan_count as u32;
-        
-        // Calculate jitter (deviation from target)
-        let target_nanos = self.target_scan_time.as_nanos() as i128;
-        let actual_nanos = scan_duration.as_nanos() as i128;
-        let jitter_nanos = (actual_nanos - target_nanos).abs() as u64;
-        stats.jitter = Duration::from_nanos(jitter_nanos);
-        
-        // Update max jitter
-        if stats.jitter > stats.max_jitter {
-            stats.max_jitter = stats.jitter;
-        }
-        
-        // Check for scan overruns
-        let overrun_threshold = self.target_scan_time + 
-            (self.target_scan_time * self.engine_config.overrun_tolerance_percent as u32 / 100);
-        
-        if scan_duration > overrun_threshold {
-            stats.scan_overruns += 1;
-            
-            if self.engine_config.performance_logging {
-                warn!(
-                    "Scan overrun detected: {:?} (target: {:?}, threshold: {:?})",
-                    scan_duration, self.target_scan_time, overrun_threshold
-                );
-            }
-        }
-        
-        // Update memory statistics
-        self.update_memory_stats(&mut stats);
-        
-        // Store historical data for enhanced monitoring
-        #[cfg(feature = "enhanced-monitoring")]
-        if self.engine_config.enhanced_monitoring {
-            let mut scan_times = self.scan_times.write().await;
-            scan_times.push_back(scan_duration);
-            
-            // Keep only last 1000 scan times
-            if scan_times.len() > 1000 {
-                scan_times.pop_front();
-            }
-        }
-        
-        // Update metrics if enabled
-        #[cfg(feature = "metrics")]
-        if self.engine_config.metrics_enabled {
-            gauge!("petra_scan_time_us").set(scan_duration.as_micros() as f64);
-            gauge!("petra_jitter_us").set(stats.jitter.as_micros() as f64);
-            gauge!("petra_scan_count").set(stats.scan_count as f64);
-            gauge!("petra_avg_scan_time_us").set(stats.avg_scan_time.as_micros() as f64);
-            gauge!("petra_max_jitter_us").set(stats.max_jitter.as_micros() as f64);
-            gauge!("petra_scan_overruns").set(stats.scan_overruns as f64);
-            gauge!("petra_engine_uptime_seconds").set(self.start_time.elapsed().as_secs_f64());
-            
-            histogram!("petra_scan_duration_seconds").record(scan_duration.as_secs_f64());
-            
-            if scan_duration > overrun_threshold {
-                counter!("petra_scan_overruns_total").increment(1);
-            }
-        }
-        
-        // Performance warnings
-        if self.engine_config.performance_logging {
-            let jitter_threshold = self.target_scan_time / 10; // 10% threshold
-            if stats.jitter > jitter_threshold {
-                warn!(
-                    "High jitter detected: {:?} (target: {:?}, actual: {:?})",
-                    stats.jitter, self.target_scan_time, scan_duration
-                );
-            }
-        }
+    /// Check if the engine is currently running
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::Acquire)
     }
     
-    /// Update memory usage statistics
-    fn update_memory_stats(&self, stats: &mut EngineStats) {
-        // TODO: Implement actual memory tracking
-        // This would typically use jemalloc stats or similar
-        stats.memory_stats.signal_bus_memory = self.bus.memory_usage();
-        
-        // Estimate blocks memory (simplified)
-        stats.memory_stats.blocks_memory = 
-            self.blocks.try_lock().map_or(0, |b| b.len() * 1024); // Rough estimate
+    /// Get the current engine state
+    pub async fn state(&self) -> EngineState {
+        *self.state.read().await
     }
     
-    /// Get comprehensive engine statistics
-    /// 
-    /// Returns a complete snapshot of engine performance metrics, useful
-    /// for monitoring, debugging, and performance analysis.
+    /// Get total scan cycles completed
+    pub fn scan_count(&self) -> u64 {
+        self.scan_count.load(Ordering::Relaxed)
+    }
+    
+    /// Get total errors encountered
+    pub fn error_count(&self) -> u64 {
+        self.error_count.load(Ordering::Relaxed)
+    }
+    
+    /// Get current consecutive error count
+    pub fn consecutive_errors(&self) -> u64 {
+        self.consecutive_errors.load(Ordering::Relaxed)
+    }
+    
+    /// Get engine uptime
+    pub fn uptime(&self) -> Duration {
+        self.start_time.elapsed()
+    }
+    
+    /// Get a copy of current statistics
     pub async fn stats(&self) -> EngineStats {
         self.stats.read().await.clone()
     }
@@ -1297,7 +988,7 @@ impl Engine {
             stats.max_scan_time,
             stats.jitter,
             stats.max_jitter,
-            stats.block_errors,
+            stats.block_errors.len(),
             self.error_count(),
             stats.uptime
         )
@@ -1326,7 +1017,7 @@ impl Engine {
     /// 
     /// This method resets all blocks and clears performance statistics.
     /// Useful for testing and system recovery scenarios.
-    pub async fn reset_blocks(&self) -> Result<()> {
+    pub async fn reset_blocks(&self) -> Result<(), PlcError> {
         let _span = span!(Level::INFO, "reset_blocks").entered();
         
         let mut blocks = self.blocks.lock().await;
@@ -1350,481 +1041,365 @@ impl Engine {
             ..Default::default()
         };
         
-        info!("All blocks reset successfully");
+        info!("Reset {} blocks and cleared statistics", blocks.len());
         Ok(())
     }
     
-    /// Get current scan count
-    pub fn scan_count(&self) -> u64 {
-        self.scan_count.load(Ordering::Relaxed)
-    }
-    
-    /// Get total error count
-    pub fn error_count(&self) -> u64 {
-        self.error_count.load(Ordering::Relaxed)
-    }
-    
-    /// Get consecutive error count
-    pub fn consecutive_errors(&self) -> u64 {
-        self.consecutive_errors.load(Ordering::Relaxed)
-    }
-    
-    /// Get engine uptime
-    pub fn uptime(&self) -> Duration {
-        self.start_time.elapsed()
-    }
-    
-    /// Get target scan time
-    pub fn target_scan_time(&self) -> Duration {
-        self.target_scan_time
-    }
-    
-    /// Execute a single scan cycle synchronously (for testing/benchmarks)
+    /// Reload configuration and blocks without stopping
     /// 
-    /// This is a convenience wrapper that creates a temporary runtime
-    /// for synchronous testing scenarios.
-    pub fn scan_once(&self) -> Result<()> {
-        let rt = Runtime::new().expect("failed to create tokio runtime");
-        rt.block_on(self.execute_scan_cycle())
+    /// This method allows hot-reloading of configuration and blocks
+    /// while the engine continues running. New blocks are created and
+    /// swapped atomically.
+    #[cfg(feature = "hot-reload")]
+    pub async fn reload_config(&self, new_config: Config) -> Result<(), PlcError> {
+        let _span = span!(Level::INFO, "reload_config").entered();
+        info!("Starting configuration reload");
+        
+        // Validate new configuration
+        new_config.validate()?;
+        
+        // Create new blocks
+        let new_blocks = Self::create_blocks(&new_config)?;
+        
+        // Atomically swap blocks
+        let mut blocks = self.blocks.lock().await;
+        *blocks = new_blocks;
+        
+        info!("Configuration reloaded successfully");
+        Ok(())
     }
     
-    /// Get current configuration
-    pub fn config(&self) -> &Config {
-        &self.config
+    /// Add a new block to the running engine
+    /// 
+    /// This method allows adding new blocks dynamically without restart.
+    pub async fn add_block(&self, block: Box<dyn Block + Send + Sync>) -> Result<(), PlcError> {
+        let mut blocks = self.blocks.lock().await;
+        let block_name = block.name().to_string();
+        
+        // Check for duplicate names
+        if blocks.iter().any(|b| b.name() == block_name) {
+            return Err(PlcError::Config(format!(
+                "Block with name '{}' already exists", block_name
+            )));
+        }
+        
+        blocks.push(block);
+        info!("Added new block '{}'", block_name);
+        Ok(())
     }
     
-    /// Get engine configuration
-    pub fn engine_config(&self) -> &EngineConfig {
-        &self.engine_config
+    /// Remove a block from the running engine
+    /// 
+    /// This method allows removing blocks dynamically without restart.
+    pub async fn remove_block(&self, block_name: &str) -> Result<(), PlcError> {
+        let mut blocks = self.blocks.lock().await;
+        let initial_count = blocks.len();
+        
+        blocks.retain(|b| b.name() != block_name);
+        
+        if blocks.len() == initial_count {
+            return Err(PlcError::Config(format!(
+                "Block '{}' not found", block_name
+            )));
+        }
+        
+        info!("Removed block '{}'", block_name);
+        Ok(())
     }
 }
 
 // ============================================================================
-// ENHANCED MONITORING FEATURES
-// ============================================================================
-
-#[cfg(feature = "enhanced-monitoring")]
-impl Engine {
-    /// Get execution order from last scan cycle
-    pub async fn execution_order(&self) -> Vec<String> {
-        self.execution_order.read().await.clone()
-   }
-   
-   /// Get failed blocks from last scan cycle
-   pub async fn failed_blocks(&self) -> Vec<String> {
-       self.failed_blocks.read().await.clone()
-   }
-   
-   /// Get individual block execution times from last scan cycle
-   pub async fn block_execution_times(&self) -> HashMap<String, Duration> {
-       self.block_execution_times.read().await.clone()
-   }
-   
-   /// Get historical scan time data
-   pub async fn scan_time_history(&self) -> Vec<Duration> {
-       self.scan_times.read().await.iter().cloned().collect()
-   }
-   
-   /// Get performance analysis of recent scan cycles
-   pub async fn performance_analysis(&self) -> PerformanceAnalysis {
-       let scan_times = self.scan_times.read().await;
-       let block_times = self.block_execution_times.read().await;
-       
-       let mut analysis = PerformanceAnalysis::default();
-       
-       if !scan_times.is_empty() {
-           // Calculate statistics over recent scans
-           let sum: Duration = scan_times.iter().sum();
-           analysis.recent_avg_scan_time = sum / scan_times.len() as u32;
-           
-           analysis.recent_min_scan_time = scan_times.iter().min().copied()
-               .unwrap_or(Duration::ZERO);
-           analysis.recent_max_scan_time = scan_times.iter().max().copied()
-               .unwrap_or(Duration::ZERO);
-           
-           // Calculate jitter variance
-           let avg_nanos = analysis.recent_avg_scan_time.as_nanos() as f64;
-           let variance: f64 = scan_times.iter()
-               .map(|&t| {
-                   let diff = t.as_nanos() as f64 - avg_nanos;
-                   diff * diff
-               })
-               .sum::<f64>() / scan_times.len() as f64;
-           
-           analysis.jitter_variance = Duration::from_nanos(variance.sqrt() as u64);
-       }
-       
-       // Find slowest blocks
-       let mut sorted_blocks: Vec<_> = block_times.iter().collect();
-       sorted_blocks.sort_by(|a, b| b.1.cmp(a.1));
-       
-       analysis.slowest_blocks = sorted_blocks
-           .into_iter()
-           .take(5)
-           .map(|(name, time)| (name.clone(), *time))
-           .collect();
-       
-       analysis
-   }
-}
-
-/// Performance analysis results
-#[cfg(feature = "enhanced-monitoring")]
-#[derive(Debug, Default, Clone)]
-pub struct PerformanceAnalysis {
-   /// Average scan time over recent cycles
-   pub recent_avg_scan_time: Duration,
-   /// Minimum scan time in recent history
-   pub recent_min_scan_time: Duration,
-   /// Maximum scan time in recent history
-   pub recent_max_scan_time: Duration,
-   /// Timing variance (jitter standard deviation)
-   pub jitter_variance: Duration,
-   /// Top 5 slowest blocks with their execution times
-   pub slowest_blocks: Vec<(String, Duration)>,
-}
-
-// ============================================================================
-// TESTING SUPPORT
-// ============================================================================
-
-#[cfg(test)]
-impl Clone for Engine {
-   fn clone(&self) -> Self {
-       Self {
-           bus: self.bus.clone(),
-           blocks: Arc::new(Mutex::new(Vec::new())), // Empty blocks for testing
-           config: self.config.clone(),
-           engine_config: self.engine_config.clone(),
-           running: Arc::new(AtomicBool::new(false)),
-           state: Arc::new(RwLock::new(EngineState::Stopped)),
-           scan_count: Arc::new(AtomicU64::new(0)),
-           error_count: Arc::new(AtomicU64::new(0)),
-           consecutive_errors: Arc::new(AtomicU64::new(0)),
-           start_time: self.start_time,
-           target_scan_time: self.target_scan_time,
-           stats: Arc::new(RwLock::new(EngineStats::default())),
-           
-           #[cfg(feature = "enhanced-monitoring")]
-           scan_times: Arc::new(RwLock::new(VecDeque::new())),
-           #[cfg(feature = "enhanced-monitoring")]
-           execution_order: Arc::new(RwLock::new(Vec::new())),
-           #[cfg(feature = "enhanced-monitoring")]
-           failed_blocks: Arc::new(RwLock::new(Vec::new())),
-           #[cfg(feature = "enhanced-monitoring")]
-           block_execution_times: Arc::new(RwLock::new(HashMap::new())),
-           
-           #[cfg(feature = "circuit-breaker")]
-           block_executor: None,
-           
-           watchdog_handle: None,
-           last_watchdog_ping: Arc::new(RwLock::new(Instant::now())),
-       }
-   }
-}
-
-// ============================================================================
-// TESTING MODULE
+// UNIT TESTS
 // ============================================================================
 
 #[cfg(test)]
 mod tests {
-   use super::*;
-   use crate::config::{SignalConfig, BlockConfig};
-   use std::collections::HashMap;
-   
-   /// Create a test configuration for engine testing
-   fn create_test_config() -> Config {
-       Config {
-           scan_time_ms: 100,
-           max_scan_jitter_ms: 50,
-           error_recovery: true,
-           max_consecutive_errors: 10,
-           restart_delay_ms: 1000,
-           
-           signals: vec![
-               SignalConfig {
-                   name: "test_signal".to_string(),
-                   signal_type: "bool".to_string(),
-                   initial: Some(serde_yaml::Value::Bool(false)),
-                   description: Some("Test signal".to_string()),
-                   category: Some("Test".to_string()),
-                   source: Some("Test".to_string()),
-                   tags: vec!["test".to_string()],
-                   update_frequency_ms: None,
-                   #[cfg(feature = "engineering-types")]
-                   units: None,
-                   #[cfg(feature = "engineering-types")]
-                   min_value: None,
-                   #[cfg(feature = "engineering-types")]
-                   max_value: None,
-                   #[cfg(feature = "quality-codes")]
-                   quality_enabled: false,
-                   #[cfg(feature = "history")]
-                   log_to_history: false,
-                   #[cfg(feature = "history")]
-                   log_interval_ms: 0,
-                   #[cfg(feature = "alarms")]
-                   enable_alarms: false,
-                   #[cfg(feature = "validation")]
-                   validation: None,
-                   metadata: HashMap::new(),
-               },
-               SignalConfig {
-                   name: "output_signal".to_string(),
-                   signal_type: "bool".to_string(),
-                   initial: Some(serde_yaml::Value::Bool(false)),
-                   description: Some("Output signal".to_string()),
-                   category: Some("Test".to_string()),
-                   source: Some("Test".to_string()),
-                   tags: vec!["test".to_string()],
-                   update_frequency_ms: None,
-                   #[cfg(feature = "engineering-types")]
-                   units: None,
-                   #[cfg(feature = "engineering-types")]
-                   min_value: None,
-                   #[cfg(feature = "engineering-types")]
-                   max_value: None,
-                   #[cfg(feature = "quality-codes")]
-                   quality_enabled: false,
-                   #[cfg(feature = "history")]
-                   log_to_history: false,
-                   #[cfg(feature = "history")]
-                   log_interval_ms: 0,
-                   #[cfg(feature = "alarms")]
-                   enable_alarms: false,
-                   #[cfg(feature = "validation")]
-                   validation: None,
-                   metadata: HashMap::new(),
-               },
-           ],
-           
-           blocks: vec![
-               BlockConfig {
-                   name: "test_block".to_string(),
-                   block_type: "NOT".to_string(),
-                   inputs: {
-                       let mut inputs = HashMap::new();
-                       inputs.insert("input".to_string(), "test_signal".to_string());
-                       inputs
-                   },
-                   outputs: {
-                       let mut outputs = HashMap::new();
-                       outputs.insert("output".to_string(), "output_signal".to_string());
-                       outputs
-                   },
-                   params: HashMap::new(),
-                   priority: 0,
-                   enabled: true,
-                   description: Some("Test NOT block".to_string()),
-                   category: Some("Test".to_string()),
-                   tags: vec!["test".to_string()],
-                   #[cfg(feature = "circuit-breaker")]
-                   circuit_breaker: None,
-                   #[cfg(feature = "enhanced-monitoring")]
-                   enhanced_monitoring: false,
-                   metadata: HashMap::new(),
-               },
-           ],
-           
-           protocols: None,
-           version: "1.0".to_string(),
-           description: Some("Test configuration".to_string()),
-           author: Some("Test".to_string()),
-           created: None,
-           modified: None,
-           metadata: HashMap::new(),
-           
-           #[cfg(feature = "mqtt")]
-           mqtt: None,
-           #[cfg(feature = "security")]
-           security: None,
-           #[cfg(feature = "history")]
-           history: None,
-           #[cfg(feature = "alarms")]
-           alarms: None,
-           #[cfg(feature = "web")]
-           web: None,
-           #[cfg(feature = "advanced-storage")]
-           storage: None,
-           #[cfg(feature = "s7-support")]
-           s7: None,
-           #[cfg(feature = "modbus-support")]
-           modbus: None,
-           #[cfg(feature = "opcua-support")]
-           opcua: None,
-           #[cfg(feature = "twilio")]
-           twilio: None,
-           #[cfg(feature = "email")]
-           email: None,
-       }
-   }
-   
-   #[test]
-   fn test_engine_creation() {
-       let config = create_test_config();
-       let engine = Engine::new(config).unwrap();
-       assert!(!engine.is_running());
-       assert_eq!(engine.scan_count(), 0);
-       assert_eq!(engine.error_count(), 0);
-   }
-   
-   #[test]
-   fn test_engine_config_variants() {
-       let config = create_test_config();
-       
-       // Test high performance config
-       let hp_config = EngineConfig::high_performance();
-       let engine = Engine::new_with_config(config.clone(), hp_config).unwrap();
-       assert!(!engine.engine_config.enhanced_monitoring);
-       assert!(!engine.engine_config.metrics_enabled);
-       
-       // Test development config
-       let dev_config = EngineConfig::development();
-       let engine = Engine::new_with_config(config.clone(), dev_config).unwrap();
-       assert!(engine.engine_config.enhanced_monitoring);
-       assert!(engine.engine_config.metrics_enabled);
-       
-       // Test production config
-       let prod_config = EngineConfig::production();
-       let engine = Engine::new_with_config(config, prod_config).unwrap();
-       assert!(!engine.engine_config.enhanced_monitoring);
-       assert!(engine.engine_config.metrics_enabled);
-   }
-   
-   #[tokio::test]
-   async fn test_engine_start_stop() {
-       let config = create_test_config();
-       let engine = Engine::new(config).unwrap();
-       
-       // Start engine in background
-       let engine_clone = engine.clone();
-       let handle = tokio::spawn(async move {
-           let _ = engine_clone.run().await;
-       });
-       
-       // Wait for engine to start
-       tokio::time::sleep(Duration::from_millis(50)).await;
-       
-       // Check it's running
-       assert!(engine.is_running());
-       assert_eq!(engine.state().await, EngineState::Running);
-       
-       // Stop it
-       engine.stop().await;
-       
-       // Wait for task to complete
-       let _ = handle.await;
-       
-       assert!(!engine.is_running());
-       assert_eq!(engine.state().await, EngineState::Stopped);
-   }
-   
-   #[tokio::test]
-   async fn test_scan_cycle_execution() {
-       let config = create_test_config();
-       let engine = Engine::new(config).unwrap();
-       
-       // Execute a single scan cycle
-       engine.execute_scan_cycle().await.unwrap();
-       
-       // Check statistics were updated
-       let stats = engine.stats().await;
-       assert_eq!(stats.blocks_executed, 1);
-       assert_eq!(stats.block_errors, 0);
-   }
-   
-   #[tokio::test]
-   async fn test_reset_blocks() {
-       let config = create_test_config();
-       let engine = Engine::new(config).unwrap();
-       
-       // Execute some scan cycles
-       for _ in 0..5 {
-           engine.execute_scan_cycle().await.unwrap();
-       }
-       
-       // Reset blocks
-       engine.reset_blocks().await.unwrap();
-       
-       // Check counters were reset
-       assert_eq!(engine.scan_count(), 0);
-       assert_eq!(engine.error_count(), 0);
-       assert_eq!(engine.consecutive_errors(), 0);
-   }
-   
-   #[test]
-   fn test_signal_initialization() {
-       let config = create_test_config();
-       let engine = Engine::new(config).unwrap();
-       
-       // Check signals were initialized
-       let bus = engine.signal_bus();
-       assert_eq!(bus.get_bool("test_signal").unwrap(), false);
-       assert_eq!(bus.get_bool("output_signal").unwrap(), false);
-   }
-   
-   #[tokio::test]
-   async fn test_performance_summary() {
-       let config = create_test_config();
-       let engine = Engine::new(config).unwrap();
-       
-       // Execute some scan cycles
-       for _ in 0..10 {
-           engine.execute_scan_cycle().await.unwrap();
-           tokio::time::sleep(Duration::from_millis(10)).await;
-       }
-       
-       // Get performance summary
-       let summary = engine.performance_summary().await;
-       assert!(summary.contains("Engine Performance Summary"));
-       assert!(summary.contains("Scans: 10"));
-       assert!(summary.contains("Timing:"));
-       assert!(summary.contains("Uptime:"));
-   }
-   
-   #[cfg(feature = "enhanced-monitoring")]
-   #[tokio::test]
-   async fn test_enhanced_monitoring() {
-       let mut config = create_test_config();
-       let engine_config = EngineConfig {
-           enhanced_monitoring: true,
-           ..Default::default()
-       };
-       
-       let engine = Engine::new_with_config(config, engine_config).unwrap();
-       
-       // Execute scan cycle
-       engine.execute_scan_cycle().await.unwrap();
-       
-       // Check monitoring data
-       let execution_order = engine.execution_order().await;
-       assert_eq!(execution_order.len(), 1);
-       assert_eq!(execution_order[0], "test_block");
-       
-       let failed_blocks = engine.failed_blocks().await;
-       assert_eq!(failed_blocks.len(), 0);
-       
-       let block_times = engine.block_execution_times().await;
-       assert!(block_times.contains_key("test_block"));
-       
-       // Get performance analysis
-       let analysis = engine.performance_analysis().await;
-       assert_eq!(analysis.slowest_blocks.len(), 1);
-   }
-   
-   #[test]
-   fn test_uptime_tracking() {
-       let config = create_test_config();
-       let engine = Engine::new(config).unwrap();
-       
-       // Initial uptime should be near zero
-       let uptime1 = engine.uptime();
-       assert!(uptime1.as_millis() < 100);
-       
-       // Wait and check again
-       std::thread::sleep(Duration::from_millis(100));
-       let uptime2 = engine.uptime();
-       assert!(uptime2.as_millis() >= 100);
-   }
+    use super::*;
+    use crate::config::{SignalConfig, BlockConfig};
+    use std::collections::HashMap;
+    
+    fn create_test_config() -> Config {
+        Config {
+            scan_time_ms: 100,
+            max_scan_jitter_ms: 10,
+            error_recovery: true,
+            max_consecutive_errors: 5,
+            restart_delay_ms: 1000,
+            
+            signals: vec![
+                SignalConfig {
+                    name: "test_signal".to_string(),
+                    signal_type: "bool".to_string(),
+                    initial: Some(serde_yaml::Value::Bool(false)),
+                    description: Some("Test signal".to_string()),
+                    unit: None,
+                    min: None,
+                    max: None,
+                    access: None,
+                    #[cfg(feature = "extended-types")]
+                    metadata: HashMap::new(),
+                },
+                SignalConfig {
+                    name: "output_signal".to_string(),
+                    signal_type: "bool".to_string(),
+                    initial: None,
+                    description: Some("Output signal".to_string()),
+                    unit: None,
+                    min: None,
+                    max: None,
+                    access: None,
+                    #[cfg(feature = "extended-types")]
+                    metadata: HashMap::new(),
+                },
+            ],
+            
+            blocks: vec![
+                BlockConfig {
+                    name: "test_block".to_string(),
+                    block_type: "NOT".to_string(),
+                    inputs: {
+                        let mut inputs = HashMap::new();
+                        inputs.insert("input".to_string(), "test_signal".to_string());
+                        inputs
+                    },
+                    outputs: {
+                        let mut outputs = HashMap::new();
+                        outputs.insert("output".to_string(), "output_signal".to_string());
+                        outputs
+                    },
+                    parameters: HashMap::new(),
+                    priority: 0,
+                    enabled: true,
+                    description: Some("Test NOT block".to_string()),
+                    category: Some("Test".to_string()),
+                    tags: vec!["test".to_string()],
+                    #[cfg(feature = "circuit-breaker")]
+                    circuit_breaker: None,
+                    #[cfg(feature = "enhanced-monitoring")]
+                    enhanced_monitoring: false,
+                    metadata: HashMap::new(),
+                },
+            ],
+            
+            protocols: None,
+            version: "1.0".to_string(),
+            description: Some("Test configuration".to_string()),
+            author: Some("Test".to_string()),
+            created: None,
+            modified: None,
+            metadata: HashMap::new(),
+            
+            #[cfg(feature = "mqtt")]
+            mqtt: None,
+            #[cfg(feature = "security")]
+            security: None,
+            #[cfg(feature = "history")]
+            history: None,
+            #[cfg(feature = "alarms")]
+            alarms: None,
+            #[cfg(feature = "web")]
+            web: None,
+            #[cfg(feature = "advanced-storage")]
+            storage: None,
+            #[cfg(feature = "s7-support")]
+            s7: None,
+            #[cfg(feature = "modbus-support")]
+            modbus: None,
+            #[cfg(feature = "opcua-support")]
+            opcua: None,
+            #[cfg(feature = "twilio")]
+            twilio: None,
+            #[cfg(feature = "email")]
+            email: None,
+        }
+    }
+    
+    #[test]
+    fn test_engine_creation() {
+        let config = create_test_config();
+        let engine = Engine::new(config).unwrap();
+        assert!(!engine.is_running());
+        assert_eq!(engine.scan_count(), 0);
+        assert_eq!(engine.error_count(), 0);
+    }
+    
+    #[test]
+    fn test_engine_with_bus() {
+        let config = create_test_config();
+        let bus = SignalBus::new();
+        
+        // Pre-populate bus
+        bus.set("pre_existing", Value::Float(42.0)).unwrap();
+        
+        let engine = Engine::new_with_bus(config, bus).unwrap();
+        
+        // Verify pre-existing signal
+        let value = engine.signal_bus().get("pre_existing").unwrap();
+        assert_eq!(value, Some(Value::Float(42.0)));
+        
+        // Verify configured signals were initialized
+        let test_signal = engine.signal_bus().get("test_signal").unwrap();
+        assert_eq!(test_signal, Some(Value::Bool(false)));
+    }
+    
+    #[test]
+    fn test_engine_config_variants() {
+        let config = create_test_config();
+        
+        // Test high performance config
+        let hp_config = EngineConfig::high_performance();
+        let engine = Engine::new_with_config(config.clone(), hp_config).unwrap();
+        assert!(!engine.engine_config.enhanced_monitoring);
+        assert_eq!(engine.engine_config.realtime_priority, Some(50));
+        
+        // Test development config
+        let dev_config = EngineConfig::development();
+        let engine = Engine::new_with_config(config.clone(), dev_config).unwrap();
+        assert!(engine.engine_config.enhanced_monitoring);
+        assert!(!engine.engine_config.error_recovery);
+        
+        // Test production config
+        let prod_config = EngineConfig::production();
+        let engine = Engine::new_with_config(config, prod_config).unwrap();
+        assert!(engine.engine_config.enhanced_monitoring);
+        assert!(engine.engine_config.error_recovery);
+    }
+    
+    #[tokio::test]
+    async fn test_engine_lifecycle() {
+        let config = create_test_config();
+        let engine = Engine::new(config).unwrap();
+        
+        // Initial state
+        assert_eq!(engine.state().await, EngineState::Stopped);
+        assert!(!engine.is_running());
+        
+        // Start and immediately stop
+        let engine_clone = engine.clone();
+        let handle = tokio::spawn(async move {
+            let mut engine = engine_clone;
+            engine.run().await
+        });
+        
+        // Give it time to start
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(engine.is_running());
+        assert_eq!(engine.state().await, EngineState::Running);
+        
+        // Stop the engine
+        engine.stop().await;
+        handle.abort();
+        
+        assert!(!engine.is_running());
+    }
+    
+    #[tokio::test]
+    async fn test_scan_cycle_execution() {
+        let config = create_test_config();
+        let engine = Engine::new(config).unwrap();
+        
+        // Set initial signal value
+        engine.signal_bus().set("test_signal", Value::Bool(true)).unwrap();
+        
+        // Execute one scan cycle
+        engine.execute_scan_cycle().await.unwrap();
+        
+        // Check that NOT block inverted the signal
+        let output = engine.signal_bus().get("output_signal").unwrap();
+        assert_eq!(output, Some(Value::Bool(false)));
+        
+        // Verify statistics
+        assert_eq!(engine.scan_count(), 1);
+        assert_eq!(engine.error_count(), 0);
+        
+        let stats = engine.stats().await;
+        assert_eq!(stats.scan_count, 1);
+        assert!(stats.avg_scan_time > Duration::ZERO);
+    }
+    
+    #[tokio::test]
+    async fn test_block_management() {
+        let config = create_test_config();
+        let engine = Engine::new(config).unwrap();
+        
+        // Create a simple test block
+        use crate::blocks::{Block, BlockConfig};
+        
+        struct TestBlock {
+            name: String,
+        }
+        
+        impl Block for TestBlock {
+            fn execute(&mut self, _bus: &SignalBus) -> Result<(), PlcError> {
+                Ok(())
+            }
+            
+            fn name(&self) -> &str {
+                &self.name
+            }
+            
+            fn block_type(&self) -> &str {
+                "TEST"
+            }
+            
+            fn reset(&mut self) -> Result<(), PlcError> {
+                Ok(())
+            }
+        }
+        
+        // Add a new block
+        let new_block = Box::new(TestBlock {
+            name: "dynamic_block".to_string(),
+        });
+        
+        engine.add_block(new_block).await.unwrap();
+        
+        // Try to add duplicate
+        let duplicate = Box::new(TestBlock {
+            name: "dynamic_block".to_string(),
+        });
+        
+        assert!(engine.add_block(duplicate).await.is_err());
+        
+        // Remove the block
+        engine.remove_block("dynamic_block").await.unwrap();
+        
+        // Try to remove non-existent block
+        assert!(engine.remove_block("non_existent").await.is_err());
+    }
+    
+    #[tokio::test]
+    async fn test_error_handling() {
+        let config = create_test_config();
+        let engine = Engine::new(config).unwrap();
+        
+        // Simulate a block error by setting invalid signal reference
+        // This would normally happen if a block references a non-existent signal
+        
+        // For this test, we'll just verify error counting works
+        engine.error_count.fetch_add(1, Ordering::Relaxed);
+        engine.consecutive_errors.fetch_add(1, Ordering::Relaxed);
+        
+        assert_eq!(engine.error_count(), 1);
+        assert_eq!(engine.consecutive_errors(), 1);
+        
+        // Reset blocks should clear error counters
+        engine.reset_blocks().await.unwrap();
+        assert_eq!(engine.error_count(), 0);
+        assert_eq!(engine.consecutive_errors(), 0);
+    }
+    
+    #[test]
+    fn test_performance_summary() {
+        let config = create_test_config();
+        let engine = Engine::new(config).unwrap();
+        
+        // Get performance summary (should work even with no scans)
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let summary = rt.block_on(engine.performance_summary());
+        
+        assert!(summary.contains("Engine Performance Summary"));
+        assert!(summary.contains("Scans: 0"));
+        assert!(summary.contains("Errors: 0"));
+    }
 }
