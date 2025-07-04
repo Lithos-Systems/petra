@@ -1,7 +1,7 @@
 //! Engine performance benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use petra::config::{BlockConfig, SignalConfig, Config};
+use petra::config::{BlockConfig, Config, SignalConfig};
 use petra::{Engine, SignalBus, Value};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -147,11 +147,9 @@ fn benchmark_signal_bus_operations(c: &mut Criterion) {
 
         b.iter(|| {
             for i in 0..100 {
-                let _ = bus.update(&format!("counter_{}", i), |old| {
-                    match old {
-                        Some(Value::Integer(n)) => Value::Integer(n + 1),
-                        _ => Value::Integer(1),
-                    }
+                let _ = bus.update(&format!("counter_{}", i), |old| match old {
+                    Some(Value::Integer(n)) => Value::Integer(n + 1),
+                    _ => Value::Integer(1),
                 });
             }
         });
@@ -233,8 +231,7 @@ fn benchmark_block_execution(c: &mut Criterion) {
             tags: vec![],
         };
 
-        let mut block = petra::blocks::create_block(&config)
-            .expect("Failed to create block");
+        let mut block = petra::blocks::create_block(&config).expect("Failed to create block");
 
         b.iter(|| {
             let _ = black_box(block.execute(&bus));
@@ -269,8 +266,7 @@ fn benchmark_block_execution(c: &mut Criterion) {
             tags: vec![],
         };
 
-        let mut block = petra::blocks::create_block(&config)
-            .expect("Failed to create block");
+        let mut block = petra::blocks::create_block(&config).expect("Failed to create block");
 
         b.iter(|| {
             let _ = black_box(block.execute(&bus));
