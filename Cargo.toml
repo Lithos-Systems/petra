@@ -561,6 +561,10 @@ required-features = ["cli"]
 name = "engine_performance"
 harness = false
 
+[[bench]]
+name = "simple_working"
+harness = false
+
 # ================================================================================
 # END OF CONFIGURATION
 # ================================================================================
