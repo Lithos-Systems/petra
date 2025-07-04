@@ -257,14 +257,22 @@ run_pre_release_check() {
 # Run benchmarks
 run_benchmarks() {
     print_status "running" "Running benchmarks"
-    
-    if [ "$VERBOSE" = true ]; then
-        cargo bench --bench engine_performance
+
+    print_status "info" "Testing minimal benchmark..."
+    if cargo bench --bench simple_working --no-default-features; then
+        print_status "success" "Minimal benchmark successful"
     else
-        cargo bench --bench engine_performance -- --warm-up-time 1 --measurement-time 2
+        print_status "error" "Minimal benchmark failed"
+        exit 1
     fi
-    
-    print_status "success" "Benchmarks completed!"
+
+    print_status "info" "Testing engine benchmark..."
+    if cargo bench --bench engine_performance --no-default-features --no-run; then
+        print_status "success" "Engine benchmark compiles"
+        cargo bench --bench engine_performance --no-default-features
+    else
+        print_status "error" "Engine benchmark compilation failed"
+    fi
 }
 
 # Clean and reorganize project
