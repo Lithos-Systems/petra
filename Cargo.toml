@@ -543,6 +543,7 @@ development = [
 # === PERFORMANCE ===
 optimized = []                # Use parking_lot and optimized algorithms
 realtime = []                 # Real-time OS scheduling (Linux only)
+parallel-execution = []       # Execute blocks in parallel
 
 # === CONNECTIVITY ===
 mqtt = ["dep:rumqttc"]       # MQTT protocol support

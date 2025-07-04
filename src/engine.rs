@@ -72,6 +72,9 @@ use tracing::{debug, error, info, warn, span, Level};
 #[cfg(feature = "enhanced-monitoring")]
 use crate::metrics::EngineMetrics;
 
+#[cfg(feature = "parallel-execution")]
+mod parallel_executor;
+
 #[cfg(feature = "realtime")]
 use libc::{sched_param, sched_setscheduler, SCHED_FIFO};
 
@@ -105,6 +108,9 @@ pub struct EngineConfig {
     
     /// Enable detailed performance profiling
     pub profiling: bool,
+
+    /// Enable parallel block execution
+    pub parallel_execution: bool,
     
     /// Watchdog timeout (0 = disabled)
     pub watchdog_timeout_ms: u64,
@@ -123,6 +129,7 @@ impl Default for EngineConfig {
             realtime_priority: None,
             cpu_affinity: None,
             profiling: false,
+            parallel_execution: false,
             watchdog_timeout_ms: 0,
             missed_tick_behavior: MissedTickBehavior::Burst,
         }
@@ -140,6 +147,7 @@ impl EngineConfig {
             realtime_priority: Some(50),
             cpu_affinity: Some(vec![0]), // Pin to first CPU
             profiling: false,
+            parallel_execution: true,
             watchdog_timeout_ms: 0,
             missed_tick_behavior: MissedTickBehavior::Skip,
         }
@@ -155,6 +163,7 @@ impl EngineConfig {
             realtime_priority: None,
             cpu_affinity: None,
             profiling: true,
+            parallel_execution: false,
             watchdog_timeout_ms: 30000,
             missed_tick_behavior: MissedTickBehavior::Burst,
         }
@@ -170,6 +179,7 @@ impl EngineConfig {
             realtime_priority: None,
             cpu_affinity: None,
             profiling: false,
+            parallel_execution: true,
             watchdog_timeout_ms: 60000,
             missed_tick_behavior: MissedTickBehavior::Delay,
         }
@@ -343,6 +353,9 @@ pub struct Engine {
     
     /// Last watchdog ping time
     last_watchdog_ping: Arc<RwLock<Instant>>,
+
+    #[cfg(feature = "parallel-execution")]
+    parallel_executor: Option<Arc<parallel_executor::ParallelExecutor>>,
 }
 
 // ============================================================================
@@ -444,6 +457,13 @@ impl Engine {
         
         // Create and initialize blocks
         let blocks = Self::create_blocks(&config)?;
+
+        #[cfg(feature = "parallel-execution")]
+        let parallel_executor = if engine_config.parallel_execution {
+            Some(Arc::new(parallel_executor::ParallelExecutor::new(&blocks)))
+        } else {
+            None
+        };
         
         // Calculate EMA alpha based on scan time
         let ema_alpha = 2.0 / (10.0 + 1.0); // 10-period EMA
@@ -471,6 +491,8 @@ impl Engine {
             metrics: Arc::new(EngineMetrics::new()),
             watchdog_handle: None,
             last_watchdog_ping: Arc::new(RwLock::new(Instant::now())),
+            #[cfg(feature = "parallel-execution")]
+            parallel_executor,
         };
         
         info!(
@@ -733,46 +755,117 @@ impl Engine {
         let _span = span!(Level::TRACE, "scan_cycle", scan = %self.scan_count()).entered();
         
         // Execute all blocks
-        let mut blocks = self.blocks.lock().await;
-        let mut block_errors = Vec::new();
-        
-        for block in blocks.iter_mut() {
-            let block_start = Instant::now();
-            
-            match block.execute(&self.bus) {
-                Ok(()) => {
-                    let block_elapsed = block_start.elapsed();
-                    
-                    #[cfg(feature = "enhanced-monitoring")]
-                    {
+        #[cfg(feature = "parallel-execution")]
+        if let Some(executor) = &self.parallel_executor {
+            executor.execute_parallel(Arc::clone(&self.blocks), &self.bus).await?;
+        } else {
+            let mut blocks = self.blocks.lock().await;
+            let mut block_errors = Vec::new();
+
+            for block in blocks.iter_mut() {
+                let block_start = Instant::now();
+
+                match block.execute(&self.bus) {
+                    Ok(()) => {
+                        let block_elapsed = block_start.elapsed();
+
+                        #[cfg(feature = "enhanced-monitoring")]
+                        {
+                            let mut stats = self.stats.write().await;
+                            stats.block_execution_times.insert(
+                                block.name().to_string(),
+                                block_elapsed,
+                            );
+                        }
+
+                        if block_elapsed > self.target_scan_time / 10 {
+                            warn!(
+                                "Slow block '{}' took {:?} (>10% of scan time)",
+                                block.name(),
+                                block_elapsed
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("Block '{}' execution failed: {}", block.name(), e);
+                        block_errors.push((block.name().to_string(), e));
+
                         let mut stats = self.stats.write().await;
-                        stats.block_execution_times.insert(
-                            block.name().to_string(),
-                            block_elapsed,
-                        );
+                        *stats.block_errors.entry(block.name().to_string()).or_insert(0) += 1;
                     }
-                    
-                    // Warn on slow blocks
-                    if block_elapsed > self.target_scan_time / 10 {
-                        warn!(
-                            "Slow block '{}' took {:?} (>10% of scan time)",
-                            block.name(),
-                            block_elapsed
-                        );
-                    }
-                }
-                Err(e) => {
-                    error!("Block '{}' execution failed: {}", block.name(), e);
-                    block_errors.push((block.name().to_string(), e));
-                    
-                    // Update block error statistics
-                    let mut stats = self.stats.write().await;
-                    *stats.block_errors.entry(block.name().to_string()).or_insert(0) += 1;
                 }
             }
+
+            drop(blocks);
+
+            if !block_errors.is_empty() {
+                let error_msg = block_errors
+                    .iter()
+                    .map(|(name, err)| format!("{}: {}", name, err))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                return Err(PlcError::Runtime(format!(
+                    "Block execution errors: {}",
+                    error_msg
+                )));
+            }
         }
-        
-        drop(blocks); // Release lock
+
+        #[cfg(not(feature = "parallel-execution"))]
+        {
+            let mut blocks = self.blocks.lock().await;
+            let mut block_errors = Vec::new();
+
+            for block in blocks.iter_mut() {
+                let block_start = Instant::now();
+
+                match block.execute(&self.bus) {
+                    Ok(()) => {
+                        let block_elapsed = block_start.elapsed();
+
+                        #[cfg(feature = "enhanced-monitoring")]
+                        {
+                            let mut stats = self.stats.write().await;
+                            stats.block_execution_times.insert(
+                                block.name().to_string(),
+                                block_elapsed,
+                            );
+                        }
+
+                        if block_elapsed > self.target_scan_time / 10 {
+                            warn!(
+                                "Slow block '{}' took {:?} (>10% of scan time)",
+                                block.name(),
+                                block_elapsed
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("Block '{}' execution failed: {}", block.name(), e);
+                        block_errors.push((block.name().to_string(), e));
+
+                        let mut stats = self.stats.write().await;
+                        *stats.block_errors.entry(block.name().to_string()).or_insert(0) += 1;
+                    }
+                }
+            }
+
+            drop(blocks);
+
+            if !block_errors.is_empty() {
+                let error_msg = block_errors
+                    .iter()
+                    .map(|(name, err)| format!("{}: {}", name, err))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                return Err(PlcError::Runtime(format!(
+                    "Block execution errors: {}",
+                    error_msg
+                )));
+            }
+        }
         
         // Update scan statistics
         let scan_elapsed = scan_start.elapsed();
@@ -780,19 +873,6 @@ impl Engine {
         
         // Increment scan counter
         self.scan_count.fetch_add(1, Ordering::Relaxed);
-        
-        // Return error if any blocks failed (but after completing the scan)
-        if !block_errors.is_empty() {
-            let error_msg = block_errors
-                .iter()
-                .map(|(name, err)| format!("{}: {}", name, err))
-                .collect::<Vec<_>>()
-                .join(", ");
-            
-            return Err(PlcError::Runtime(format!(
-                "Block execution errors: {}", error_msg
-            )));
-        }
         
         Ok(())
     }
