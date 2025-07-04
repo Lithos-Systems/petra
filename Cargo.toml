@@ -786,6 +786,7 @@ advanced-blocks = []                                   # Advanced block types
 statistics = []                                        # Statistical analysis blocks
 ml-blocks = []                                         # Machine learning blocks
 error-recovery = []                                    # Automatic error recovery
+simd-math = []                                         # SIMD optimized math blocks
 
 # ================================================================================
 # COMPATIBILITY FEATURES

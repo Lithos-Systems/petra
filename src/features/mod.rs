@@ -267,6 +267,10 @@ impl RuntimeFeatures {
             enabled.insert("ml-blocks".to_string());
             categories.entry("Blocks".to_string()).or_default().push("ml-blocks".to_string());
         }
+        if cfg!(feature = "simd-math") {
+            enabled.insert("simd-math".to_string());
+            categories.entry("Blocks".to_string()).or_default().push("simd-math".to_string());
+        }
         
         let core = CoreFeatures {
             standard_monitoring: cfg!(feature = "standard-monitoring"),
