@@ -188,18 +188,7 @@ impl Validatable for BlockConfig {
 
 impl Validatable for MqttConfig {
     fn validate(&self) -> Result<()> {
-        validators::validate_url(&format!("tcp://{}:{}", self.host, self.port))?;
-        validators::validate_port(self.port)?;
-        
-        if self.client_id.is_empty() {
-            return Err(PlcError::Config("MQTT client ID cannot be empty".to_string()));
-        }
-        
-        if self.qos > 2 {
-            return Err(PlcError::Config("MQTT QoS must be 0, 1, or 2".to_string()));
-        }
-        
-        Ok(())
+        crate::config::MqttConfig::validate(self)
     }
 }
 
@@ -865,14 +854,21 @@ mod tests {
     #[test]
     fn test_mqtt_validation() {
         let mqtt = MqttConfig {
-            enabled: true,
             host: "localhost".to_string(),
             port: 0, // Invalid
             client_id: "test".to_string(),
             username: None,
             password: None,
+            keepalive_secs: 60,
+            timeout_ms: 1000,
+            use_tls: false,
             qos: 1,
             retain: false,
+            subscribe_topics: Vec::new(),
+            publish_topic_base: None,
+            auto_reconnect: true,
+            max_reconnect_attempts: 0,
+            reconnect_delay_secs: 5,
         };
         
         assert!(mqtt.validate().is_err());

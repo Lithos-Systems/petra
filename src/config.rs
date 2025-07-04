@@ -95,7 +95,8 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, Duration};
+use uuid::Uuid;
 use tracing::{debug, info, warn};
 
 // Feature-gated imports for enhanced functionality
@@ -678,52 +679,144 @@ pub struct ProtocolConfig {
 /// Only available with the "mqtt" feature. Configures MQTT client connections,
 /// topic subscriptions, and message publishing for IoT integration.
 #[cfg(feature = "mqtt")]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema-validation", derive(JsonSchema))]
 pub struct MqttConfig {
-    /// MQTT broker address (host:port format)
-    pub broker: String,
-    
-    /// MQTT client ID (must be unique per broker)
-    #[serde(default = "default_mqtt_client_id")]
+    /// MQTT broker hostname or IP address
+    pub host: String,
+
+    /// MQTT broker port (default: 1883 for non-TLS, 8883 for TLS)
+    #[serde(default = "default_mqtt_port")]
+    pub port: u16,
+
+    /// MQTT client identifier (must be unique per broker)
     pub client_id: String,
-    
-    /// Username for broker authentication
-    #[serde(skip_serializing_if = "Option::is_none")]
+
+    /// Optional username for authentication
     pub username: Option<String>,
-    
-    /// Password for broker authentication  
-    #[serde(skip_serializing_if = "Option::is_none")]
+
+    /// Optional password for authentication
     pub password: Option<String>,
-    
-    /// Keep alive interval in seconds
-    #[serde(default = "default_mqtt_keep_alive")]
-    pub keep_alive: u16,
-    
+
+    /// Keep-alive interval in seconds
+    #[serde(default = "default_keepalive_secs")]
+    pub keepalive_secs: u16,
+
     /// Connection timeout in milliseconds
-    #[serde(default = "default_connection_timeout")]
+    #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
-    
-    /// Enable clean session mode
-    #[serde(default = "default_clean_session")]
-    pub clean_session: bool,
-    
-    /// Topic subscriptions for incoming data
+
+    /// Enable TLS/SSL connection
     #[serde(default)]
-    pub subscriptions: Vec<MqttSubscription>,
-    
-    /// Topic publications for outgoing data
+    pub use_tls: bool,
+
+    /// Quality of Service level for published messages
     #[serde(default)]
-    pub publications: Vec<MqttPublication>,
-    
-    /// TLS configuration for secure connections
-    #[cfg(feature = "mqtt-tls")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tls: Option<MqttTlsConfig>,
-    
-    /// Last will and testament for connection loss handling
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_will: Option<MqttLastWill>,
+    pub qos: u8,
+
+    /// Retain published messages on broker
+    #[serde(default)]
+    pub retain: bool,
+
+    /// Topics to subscribe to on connection
+    #[serde(default)]
+    pub subscribe_topics: Vec<String>,
+
+    /// Base topic for publishing signals
+    pub publish_topic_base: Option<String>,
+
+    /// Enable automatic reconnection
+    #[serde(default = "default_true")]
+    pub auto_reconnect: bool,
+
+    /// Maximum reconnection attempts (0 = unlimited)
+    #[serde(default)]
+    pub max_reconnect_attempts: u32,
+
+    /// Reconnection delay in seconds
+    #[serde(default = "default_reconnect_delay")]
+    pub reconnect_delay_secs: u64,
+}
+
+impl Default for MqttConfig {
+    fn default() -> Self {
+        Self {
+            host: "localhost".to_string(),
+            port: default_mqtt_port(),
+            client_id: format!("petra-{}", uuid::Uuid::new_v4()),
+            username: None,
+            password: None,
+            keepalive_secs: default_keepalive_secs(),
+            timeout_ms: default_timeout_ms(),
+            use_tls: false,
+            qos: 0,
+            retain: false,
+            subscribe_topics: Vec::new(),
+            publish_topic_base: Some("petra".to_string()),
+            auto_reconnect: default_true(),
+            max_reconnect_attempts: 0,
+            reconnect_delay_secs: default_reconnect_delay(),
+        }
+    }
+}
+
+impl MqttConfig {
+    /// Validate MQTT configuration
+    pub fn validate(&self) -> Result<(), PlcError> {
+        if self.host.is_empty() {
+            return Err(PlcError::Config("MQTT host cannot be empty".to_string()));
+        }
+
+        if self.port == 0 {
+            return Err(PlcError::Config("MQTT port must be greater than 0".to_string()));
+        }
+
+        if self.client_id.is_empty() {
+            return Err(PlcError::Config("MQTT client_id cannot be empty".to_string()));
+        }
+
+        if self.qos > 2 {
+            return Err(PlcError::Config("MQTT QoS must be 0, 1, or 2".to_string()));
+        }
+
+        if self.keepalive_secs == 0 {
+            return Err(PlcError::Config("MQTT keepalive must be greater than 0".to_string()));
+        }
+
+        for topic in &self.subscribe_topics {
+            if topic.is_empty() {
+                return Err(PlcError::Config("MQTT topic cannot be empty".to_string()));
+            }
+            if topic.contains('\0') {
+                return Err(PlcError::Config("MQTT topic cannot contain null characters".to_string()));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get broker URL for connection
+    pub fn broker_url(&self) -> String {
+        let protocol = if self.use_tls { "mqtts" } else { "mqtt" };
+        format!("{}://{}:{}", protocol, self.host, self.port)
+    }
+
+    /// Get connection options for rumqttc
+    pub fn connection_options(&self) -> rumqttc::MqttOptions {
+        let mut options = rumqttc::MqttOptions::new(&self.client_id, &self.host, self.port);
+
+        options.set_keep_alive(Duration::from_secs(self.keepalive_secs as u64));
+
+        if let (Some(username), Some(password)) = (&self.username, &self.password) {
+            options.set_credentials(username, password);
+        }
+
+        if self.use_tls {
+            options.set_transport(rumqttc::Transport::Tls(rumqttc::TlsConfiguration::Simple));
+        }
+
+        options
+    }
 }
 
 /// MQTT subscription configuration
@@ -1433,6 +1526,11 @@ fn default_opcua_security_mode() -> String { "None".to_string() }
 const fn default_sampling_interval() -> u64 { 1000 }
 
 // MQTT defaults
+fn default_mqtt_port() -> u16 { 1883 }
+fn default_keepalive_secs() -> u16 { 60 }
+fn default_timeout_ms() -> u64 { 5000 }
+fn default_true() -> bool { true }
+fn default_reconnect_delay() -> u64 { 5 }
 fn default_mqtt_client_id() -> String { "petra".to_string() }
 const fn default_mqtt_keep_alive() -> u16 { 60 }
 const fn default_clean_session() -> bool { true }
@@ -2250,53 +2348,7 @@ impl Validatable for ProtocolConfig {
 #[cfg(feature = "mqtt")]
 impl Validatable for MqttConfig {
     fn validate(&self) -> Result<()> {
-        if self.broker.is_empty() {
-            return Err(PlcError::Config("MQTT broker address cannot be empty".to_string()));
-        }
-        
-        if self.client_id.is_empty() {
-            return Err(PlcError::Config("MQTT client ID cannot be empty".to_string()));
-        }
-        
-        if self.keep_alive == 0 {
-            return Err(PlcError::Config("MQTT keep alive must be greater than 0".to_string()));
-        }
-        
-        if self.timeout_ms == 0 {
-            return Err(PlcError::Config("MQTT timeout must be greater than 0".to_string()));
-        }
-        
-        // Validate subscriptions
-        for sub in &self.subscriptions {
-            if sub.topic.is_empty() {
-                return Err(PlcError::Config("MQTT subscription topic cannot be empty".to_string()));
-            }
-            if sub.signal.is_empty() {
-                return Err(PlcError::Config("MQTT subscription signal cannot be empty".to_string()));
-            }
-            if sub.qos > 2 {
-                return Err(PlcError::Config(format!(
-                    "MQTT QoS must be 0, 1, or 2 (got {})", sub.qos
-                )));
-            }
-        }
-        
-        // Validate publications
-        for pub_config in &self.publications {
-            if pub_config.topic.is_empty() {
-                return Err(PlcError::Config("MQTT publication topic cannot be empty".to_string()));
-            }
-            if pub_config.signal.is_empty() {
-                return Err(PlcError::Config("MQTT publication signal cannot be empty".to_string()));
-            }
-            if pub_config.qos > 2 {
-                return Err(PlcError::Config(format!(
-                    "MQTT QoS must be 0, 1, or 2 (got {})", pub_config.qos
-                )));
-            }
-        }
-        
-        Ok(())
+        self.validate()
     }
 }
 
@@ -2721,6 +2773,91 @@ mod tests {
         assert!(summary.contains("2 signals"));
         assert!(summary.contains("1 blocks"));
         assert!(summary.contains("100ms"));
+    }
+
+    #[test]
+    fn test_mqtt_config_validation() {
+        let mut config = MqttConfig::default();
+        assert!(config.validate().is_ok());
+
+        config.host = String::new();
+        assert!(config.validate().is_err());
+
+        config.host = "localhost".to_string();
+        config.port = 0;
+        assert!(config.validate().is_err());
+
+        config.port = 1883;
+        config.client_id = String::new();
+        assert!(config.validate().is_err());
+
+        config.client_id = "test".to_string();
+        config.qos = 3;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_conversion() {
+        let user_config = MqttConfig {
+            host: "test.broker.com".to_string(),
+            port: 8883,
+            client_id: "test-client".to_string(),
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
+            keepalive_secs: 30,
+            timeout_ms: 10000,
+            use_tls: true,
+            qos: 1,
+            retain: true,
+            subscribe_topics: vec!["test/topic".to_string()],
+            publish_topic_base: Some("test/base".to_string()),
+            auto_reconnect: true,
+            max_reconnect_attempts: 5,
+            reconnect_delay_secs: 10,
+        };
+
+        let internal_config = InternalMqttConfig::from(user_config.clone());
+
+        assert_eq!(internal_config.broker_host, user_config.host);
+        assert_eq!(internal_config.broker_port, user_config.port);
+        assert_eq!(internal_config.client_id, user_config.client_id);
+        assert_eq!(internal_config.keepalive_secs, user_config.keepalive_secs);
+        assert_eq!(internal_config.timeout_ms, user_config.timeout_ms);
+    }
+
+    #[test]
+    fn test_broker_url_generation() {
+        let config = MqttConfig {
+            host: "example.com".to_string(),
+            port: 1883,
+            use_tls: false,
+            ..Default::default()
+        };
+        assert_eq!(config.broker_url(), "mqtt://example.com:1883");
+
+        let tls_config = MqttConfig {
+            host: "secure.example.com".to_string(),
+            port: 8883,
+            use_tls: true,
+            ..Default::default()
+        };
+        assert_eq!(tls_config.broker_url(), "mqtts://secure.example.com:8883");
+    }
+
+    #[test]
+    fn test_connection_options() {
+        let config = MqttConfig {
+            host: "test.com".to_string(),
+            port: 1883,
+            client_id: "test-client".to_string(),
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
+            keepalive_secs: 30,
+            use_tls: false,
+            ..Default::default()
+        };
+
+        let _options = config.connection_options();
     }
 }
 
