@@ -71,8 +71,8 @@ pub struct MqttConfig {
     pub password: Option<String>,
     
     /// Keep-alive interval in seconds
-    #[serde(default = "default_keep_alive")]
-    pub keep_alive_secs: u64,
+    #[serde(default = "default_keepalive")]
+    pub keepalive_secs: u64,
     
     /// Clean session flag
     #[serde(default = "default_clean_session")]
@@ -108,7 +108,7 @@ pub struct MqttConfig {
 }
 
 /// Default values for configuration
-fn default_keep_alive() -> u64 { 60 }
+fn default_keepalive() -> u64 { 60 }
 fn default_clean_session() -> bool { true }
 
 /// MQTT subscription configuration
@@ -373,7 +373,7 @@ impl MqttClient {
             config.broker_port,
         );
         
-        mqtt_options.set_keep_alive(std::time::Duration::from_secs(config.keep_alive_secs));
+        mqtt_options.set_keep_alive(std::time::Duration::from_secs(config.keepalive_secs));
         mqtt_options.set_clean_session(config.clean_session);
         
         // Authentication
@@ -886,7 +886,7 @@ impl MqttBridge {
                 client_id: remote_broker.client_id.clone(),
                 username: remote_broker.username.clone(),
                 password: remote_broker.password.clone(),
-                keep_alive_secs: 60,
+                keepalive_secs: 60,
                 clean_session: true,
                 subscriptions: Vec::new(),
                 publications: Vec::new(),
