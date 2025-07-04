@@ -76,6 +76,9 @@ pub mod error;
 /// String, Binary, Array, Object types when extended-types feature is enabled.
 pub mod value;
 
+/// Memory pool for Value allocations
+pub mod memory_pool;
+
 /// Thread-safe signal bus for inter-component communication
 /// 
 /// Central nervous system using DashMap for lock-free concurrent access.
