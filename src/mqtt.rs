@@ -24,6 +24,29 @@ use std::fs::File;
 // CONFIGURATION STRUCTURES
 // ============================================================================
 
+/// MQTT client internal configuration
+///
+/// This is the internal MQTT configuration used by the MQTT client.
+/// It's converted from the user-facing `MqttConfig` in `config.rs`.
+#[derive(Debug, Clone)]
+pub struct InternalMqttConfig {
+    pub broker_host: String,
+    pub broker_port: u16,
+    pub client_id: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub keepalive_secs: u16,
+    pub timeout_ms: u64,
+    pub use_tls: bool,
+    pub qos: u8,
+    pub retain: bool,
+    pub subscribe_topics: Vec<String>,
+    pub publish_topic_base: Option<String>,
+    pub auto_reconnect: bool,
+    pub max_reconnect_attempts: u32,
+    pub reconnect_delay_secs: u64,
+}
+
 /// MQTT client configuration
 /// 
 /// This structure defines the MQTT client settings and is compatible with
@@ -249,32 +272,24 @@ pub enum BridgeDirection {
 
 /// Conversion from the main config structure to MQTT-specific config
 /// This maintains compatibility with the unified configuration system
-impl From<crate::config::MqttConfig> for MqttConfig {
+impl From<crate::config::MqttConfig> for InternalMqttConfig {
     fn from(cfg: crate::config::MqttConfig) -> Self {
         Self {
-            broker_host: cfg.host.clone(),
+            broker_host: cfg.host,
             broker_port: cfg.port,
             client_id: cfg.client_id,
             username: cfg.username,
             password: cfg.password,
-            keep_alive_secs: cfg.keepalive_secs,
-            clean_session: cfg.clean_session,
-            subscriptions: Vec::new(), // Would need to be configured separately
-            publications: Vec::new(),  // Would need to be configured separately
-            #[cfg(feature = "mqtt-persistence")]
-            persistence_path: None,
-            #[cfg(feature = "mqtt-tls")]
-            tls: cfg.tls.map(|t| TlsConfig {
-                ca_cert: t.ca_cert,
-                client_cert: t.client_cert,
-                client_key: t.client_key,
-                alpn_protocols: None,
-                insecure: false,
-            }),
-            #[cfg(feature = "mqtt-5")]
-            mqtt5_properties: None,
-            #[cfg(feature = "mqtt-bridge")]
-            bridge_config: None,
+            keepalive_secs: cfg.keepalive_secs,
+            timeout_ms: cfg.timeout_ms,
+            use_tls: cfg.use_tls,
+            qos: cfg.qos,
+            retain: cfg.retain,
+            subscribe_topics: cfg.subscribe_topics,
+            publish_topic_base: cfg.publish_topic_base,
+            auto_reconnect: cfg.auto_reconnect,
+            max_reconnect_attempts: cfg.max_reconnect_attempts,
+            reconnect_delay_secs: cfg.reconnect_delay_secs,
         }
     }
 }

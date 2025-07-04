@@ -7,12 +7,21 @@ async fn test_mqtt_broker_reconnection() {
     // This test requires mosquitto to be running
     let config = Config {
         mqtt: Some(MqttConfig {
-            broker_host: "localhost".to_string(),
-            broker_port: 1883,
+            host: "localhost".to_string(),
+            port: 1883,
             client_id: "test-resilience".to_string(),
-            reconnect_interval_ms: Some(100),
-            max_reconnect_attempts: Some(5),
-            ..Default::default()
+            username: None,
+            password: None,
+            keepalive_secs: 60,
+            timeout_ms: 5000,
+            use_tls: false,
+            qos: 0,
+            retain: false,
+            subscribe_topics: Vec::new(),
+            publish_topic_base: None,
+            auto_reconnect: true,
+            max_reconnect_attempts: 5,
+            reconnect_delay_secs: 1,
         }),
         scan_time_ms: 100,
         ..Default::default()
