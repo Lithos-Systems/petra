@@ -312,6 +312,11 @@ impl RuntimeFeatures {
         features.sort();
         features
     }
+
+    /// Check if any features are enabled
+    pub fn is_empty(&self) -> bool {
+        self.enabled.is_empty()
+    }
     
     /// Get enabled features by category
     pub fn features_by_category(&self) -> &HashMap<String, Vec<String>> {

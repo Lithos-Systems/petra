@@ -654,7 +654,7 @@ mod tests {
         let features = features::current();
         
         // Should detect at least the default features
-        assert!(!features.enabled.is_empty());
+        assert!(!features.is_empty());
         
         // Feature validation should pass
         assert!(features.validate().is_ok());
