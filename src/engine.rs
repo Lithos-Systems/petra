@@ -111,6 +111,18 @@ pub struct EngineConfig {
 
     /// Enable parallel block execution
     pub parallel_execution: bool,
+
+    /// Enable SIMD optimizations
+    pub simd_enabled: bool,
+
+    /// Enable memory pooling
+    pub use_memory_pools: bool,
+
+    /// Memory pool prewarm size
+    pub pool_prewarm_size: usize,
+
+    /// Enable cache optimization
+    pub cache_optimized: bool,
     
     /// Watchdog timeout (0 = disabled)
     pub watchdog_timeout_ms: u64,
@@ -130,6 +142,10 @@ impl Default for EngineConfig {
             cpu_affinity: None,
             profiling: false,
             parallel_execution: false,
+            simd_enabled: false,
+            use_memory_pools: false,
+            pool_prewarm_size: 0,
+            cache_optimized: false,
             watchdog_timeout_ms: 0,
             missed_tick_behavior: MissedTickBehavior::Burst,
         }
@@ -148,6 +164,10 @@ impl EngineConfig {
             cpu_affinity: Some(vec![0]), // Pin to first CPU
             profiling: false,
             parallel_execution: true,
+            simd_enabled: true,
+            use_memory_pools: true,
+            pool_prewarm_size: 10_000,
+            cache_optimized: true,
             watchdog_timeout_ms: 0,
             missed_tick_behavior: MissedTickBehavior::Skip,
         }
@@ -164,6 +184,10 @@ impl EngineConfig {
             cpu_affinity: None,
             profiling: true,
             parallel_execution: false,
+            simd_enabled: false,
+            use_memory_pools: false,
+            pool_prewarm_size: 0,
+            cache_optimized: false,
             watchdog_timeout_ms: 30000,
             missed_tick_behavior: MissedTickBehavior::Burst,
         }
@@ -180,6 +204,10 @@ impl EngineConfig {
             cpu_affinity: None,
             profiling: false,
             parallel_execution: true,
+            simd_enabled: false,
+            use_memory_pools: false,
+            pool_prewarm_size: 0,
+            cache_optimized: false,
             watchdog_timeout_ms: 60000,
             missed_tick_behavior: MissedTickBehavior::Delay,
         }
