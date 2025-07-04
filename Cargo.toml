@@ -104,11 +104,12 @@ anyhow = "1.0"           # Error handling with context (used in main.rs)
 thiserror = "1.0"        # Custom error types (used in error.rs)
 log = "0.4"              # Logging facade (all modules)
 env_logger = "0.11"      # Environment-based log configuration
+tracing = "0.1"          # Structured, async-aware logging
 chrono = { version = "0.4", features = ["serde"] }  # Date/time handling (timestamps)
 uuid = { version = "1.10", features = ["v4", "serde"] }  # Unique identifiers
 base64 = { version = "0.22", optional = true }  # Base64 encoding for security
 once_cell = { version = "1.20", optional = true }  # Lazy static initialization
-regex = { version = "1.11", optional = true }  # Regular expressions for validation
+regex = "1.11"  # Regular expressions for validation
 
 # === HIGH-PERFORMANCE COLLECTIONS ===
 # Concurrent data structures for signal bus and shared state
@@ -154,7 +155,7 @@ rumqttc = { version = "0.24", optional = true }
 # === INDUSTRIAL PROTOCOLS ===
 # Support for major industrial automation protocols
 # These are heavyweight dependencies, enable only as needed
-rust-snap7 = { version = "0.1", optional = true }      # Siemens S7 PLC communication
+rust-snap7 = { version = "1.142.2", optional = true }      # Siemens S7 PLC communication
 tokio-modbus = { version = "0.7", default-features = false, optional = true }  # Modbus TCP/RTU
 opcua = { version = "0.12", default-features = false, optional = true }        # OPC-UA server
 
@@ -334,7 +335,7 @@ development = ["edge", "dev-tools", "profiling", "gui"]
 # === PERFORMANCE ===
 optimized = []                # Use parking_lot and optimized algorithms
 realtime = []                 # Real-time OS scheduling (Linux only)
-parallel-execution = ["tokio/rt-multi-thread", "num_cpus", "dashmap"]
+parallel-execution = ["tokio/rt-multi-thread", "num_cpus"]
 simd-math = ["extended-types"]
 zero-copy-protocols = ["bytes", "tokio-util"]
 memory-pools = ["parking_lot", "crossbeam-queue"]
@@ -440,7 +441,7 @@ full-types = ["enhanced-types", "unit-conversion"]     # Complete type system
 # Input validation and data quality enforcement
 
 # === VALIDATION METHODS ===
-validation = ["dep:regex", "dep:validator", "dep:once_cell"]  # Base validation framework
+validation = ["dep:validator", "dep:once_cell"]  # Base validation framework
 regex-validation = ["validation"]                      # Regular expression validation
 schema-validation = ["validation", "dep:jsonschema"]   # JSON schema validation
 composite-validation = ["validation"]                  # Composite validation rules
@@ -511,8 +512,17 @@ examples = []                                          # Example configurations
 hot-swap = []                                          # Hot-swapping of configurations
 async-blocks = []                                      # Asynchronous block execution
 advanced-blocks = []                                   # Advanced block types
+advanced-math = ["advanced-blocks"]                     # Advanced math operations
 statistics = []                                        # Statistical analysis blocks
 ml-blocks = []                                         # Machine learning blocks
+ml = ["ml-blocks"]                                     # Machine learning support
+edge-detection = []                                    # Edge detection blocks
+signal-validation = []                                 # Signal validation hooks
+signal-events = []                                     # Signal event tracking
+memory-blocks = []                                     # Memory-related blocks
+pid-control = []                                       # PID control blocks
+communication = []                                     # Communication blocks
+state-machine = []                                     # State machine blocks
 error-recovery = []                                    # Automatic error recovery
 
 # ================================================================================

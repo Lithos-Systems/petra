@@ -662,6 +662,7 @@ pub mod opcua;
 #[cfg(feature = "mqtt")]
 pub mod mqtt;
 
+#[cfg(feature = "zero-copy-protocols")]
 pub mod zero_copy;
 
 // ================================================================================

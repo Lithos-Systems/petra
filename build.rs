@@ -33,7 +33,7 @@ fn main() {
 /// Set build environment variables that the code expects
 fn set_build_env_vars() {
     // Set build timestamp
-    println!("cargo:rustc-env=BUILD_TIMESTAMP={}", chrono::Utc::now().to_rfc3339());
+    println!("cargo:rustc-env=PETRA_BUILD_TIMESTAMP={}", chrono::Utc::now().to_rfc3339());
     
     // Get and set Rust compiler version
     let rustc_version = Command::new("rustc")
@@ -43,7 +43,7 @@ fn set_build_env_vars() {
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    println!("cargo:rustc-env=RUSTC_VERSION={}", rustc_version);
+    println!("cargo:rustc-env=PETRA_RUST_VERSION={}", rustc_version);
     
     // Set target (this is already available)
     let target = env::var("TARGET").unwrap_or_else(|_| "unknown".to_string());

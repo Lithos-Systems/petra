@@ -127,7 +127,7 @@ impl Default for SignalMetadata {
 }
 
 /// Signal access statistics for performance monitoring
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SignalStats {
     /// Total number of read operations
     pub read_count: u64,
@@ -153,6 +153,22 @@ pub struct SignalStats {
     
     /// Number of type conversion failures
     pub conversion_errors: u64,
+}
+
+impl Default for SignalStats {
+    fn default() -> Self {
+        Self {
+            read_count: 0,
+            write_count: 0,
+            update_count: 0,
+            last_read: None,
+            last_write: None,
+            created_at: SystemTime::now(),
+            #[cfg(feature = "enhanced-monitoring")]
+            avg_update_interval_ms: None,
+            conversion_errors: 0,
+        }
+    }
 }
 
 /// Signal change event for reactive programming
@@ -947,7 +963,7 @@ impl SignalBus {
     pub fn snapshot(&self) -> HashMap<String, Value> {
         self.signals
             .iter()
-            .map(|entry| (entry.key().clone(), entry.value.value.clone()))
+            .map(|entry| (entry.key().clone(), entry.value().value.clone()))
             .collect()
     }
     
