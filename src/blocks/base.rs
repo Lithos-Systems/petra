@@ -51,9 +51,11 @@ impl AndBlock {
 impl Block for AndBlock {
     fn execute(&mut self, bus: &SignalBus) -> Result<()> {
         // Short-circuit evaluation - stop at first false
-        let result = self.inputs.iter()
+        let result = self
+            .inputs
+            .iter()
             .try_fold(true, |acc, input| {
-                Ok(acc && bus.get_bool(input)?)
+                Ok::<bool, PlcError>(acc && bus.get_bool(input)?)
             })?;
         
         bus.set(&self.output, Value::Bool(result))?;
@@ -127,12 +129,14 @@ impl OrBlock {
 impl Block for OrBlock {
     fn execute(&mut self, bus: &SignalBus) -> Result<()> {
         // Short-circuit evaluation - stop at first true
-        let result = self.inputs.iter()
+        let result = self
+            .inputs
+            .iter()
             .try_fold(false, |acc, input| {
                 if acc {
-                    Ok(true) // Already true, skip remaining
+                    Ok::<bool, PlcError>(true) // Already true, skip remaining
                 } else {
-                    Ok(bus.get_bool(input)?)
+                    Ok::<bool, PlcError>(bus.get_bool(input)?)
                 }
             })?;
         
@@ -274,9 +278,11 @@ impl XorBlock {
 impl Block for XorBlock {
     fn execute(&mut self, bus: &SignalBus) -> Result<()> {
         // Count true inputs
-        let true_count = self.inputs.iter()
+        let true_count = self
+            .inputs
+            .iter()
             .try_fold(0u32, |count, input| {
-                Ok(count + if bus.get_bool(input)? { 1 } else { 0 })
+                Ok::<u32, PlcError>(count + if bus.get_bool(input)? { 1 } else { 0 })
             })?;
         
         // XOR is true when odd number of inputs are true

@@ -549,7 +549,7 @@ pub fn print_features() {
 /// suitable for logging or display.
 pub fn feature_summary() -> String {
     let features = features::current();
-    format!("{}", features)
+    features.summary().to_string()
 }
 
 // ============================================================================
