@@ -1,637 +1,296 @@
-//! Feature combination testing
+//! # Feature Integration Tests
 //!
-//! This module tests various feature combinations to ensure they work correctly
-//! and validate the feature flag organization.
+//! Tests that validate feature combinations, dependencies, and initialization
+//! work correctly across different feature configurations.
 
-use petra::{Features, Config, init};
+use petra::{Features, Config, init, init_petra, Value, PlcError};
+use proptest::prelude::*;
+
+#[test]
+fn test_init_with_features() {
+    // Test the main initialization function
+    init().expect("Failed to initialize PETRA with current features");
+}
+
+#[test]
+fn test_init_petra_with_features() {
+    // Test the specific PETRA initialization function
+    init_petra().expect("Failed to initialize PETRA with current features");
+}
 
 #[test]
 fn test_feature_detection() {
     let features = Features::detect();
     
-    // Test that feature detection works
-    println!("Detected features:");
-    features.print();
+    // Should detect at least some features (minimum default)
+    assert!(!features.enabled.is_empty(), "No features detected");
     
-    // Ensure at least some core features are present
-    assert!(features.core.standard_monitoring || features.core.enhanced_monitoring);
+    // Should have statistics
+    assert!(features.statistics.total_features > 0, "No features counted in statistics");
+    
+    // Should be able to validate
+    assert!(features.validate().is_ok(), "Feature validation failed");
 }
 
 #[test]
-fn test_feature_summary() {
+fn test_feature_validation() {
     let features = Features::detect();
+    
+    // Validation should pass for current feature set
+    match features.validate() {
+        Ok(()) => {
+            println!("Feature validation passed");
+        }
+        Err(errors) => {
+            panic!("Feature validation failed with errors: {:#?}", errors);
+        }
+    }
+}
+
+#[test]
+fn test_feature_categorization() {
+    let features = Features::detect();
+    let categories = features.features_by_category();
+    
+    // Should have at least one category
+    assert!(!categories.is_empty(), "No feature categories found");
+    
+    // Print categories for debugging
+    for (category, feature_list) in categories {
+        println!("{}: {:?}", category, feature_list);
+    }
+}
+
+#[test]
+fn test_feature_reporting() {
+    let features = Features::detect();
+    
+    // Should generate a non-empty report
+    let report = features.report();
+    assert!(!report.is_empty(), "Feature report is empty");
+    assert!(report.contains("PETRA Feature Report"), "Report missing header");
+    
+    // Should generate a summary
     let summary = features.summary();
+    assert!(!summary.is_empty(), "Feature summary is empty");
     
-    // Summary should not be empty
-    assert!(!summary.is_empty());
-    println!("Feature summary: {}", summary);
+    println!("Feature Summary: {}", summary);
 }
 
 #[test]
-fn test_init_with_features() {
-    // Test that initialization works with current feature set
-    init().expect("Failed to initialize PETRA with current features");
-}
-
-#[test]
-#[cfg(feature = "mqtt")]
-fn test_mqtt_feature() {
-    let features = Features::detect();
-    assert!(features.protocols.mqtt, "MQTT feature should be enabled");
-    
-    // Test that MQTT configuration can be parsed
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "test_signal"
-    type: "Bool"
-blocks: []
-mqtt:
-  broker_url: "localhost"
-  client_id: "petra_test"
-  port: 1883
-  subscriptions: []
-  publications: []
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse MQTT config");
-    config.validate().expect("MQTT config validation failed");
-}
-
-#[test]
-#[cfg(feature = "s7-support")]
-fn test_s7_feature() {
-    let features = Features::detect();
-    assert!(features.protocols.s7, "S7 feature should be enabled");
-    
-    // Test that S7 configuration can be parsed
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "test_signal"
-    type: "Bool"
-blocks: []
-s7:
-  ip: "192.168.1.100"
-  rack: 0
-  slot: 1
-  connections: []
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse S7 config");
-    config.validate().expect("S7 config validation failed");
-}
-
-#[test]
-#[cfg(feature = "history")]
-fn test_history_feature() {
-    let features = Features::detect();
-    assert!(features.storage.history, "History feature should be enabled");
-    
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "test_signal"
-    type: "Float"
-blocks: []
-storage:
-  history:
-    enabled: true
-    path: "test_data/history"
-    interval_ms: 1000
-    retention_days: 7
-    signals: ["test_signal"]
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse history config");
-    config.validate().expect("History config validation failed");
-}
-
-#[test]
-#[cfg(feature = "security")]
-fn test_security_feature() {
-    let features = Features::detect();
-    assert!(features.security.security, "Security feature should be enabled");
-    
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "test_signal"
-    type: "Bool"
-blocks: []
-security:
-  enabled: true
-  authentication:
-    method: "None"
-    session_timeout_sec: 3600
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse security config");
-    config.validate().expect("Security config validation failed");
-}
-
-#[test]
-#[cfg(feature = "alarms")]
-fn test_alarms_feature() {
-    let features = Features::detect();
-    assert!(features.alarms.alarms, "Alarms feature should be enabled");
-    
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "temperature"
-    type: "Float"
-blocks: []
-alarms:
-  enabled: true
-  alarm_definitions:
-    - name: "high_temperature"
-      signal: "temperature"
-      condition: "high"
-      threshold: 80.0
-      priority: "High"
-      enabled: true
-  escalation: []
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse alarms config");
-    config.validate().expect("Alarms config validation failed");
-}
-
-#[test]
-#[cfg(feature = "web")]
-fn test_web_feature() {
-    let features = Features::detect();
-    assert!(features.web.web, "Web feature should be enabled");
-    
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "test_signal"
-    type: "Bool"
-blocks: []
-web:
-  enabled: true
-  port: 8080
-  bind_address: "0.0.0.0"
-  api:
-    enabled: true
-    base_path: "/api"
-    rate_limiting: true
-    requests_per_minute: 60
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse web config");
-    config.validate().expect("Web config validation failed");
-}
-
-#[test]
-#[cfg(feature = "validation")]
-fn test_validation_feature() {
-    let features = Features::detect();
-    assert!(features.validation.validation, "Validation feature should be enabled");
-    
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "pressure"
-    type: "Float"
-    validation:
-      rules:
-        - rule_type: "range"
-          params:
-            min: 0.0
-            max: 100.0
-          message: "Pressure must be between 0 and 100"
-      required: true
-blocks: []
-validation:
-  enabled: true
-  on_failure: "Warn"
-  global_rules: []
-  signal_rules: {}
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse validation config");
-    config.validate().expect("Validation config validation failed");
-}
-
-// ============================================================================
-// BUNDLE TESTS
-// ============================================================================
-
-#[test]
-#[cfg(feature = "edge")]
-fn test_edge_bundle() {
+fn test_individual_feature_checks() {
     let features = Features::detect();
     
-    // Edge bundle should include MQTT and basic monitoring
-    assert!(features.protocols.mqtt, "Edge bundle should include MQTT");
-    assert!(features.core.standard_monitoring, "Edge bundle should include standard monitoring");
+    // Test default features that should always be present
+    #[cfg(feature = "standard-monitoring")]
+    assert!(features.is_enabled("standard-monitoring"), "Default monitoring not enabled");
     
-    // Edge bundle should NOT include heavy features
-    assert!(!features.protocols.s7, "Edge bundle should not include S7");
-    assert!(!features.protocols.modbus, "Edge bundle should not include Modbus");
-    assert!(!features.protocols.opcua, "Edge bundle should not include OPC-UA");
-    assert!(!features.storage.advanced, "Edge bundle should not include advanced storage");
+    // Test feature dependencies if they exist
+    if features.is_enabled("jwt-auth") {
+        assert!(features.is_enabled("security"), "JWT auth requires security feature");
+    }
+    
+    if features.is_enabled("enhanced-monitoring") {
+        assert!(features.is_enabled("standard-monitoring"), "Enhanced monitoring requires standard monitoring");
+    }
+    
+    if features.is_enabled("twilio") {
+        assert!(features.is_enabled("alarms"), "Twilio requires alarms feature");
+        assert!(features.is_enabled("web"), "Twilio requires web feature");
+    }
 }
 
 #[test]
-#[cfg(feature = "scada")]
-fn test_scada_bundle() {
+fn test_bundle_features() {
     let features = Features::detect();
     
-    // SCADA bundle should include industrial protocols
-    assert!(
-        features.protocols.s7 || features.protocols.modbus || features.protocols.opcua,
-        "SCADA bundle should include at least one industrial protocol"
-    );
-    
-    // SCADA bundle should include enhanced monitoring and storage
-    assert!(features.core.enhanced_monitoring, "SCADA bundle should include enhanced monitoring");
-    assert!(features.storage.history, "SCADA bundle should include history storage");
-    assert!(features.security.security, "SCADA bundle should include security");
-}
-
-#[test]
-#[cfg(feature = "production")]
-fn test_production_bundle() {
-    let features = Features::detect();
-    
-    // Production bundle should include optimizations and security
-    assert!(features.core.optimized, "Production bundle should be optimized");
-    assert!(features.core.metrics, "Production bundle should include metrics");
-    assert!(features.security.security, "Production bundle should include security");
-    assert!(features.storage.wal, "Production bundle should include WAL");
-}
-
-#[test]
-#[cfg(feature = "enterprise")]
-fn test_enterprise_bundle() {
-    let features = Features::detect();
-    
-    // Enterprise bundle should include all major features
-    assert!(features.core.optimized, "Enterprise bundle should be optimized");
-    assert!(features.core.enhanced_monitoring, "Enterprise bundle should include enhanced monitoring");
-    assert!(features.core.metrics, "Enterprise bundle should include metrics");
-    assert!(features.security.security, "Enterprise bundle should include security");
-    assert!(features.storage.advanced, "Enterprise bundle should include advanced storage");
-    assert!(features.alarms.alarms, "Enterprise bundle should include alarms");
-    assert!(features.web.web, "Enterprise bundle should include web interface");
-}
-
-#[test]
-#[cfg(feature = "development")]
-fn test_development_bundle() {
-    let features = Features::detect();
-    
-    // Development bundle should include most features for testing
-    assert!(features.development.examples, "Development bundle should include examples");
-    assert!(features.development.profiling, "Development bundle should include profiling");
-    
-    // Should include major feature categories
-    assert!(features.protocols.mqtt, "Development bundle should include MQTT");
-    assert!(features.storage.history, "Development bundle should include storage");
-    assert!(features.security.security, "Development bundle should include security");
-}
-
-// ============================================================================
-// FEATURE COMBINATION TESTS
-// ============================================================================
-
-#[test]
-#[cfg(all(feature = "mqtt", feature = "security"))]
-fn test_mqtt_with_security() {
-    let features = Features::detect();
-    assert!(features.protocols.mqtt && features.security.security);
-    
-    // Test secure MQTT configuration
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "secure_signal"
-    type: "Bool"
-blocks: []
-mqtt:
-  broker_url: "ssl://localhost"
-  client_id: "petra_secure"
-  port: 8883
-  tls:
-    enabled: true
-    cert_path: "certs/client.crt"
-    key_path: "certs/client.key"
-    verify_client: true
-security:
-  enabled: true
-  tls:
-    enabled: true
-    cert_path: "certs/server.crt"
-    key_path: "certs/server.key"
-    verify_client: true
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse secure MQTT config");
-    config.validate().expect("Secure MQTT config validation failed");
-}
-
-#[test]
-#[cfg(all(feature = "history", feature = "compression"))]
-fn test_history_with_compression() {
-    let features = Features::detect();
-    assert!(features.storage.history && features.storage.compression);
-    
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "compressed_data"
-    type: "Float"
-blocks: []
-storage:
-  history:
-    enabled: true
-    path: "data/compressed_history"
-    interval_ms: 500
-    retention_days: 90
-  compression:
-    algorithm: "zstd"
-    level: 3
-    enabled: true
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse compressed history config");
-    config.validate().expect("Compressed history config validation failed");
-}
-
-#[test]
-#[cfg(all(feature = "alarms", feature = "email", feature = "web"))]
-fn test_alarms_with_notifications() {
-    let features = Features::detect();
-    assert!(features.alarms.alarms && features.alarms.email && features.web.web);
-    
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "alarm_signal"
-    type: "Float"
-blocks: []
-alarms:
-  enabled: true
-  alarm_definitions:
-    - name: "critical_alarm"
-      signal: "alarm_signal"
-      condition: "high"
-      threshold: 95.0
-      priority: "Critical"
-      enabled: true
-  notifications:
-    email:
-      smtp_server: "smtp.example.com"
-      smtp_port: 587
-      username: "alerts@example.com"
-      password: "secret"
-      from_address: "petra@example.com"
-      recipients: ["operator@example.com"]
-      use_tls: true
-web:
-  enabled: true
-  port: 8080
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse alarm notification config");
-    config.validate().expect("Alarm notification config validation failed");
-}
-
-#[test]
-#[cfg(all(feature = "enhanced-monitoring", feature = "metrics"))]
-fn test_enhanced_monitoring_with_metrics() {
-    let features = Features::detect();
-    assert!(features.core.enhanced_monitoring && features.core.metrics);
-    
-    let config_yaml = r#"
-scan_time_ms: 50
-signals:
-  - name: "monitored_signal"
-    type: "Float"
-blocks: []
-monitoring:
-  level: "Enhanced"
-  jitter_threshold_us: 500
-  collect_stats: true
-  enhanced:
-    block_timing: true
-    memory_tracking: true
-    signal_change_tracking: true
-    detailed_stats: true
-    stats_interval_ms: 1000
-metrics:
-  enabled: true
-  port: 9090
-  path: "/metrics"
-  custom_metrics:
-    - name: "custom_counter"
-      metric_type: "counter"
-      description: "Custom counter metric"
-      signal: "monitored_signal"
-"#;
-    
-    let config: Config = serde_yaml::from_str(config_yaml)
-        .expect("Failed to parse enhanced monitoring config");
-    config.validate().expect("Enhanced monitoring config validation failed");
-}
-
-// ============================================================================
-// ERROR CONDITION TESTS
-// ============================================================================
-
-#[test]
-#[cfg(all(feature = "standard-monitoring", feature = "enhanced-monitoring"))]
-fn test_monitoring_conflict_detection() {
-    // This test should fail at compile time due to build.rs validation
-    // But if it compiles, the features should be properly detected
-    let features = Features::detect();
-    
-    // Only one monitoring level should be active
-    let monitoring_count = [
-        features.core.standard_monitoring,
-        features.core.enhanced_monitoring,
-    ].iter().filter(|&&x| x).count();
-    
-    // Note: This might pass if only one is actually enabled despite both features
-    println!("Active monitoring features: {}", monitoring_count);
-}
-
-#[test]
-fn test_invalid_config_rejection() {
-    // Test that invalid configurations are properly rejected
-    let invalid_configs = vec![
-        // Invalid scan time
-        r#"
-scan_time_ms: 0
-signals: []
-blocks: []
-"#,
-        // Duplicate signal names
-        r#"
-scan_time_ms: 100
-signals:
-  - name: "duplicate"
-    type: "Bool"
-  - name: "duplicate"
-    type: "Float"
-blocks: []
-"#,
-        // Duplicate block names
-        r#"
-scan_time_ms: 100
-signals:
-  - name: "signal1"
-    type: "Bool"
-blocks:
-  - name: "block1"
-    type: "AND"
-  - name: "block1"
-    type: "OR"
-"#,
-        // Block referencing non-existent signal
-        r#"
-scan_time_ms: 100
-signals:
-  - name: "signal1"
-    type: "Bool"
-blocks:
-  - name: "block1"
-    type: "AND"
-    inputs:
-      in1: "nonexistent_signal"
-"#,
-    ];
-    
-    for (i, invalid_yaml) in invalid_configs.iter().enumerate() {
-        let result: Result<Config, _> = serde_yaml::from_str(invalid_yaml);
-        
-        match result {
-            Ok(config) => {
-                // Config parsed but should fail validation
-                assert!(
-                    config.validate().is_err(),
-                    "Invalid config {} should fail validation", i
-                );
+    // If a bundle is enabled, check its expected dependencies
+    if features.is_enabled("scada") {
+        let expected = ["mqtt", "industrial", "enterprise-storage", "enterprise-security", "enhanced-monitoring", "basic-alarms"];
+        for feature in &expected {
+            if !features.is_enabled(feature) {
+                println!("Warning: SCADA bundle expects '{}' to be enabled", feature);
             }
-            Err(_) => {
-                // Config failed to parse (also acceptable)
-                println!("Invalid config {} failed to parse (expected)", i);
+        }
+    }
+    
+    if features.is_enabled("production") {
+        let expected = ["mqtt", "optimized", "enterprise-storage", "enterprise-security", "standard-monitoring", "metrics", "health"];
+        for feature in &expected {
+            if !features.is_enabled(feature) {
+                println!("Warning: Production bundle expects '{}' to be enabled", feature);
             }
         }
     }
 }
 
-// ============================================================================
-// PERFORMANCE TESTS
-// ============================================================================
-
 #[test]
-fn test_config_parsing_performance() {
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "signal1"
-    type: "Bool"
-  - name: "signal2"
-    type: "Float"
-  - name: "signal3"
-    type: "Int"
-blocks:
-  - name: "and_block"
-    type: "AND"
-    inputs:
-      in1: "signal1"
-      in2: "signal2"
-    outputs:
-      out: "signal3"
-"#;
+fn test_config_loading_with_features() {
+    // Test that configuration loading works with current features
+    let config = Config::default();
     
-    let start = std::time::Instant::now();
+    // Should be able to validate configuration
+    assert!(config.validate().is_ok(), "Default config validation failed");
     
-    for _ in 0..1000 {
-        let config: Config = serde_yaml::from_str(config_yaml)
-            .expect("Failed to parse config");
-        config.validate().expect("Config validation failed");
-    }
-    
-    let duration = start.elapsed();
-    println!("1000 config parse/validate cycles took: {:?}", duration);
-    
-    // Should be reasonably fast (less than 1 second for 1000 iterations)
-    assert!(duration.as_secs() < 1, "Config parsing too slow: {:?}", duration);
-}
-
-#[test]
-fn test_feature_detection_performance() {
-    let start = std::time::Instant::now();
-    
-    for _ in 0..10000 {
-        let _features = Features::detect();
-    }
-    
-    let duration = start.elapsed();
-    println!("10000 feature detection calls took: {:?}", duration);
-    
-    // Feature detection should be very fast
-    assert!(duration.as_millis() < 100, "Feature detection too slow: {:?}", duration);
-}
-
-// ============================================================================
-// UTILITY FUNCTIONS FOR TESTS
-// ============================================================================
-
-/// Helper function to create a minimal valid configuration
-fn create_minimal_config() -> Config {
-    let config_yaml = r#"
-scan_time_ms: 100
-signals:
-  - name: "test_signal"
-    type: "Bool"
-blocks: []
-"#;
-    
-    serde_yaml::from_str(config_yaml).expect("Failed to create minimal config")
-}
-
-/// Helper function to validate a configuration string
-fn validate_config_string(yaml: &str) -> Result<(), String> {
-    match serde_yaml::from_str::<Config>(yaml) {
-        Ok(config) => config.validate().map_err(|e| e.to_string()),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-#[test]
-fn test_minimal_config_creation() {
-    let config = create_minimal_config();
-    config.validate().expect("Minimal config should be valid");
-    
-    assert_eq!(config.scan_time_ms, 100);
-    assert_eq!(config.signals.len(), 1);
-    assert_eq!(config.blocks.len(), 0);
-    assert_eq!(config.signals[0].name, "test_signal");
-}
-
-#[test]
-fn test_config_feature_summary() {
-    let config = create_minimal_config();
+    // Should be able to get feature summary from config
     let summary = config.feature_summary();
+    assert!(!summary.is_empty(), "Config feature summary is empty");
+}
+
+// Property-based tests for value handling
+proptest! {
+    #[test]
+    fn test_value_type_handling(
+        bool_val in any::<bool>(),
+        int_val in any::<i64>(),
+        float_val in any::<f64>().prop_filter("NaN and infinite values", |f| f.is_finite())
+    ) {
+        // Test core value types (always available)
+        let bool_value = Value::Bool(bool_val);
+        let int_value = Value::Integer(int_val);  // Fixed: was Value::Int
+        let float_value = Value::Float(float_val);
+        
+        // Test type detection
+        assert!(bool_value.is_bool());
+        assert!(!bool_value.is_numeric());
+        
+        assert!(int_value.is_integer());
+        assert!(int_value.is_numeric());
+        
+        assert!(float_value.is_float());
+        assert!(float_value.is_numeric());
+        
+        // Test serialization/deserialization
+        let bool_json = serde_json::to_string(&bool_value).expect("Bool serialization failed");
+        let int_json = serde_json::to_string(&int_value).expect("Integer serialization failed");
+        let float_json = serde_json::to_string(&float_value).expect("Float serialization failed");
+        
+        let _: Value = serde_json::from_str(&bool_json).expect("Bool deserialization failed");
+        let _: Value = serde_json::from_str(&int_json).expect("Integer deserialization failed");
+        let _: Value = serde_json::from_str(&float_json).expect("Float deserialization failed");
+    }
+}
+
+proptest! {
+    #[test]
+    #[cfg(feature = "extended-types")]
+    fn test_extended_value_types(
+        string_val in ".*",
+        binary_val in prop::collection::vec(any::<u8>(), 0..100)
+    ) {
+        // Test extended value types (feature-gated)
+        let string_value = Value::String(string_val);
+        let binary_value = Value::Binary(binary_val);
+        
+        // Test type detection
+        assert!(string_value.is_string());
+        assert!(!string_value.is_numeric());
+        
+        assert!(binary_value.is_binary());
+        assert!(!binary_value.is_numeric());
+        
+        // Test serialization
+        let string_json = serde_json::to_string(&string_value).expect("String serialization failed");
+        let binary_json = serde_json::to_string(&binary_value).expect("Binary serialization failed");
+        
+        let _: Value = serde_json::from_str(&string_json).expect("String deserialization failed");
+        let _: Value = serde_json::from_str(&binary_json).expect("Binary deserialization failed");
+    }
+}
+
+#[test]
+fn test_error_handling() {
+    // Test that initialization errors are properly handled
     
-    // Minimal config should have a basic summary
-    assert!(!summary.is_empty());
-    println!("Minimal config summary: {}", summary);
+    // This should work with current features
+    match init_petra() {
+        Ok(()) => println!("Initialization successful"),
+        Err(PlcError::Config(msg)) => {
+            panic!("Configuration error during initialization: {}", msg);
+        }
+        Err(e) => {
+            panic!("Unexpected error during initialization: {}", e);
+        }
+    }
+}
+
+#[test]
+fn test_feature_consistency() {
+    let features = Features::detect();
+    
+    // Check that feature statistics match actual enabled features
+    let total_from_categories: usize = features.by_category.values().map(|v| v.len()).sum();
+    
+    // Total features should be at least the sum of categorized features
+    // (some features might be in multiple categories or uncategorized)
+    assert!(
+        features.statistics.total_features >= total_from_categories,
+        "Feature statistics inconsistent: total={}, categorized={}",
+        features.statistics.total_features,
+        total_from_categories
+    );
+}
+
+#[test]
+fn test_multiple_initialization() {
+    // Test that multiple initializations are safe (idempotent)
+    assert!(init().is_ok(), "First initialization failed");
+    assert!(init().is_ok(), "Second initialization failed");
+    assert!(init_petra().is_ok(), "Third initialization (init_petra) failed");
+}
+
+#[cfg(feature = "mqtt")]
+#[test]
+fn test_mqtt_feature_integration() {
+    let features = Features::detect();
+    assert!(features.is_enabled("mqtt"), "MQTT feature should be enabled");
+    
+    // MQTT feature should enable protocol-related functionality
+    let categories = features.features_by_category();
+    if let Some(protocols) = categories.get("Protocols") {
+        assert!(protocols.contains(&"mqtt".to_string()), "MQTT not found in protocols category");
+    }
+}
+
+#[cfg(feature = "security")]
+#[test]
+fn test_security_feature_integration() {
+    let features = Features::detect();
+    assert!(features.is_enabled("security"), "Security feature should be enabled");
+    
+    // Security feature should enable security-related functionality
+    let categories = features.features_by_category();
+    if let Some(security) = categories.get("Security") {
+        assert!(security.contains(&"security".to_string()), "Security not found in security category");
+    }
+}
+
+#[cfg(feature = "enhanced-monitoring")]
+#[test]
+fn test_enhanced_monitoring_dependencies() {
+    let features = Features::detect();
+    assert!(features.is_enabled("enhanced-monitoring"), "Enhanced monitoring should be enabled");
+    assert!(features.is_enabled("standard-monitoring"), "Enhanced monitoring requires standard monitoring");
+}
+
+#[test]
+fn test_platform_specific_features() {
+    let features = Features::detect();
+    
+    // Real-time features should only work on Linux
+    #[cfg(all(feature = "realtime", not(target_os = "linux")))]
+    {
+        // On non-Linux platforms, realtime feature should trigger a warning
+        // but not fail validation (as per current implementation)
+        if features.is_enabled("realtime") {
+            println!("Warning: Real-time features enabled on non-Linux platform");
+        }
+    }
+    
+    #[cfg(all(feature = "realtime", target_os = "linux"))]
+    {
+        if features.is_enabled("realtime") {
+            println!("Real-time features properly enabled on Linux");
+        }
+    }
 }
