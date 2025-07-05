@@ -274,8 +274,9 @@ chrono = "0.4"  # Used by build.rs for build timestamp generation
 # Dependencies used only for testing and development
 
 [dev-dependencies]
-criterion = { version = "0.5", default-features = false }      # Benchmarking framework
+criterion = { version = "0.4", features = ["html_reports"] }      # Benchmarking framework
 proptest = "1.4"                                                # Property-based testing
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread"] } # Runtime for async benchmarks
 tokio-test = "0.4"                                              # Tokio testing utilities
 tempfile = "3.10"                                               # Temporary file creation
 mockall = "0.12"                                                # Mock object generation
