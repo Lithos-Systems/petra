@@ -797,7 +797,7 @@ impl Default for MqttConfig {
 #[cfg(feature = "mqtt")]
 impl MqttConfig {
     /// Validate MQTT configuration
-    pub fn validate(&self) -> Result<(), PlcError> {
+    pub fn validate(&self) -> Result<()> {
         if self.host.is_empty() {
             return Err(PlcError::Config("MQTT host cannot be empty".to_string()));
         }
@@ -847,7 +847,13 @@ impl MqttConfig {
         }
 
         if self.use_tls {
-            options.set_transport(rumqttc::Transport::Tls(rumqttc::TlsConfiguration::Simple));
+            options.set_transport(rumqttc::Transport::Tls(
+                rumqttc::TlsConfiguration::Simple {
+                    ca: Vec::new(),
+                    alpn: None,
+                    client_auth: None,
+                },
+            ));
         }
 
         options
@@ -2057,7 +2063,7 @@ impl Config {
         
         // Check other feature compatibility
         #[cfg(feature = "mqtt")]
-        if self.mqtt.is_some() && !features.has_mqtt() {
+        if self.mqtt.is_some() && !features.is_enabled("mqtt") {
             return Err(PlcError::Config(
                 "Configuration uses MQTT but mqtt feature is not enabled".to_string()
             ));
@@ -2078,7 +2084,7 @@ impl Config {
         }
         
         #[cfg(feature = "alarms")]
-        if self.alarms.is_some() && !features.has_alarms() {
+        if self.alarms.is_some() && !features.is_enabled("alarms") {
             return Err(PlcError::Config(
                 "Configuration uses alarms but alarms feature is not enabled".to_string()
             ));
