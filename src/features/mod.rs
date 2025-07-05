@@ -561,6 +561,11 @@ pub fn is_enabled(feature: &str) -> bool {
     RuntimeFeatures::detect().is_enabled(feature)
 }
 
+/// Alias for init (backward compatibility)
+pub fn validate_feature_dependencies() -> Result<(), Vec<String>> {
+    init()
+}
+
 // Re-export for convenience
 pub use RuntimeFeatures as Features;
 

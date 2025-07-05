@@ -561,6 +561,7 @@ required-features = ["cli"]
 [[bench]]
 name = "engine_performance"
 harness = false
+required-features = ["standard-monitoring"]
 
 [[bench]]
 name = "simple_working"
