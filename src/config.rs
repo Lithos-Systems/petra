@@ -2859,23 +2859,61 @@ impl Validatable for OpcuaConfig {
 // CONFIGURATION TEMPLATES
 // ============================================================================
 
-/// Pre-defined configuration templates
+/// Configuration template types for different deployment scenarios
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 #[derive(Debug, Clone, Copy)]
 pub enum ConfigTemplate {
+    /// Basic configuration template for simple deployments
+    ///
+    /// Includes minimal features and basic signal/block definitions.
+    /// Suitable for development and testing environments.
     Basic,
+
+    /// Industrial automation configuration template
+    ///
+    /// Includes industrial protocols (S7, Modbus, OPC-UA), alarms,
+    /// and enhanced monitoring for manufacturing environments.
     Industrial,
+
+    /// IoT edge device configuration template
+    ///
+    /// Optimized for edge devices with MQTT connectivity and
+    /// minimal resource usage. Ideal for sensor networks.
     Iot,
+
+    /// Enterprise configuration template
+    ///
+    /// Full-featured template with security, comprehensive storage,
+    /// advanced monitoring, and all protocol support.
     Enterprise,
+
+    /// Development configuration template
+    ///
+    /// Includes debugging features, test signals, and development
+    /// tools for feature development and testing.
     Development,
 }
 
-/// Configuration file formats
+/// Configuration file format types
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 #[derive(Debug, Clone, Copy)]
 pub enum ConfigFormat {
+    /// YAML format (default and recommended)
+    ///
+    /// Human-readable format with comments and good structure.
+    /// Default format for PETRA configurations.
     Yaml,
+
+    /// JSON format for API integration
+    ///
+    /// Structured format suitable for programmatic generation
+    /// and API-based configuration management.
     Json,
+
+    /// TOML format for simple configurations
+    ///
+    /// Alternative format for users preferring TOML syntax.
+    /// Not all features may be supported.
     Toml,
 }
 
