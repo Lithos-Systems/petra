@@ -387,7 +387,7 @@ impl AlarmManager {
                 alarm.last_update = Utc::now();
             }
 
-            let mut should_activate =
+            let should_activate =
                 Self::evaluate_condition(&bus, &alarm.config.condition, &signal_value)?;
 
             #[cfg(feature = "alarm-hysteresis")]
@@ -463,7 +463,7 @@ impl AlarmManager {
         Ok(())
     }
 
-    fn evaluate_condition(bus: &SignalBus, condition: &AlarmCondition, value: &Value) -> Result<bool> {
+    fn evaluate_condition(_bus: &SignalBus, condition: &AlarmCondition, value: &Value) -> Result<bool> {
         Ok(match condition {
             AlarmCondition::High { threshold } => value.as_float().unwrap_or(0.0) > *threshold,
             AlarmCondition::Low { threshold } => value.as_float().unwrap_or(0.0) < *threshold,
@@ -489,7 +489,7 @@ impl AlarmManager {
                 reference_signal,
                 max_deviation,
             } => {
-                if let Some(ref_value) = bus.get(reference_signal) {
+                if let Some(ref_value) = _bus.get(reference_signal) {
                     let v = value.as_float().unwrap_or(0.0);
                     let ref_v = ref_value.as_float().unwrap_or(0.0);
                     (v - ref_v).abs() > *max_deviation
