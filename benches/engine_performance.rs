@@ -1,11 +1,11 @@
 //! Enhanced Engine performance benchmarks with configurable signal counts
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use petra::config::{BlockConfig, SignalConfig, Config};
+use petra::config::{BlockConfig, Config, SignalConfig};
 use petra::{Engine, SignalBus, Value};
 use std::collections::HashMap;
 use std::env;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::runtime::Runtime;
 
 /// Parse signal/block counts from environment variables or use defaults
@@ -42,8 +42,27 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
             signal_type: "float".to_string(),
             description: Some(format!("Test signal {}", i)),
             initial: Some(serde_yaml::Value::from(0.0f64)),
+            category: Some("Benchmark".to_string()),
+            source: Some("Generator".to_string()),
+            update_frequency_ms: Some(100),
             metadata: HashMap::new(),
             tags: vec![],
+            #[cfg(feature = "engineering-types")]
+            units: None,
+            #[cfg(feature = "engineering-types")]
+            min_value: None,
+            #[cfg(feature = "engineering-types")]
+            max_value: None,
+            #[cfg(feature = "quality-codes")]
+            quality_enabled: false,
+            #[cfg(feature = "history")]
+            log_to_history: false,
+            #[cfg(feature = "history")]
+            log_interval_ms: 0,
+            #[cfg(feature = "alarms")]
+            enable_alarms: false,
+            #[cfg(feature = "validation")]
+            validation: None,
         });
     }
 
@@ -69,16 +88,42 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
             inputs,
             outputs,
             params: HashMap::new(),
+            priority: 0,
+            enabled: true,
             tags: vec![],
+            category: Some("Logic".to_string()),
+            metadata: HashMap::new(),
+            #[cfg(feature = "circuit-breaker")]
+            circuit_breaker: None,
+            #[cfg(feature = "enhanced-monitoring")]
+            enhanced_monitoring: false,
         });
     }
 
     Config {
-        signals,
-        blocks,
+        // Core engine settings
         scan_time_ms: 50,
         max_scan_jitter_ms: 50,
         error_recovery: true,
+        max_consecutive_errors: 10,
+        restart_delay_ms: 5000,
+
+        // Signal and block definitions
+        signals,
+        blocks,
+
+        // Metadata fields
+        version: "1.0.0".to_string(),
+        description: Some("Benchmark configuration".to_string()),
+        author: Some("Benchmark Generator".to_string()),
+        created_at: Some(SystemTime::now()),
+        modified_at: Some(SystemTime::now()),
+        tags: vec!["benchmark".to_string()],
+        metadata: HashMap::new(),
+
+        // Protocol configuration
+        protocols: None,
+
         // Feature-gated fields
         #[cfg(feature = "mqtt")]
         mqtt: None,
@@ -90,7 +135,10 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
         alarms: None,
         #[cfg(feature = "web")]
         web: None,
-        protocols: None,
+        #[cfg(feature = "metrics")]
+        metrics: None,
+        #[cfg(feature = "realtime")]
+        realtime: None,
     }
 }
 
@@ -244,8 +292,8 @@ fn benchmark_value_operations(c: &mut Criterion) {
         let bool_val = Value::Bool(true);
 
         b.iter(|| {
-            let _ = black_box(float_val.as_f64());
-            let _ = black_box(int_val.as_i64());
+            let _ = black_box(float_val.as_float());
+            let _ = black_box(int_val.as_integer());
             let _ = black_box(bool_val.as_bool());
         });
     });
