@@ -57,7 +57,6 @@ use petra::{
 use petra::build_info;
 use std::path::PathBuf;
 use std::process;
-use std::time::Duration;
 use tokio::signal;
 use tracing::{info, error, debug, warn, Level};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -1264,7 +1263,7 @@ async fn migrate_config_version(
 async fn show_config_schema(
     #[cfg(feature = "schema-validation")]
     json_format: bool,
-    output: Option<PathBuf>,
+    _output: Option<PathBuf>,
 ) -> Result<()> {
     #[cfg(feature = "schema-validation")]
     {
@@ -1274,7 +1273,7 @@ async fn show_config_schema(
             Config::yaml_schema()?
         };
         
-        if let Some(output_path) = output {
+        if let Some(output_path) = _output {
             std::fs::write(&output_path, &schema).map_err(|e|
                 PlcError::Config(format!("Failed to write schema: {}", e))
             )?;

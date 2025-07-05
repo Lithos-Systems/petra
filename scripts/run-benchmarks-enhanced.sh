@@ -6,7 +6,7 @@ set -e
 # Default values
 DEFAULT_SIGNALS="100,1000,10000"
 DEFAULT_BLOCKS="10,100,1000"
-DEFAULT_FEATURES="--no-default-features"
+DEFAULT_FEATURES="--features standard-monitoring"
 DEFAULT_OUTPUT_DIR="bench_results"
 
 # Parse command line arguments
@@ -130,8 +130,12 @@ cargo bench $FEATURES $BENCH_ARGS 2>&1 | tee "$RESULTS_DIR/output.txt"
 # Run feature-specific benchmarks if requested
 if [[ "$FEATURES" != *"--no-default-features"* ]]; then
     echo ""
-    echo "📊 Running minimal feature benchmark for comparison..."
-    cargo bench --no-default-features --bench engine_performance 2>&1 | tee "$RESULTS_DIR/minimal.txt"
+    echo "Running minimal feature benchmark for comparison..."
+    if cargo bench --no-default-features --bench engine_performance 2>&1 | tee "$RESULTS_DIR/minimal.txt"; then
+        echo "Minimal benchmark completed"
+    else
+        echo "WARNING: Minimal benchmark failed (likely due to missing required features)"
+    fi
 fi
 
 # Generate summary report
@@ -147,45 +151,52 @@ cat > "$RESULTS_DIR/summary.md" << EOF
 
 ## Results Summary
 ```
-$(grep -E "time:|throughput:|faster|slower" "$RESULTS_DIR/output.txt" | head -20)
+$(grep -E "time:|throughput:|faster|slower" "$RESULTS_DIR/output.txt" 2>/dev/null | head -20 || echo "No performance data found")
 ```
 
 ## Performance Analysis
 $(
 if [[ -n "$COMPARE_BASELINE" ]]; then
     echo "### Comparison with $COMPARE_BASELINE"
-    grep -E "change:|Performance" "$RESULTS_DIR/output.txt" || echo "No significant changes detected"
+    grep -E "change:|Performance" "$RESULTS_DIR/output.txt" 2>/dev/null || echo "No significant changes detected"
 fi
 )
 
 ## Raw Output
-See `output.txt` for complete results.
+See \`output.txt\` for complete results.
 
 ## Criterion Reports
-Open `target/criterion/report/index.html` for detailed HTML reports.
+Open \`target/criterion/report/index.html\` for detailed HTML reports.
 EOF
 
-# Performance analysis
+# Check for warnings or errors
+if grep -qi "error\|failed\|panic" "$RESULTS_DIR/output.txt" 2>/dev/null; then
+    echo "ERRORS detected in benchmark run"
+    grep -i "error\|failed\|panic" "$RESULTS_DIR/output.txt" 2>/dev/null
+fi
+
+# Performance analysis with error handling
 echo ""
-echo "🎯 Performance Analysis"
+echo "Performance Analysis"
 echo "======================"
 
-# Extract key metrics
-if grep -q "scan_performance" "$RESULTS_DIR/output.txt"; then
-    echo "✅ Scan performance results found"
-    grep -A5 -B2 "scan_performance" "$RESULTS_DIR/output.txt" | head -20
+# Extract key metrics with error handling
+if [ -f "$RESULTS_DIR/output.txt" ] && grep -q "scan_performance" "$RESULTS_DIR/output.txt" 2>/dev/null; then
+    echo "Scan performance results found"
+    grep -A5 -B2 "scan_performance" "$RESULTS_DIR/output.txt" 2>/dev/null | head -20
 else
-    echo "⚠️  No scan performance results found"
-fi
-
-# Check for warnings or errors
-if grep -qi "error\|failed\|panic" "$RESULTS_DIR/output.txt"; then
-    echo "❌ Errors detected in benchmark run"
-    grep -i "error\|failed\|panic" "$RESULTS_DIR/output.txt"
+    echo "WARNING: No scan performance results found"
 fi
 
 echo ""
-echo "✅ Benchmark complete!"
-echo "📁 Results saved to: $RESULTS_DIR/"
-echo "📊 HTML report: target/criterion/report/index.html"
-echo "📋 Summary: $RESULTS_DIR/summary.md"
+echo "Benchmark complete!"
+echo "Results saved to: $RESULTS_DIR/"
+
+# Check if HTML report exists before reporting it
+if [ -f "target/criterion/report/index.html" ]; then
+    echo "HTML report: target/criterion/report/index.html"
+else
+    echo "HTML report: Not generated (check for criterion errors)"
+fi
+
+echo "Summary: $RESULTS_DIR/summary.md"
