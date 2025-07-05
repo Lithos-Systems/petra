@@ -596,12 +596,3 @@ cargo bench --features standard-monitoring
 ```
 
 ---
-
-## Example Configurations
-
-### **Complete Industrial SCADA**
-```yaml
-# configs/industrial-scada.yaml - Full production setup
-signals: [temperature, pressure, motor_speeds, production_counts]
-blocks: [safety_interlocks, production_logic, efficiency_calculations]
-alarms: [critical_faults, maintenance_ale
