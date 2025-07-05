@@ -102,6 +102,36 @@ use std::time::Duration;
 use uuid::Uuid;
 use tracing::{debug, info, warn};
 
+// ============================================================================
+// CONFIGURATION LINTING
+// ============================================================================
+
+/// Severity levels for configuration lint rules
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LintSeverity {
+    /// Critical issues that will cause runtime failures
+    Error,
+    /// Issues that may cause problems or poor performance
+    Warning,
+    /// Suggestions for best practices
+    Info,
+}
+
+/// Result of a configuration lint check
+#[derive(Debug, Clone)]
+pub struct LintResult {
+    /// Lint rule that was violated
+    pub rule: String,
+    /// Severity of the issue
+    pub severity: LintSeverity,
+    /// Human-readable message describing the issue
+    pub message: String,
+    /// Optional suggestion for fixing the issue
+    pub suggestion: Option<String>,
+    /// Configuration path where the issue was found
+    pub path: Option<String>,
+}
+
 // Feature-gated imports for enhanced functionality
 #[cfg(feature = "schema-validation")]
 use schemars::{JsonSchema, schema_for};
@@ -2225,6 +2255,92 @@ impl Config {
             self.scan_time_ms
         )
     }
+
+    /// Lint the configuration for best practices
+    pub fn lint(&self) -> Result<Vec<LintResult>> {
+        let mut results = Vec::new();
+
+        if self.scan_time_ms < 10 {
+            results.push(LintResult {
+                rule: "scan-time-too-fast".into(),
+                severity: LintSeverity::Warning,
+                message: "Scan time below 10ms may cause high CPU usage".into(),
+                suggestion: Some("Consider increasing scan_time_ms to at least 10ms".into()),
+                path: Some("scan_time_ms".into()),
+            });
+        }
+
+        if self.scan_time_ms > 1000 {
+            results.push(LintResult {
+                rule: "scan-time-too-slow".into(),
+                severity: LintSeverity::Warning,
+                message: "Scan time above 1000ms may cause poor responsiveness".into(),
+                suggestion: Some("Consider decreasing scan_time_ms for better performance".into()),
+                path: Some("scan_time_ms".into()),
+            });
+        }
+
+        for (i, signal) in self.signals.iter().enumerate() {
+            if signal.description.is_none() {
+                results.push(LintResult {
+                    rule: "missing-signal-description".into(),
+                    severity: LintSeverity::Info,
+                    message: format!("Signal '{}' lacks a description", signal.name),
+                    suggestion: Some("Add a description field for better documentation".into()),
+                    path: Some(format!("signals[{}]", i)),
+                });
+            }
+        }
+
+        let mut used_signals = std::collections::HashSet::new();
+        for block in &self.blocks {
+            for (_, signal) in &block.inputs {
+                used_signals.insert(signal);
+            }
+            for (_, signal) in &block.outputs {
+                used_signals.insert(signal);
+            }
+        }
+
+        for signal in &self.signals {
+            if !used_signals.contains(&signal.name) {
+                results.push(LintResult {
+                    rule: "unused-signal".into(),
+                    severity: LintSeverity::Info,
+                    message: format!("Signal '{}' is not used by any blocks", signal.name),
+                    suggestion: Some("Consider removing unused signals or add blocks that use them".into()),
+                    path: None,
+                });
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Apply automatic fixes for lint issues
+    pub fn apply_lint_fixes(&mut self, lint_results: &[LintResult]) -> Result<()> {
+        for result in lint_results {
+            match result.rule.as_str() {
+                "scan-time-too-fast" => {
+                    if self.scan_time_ms < 10 {
+                        self.scan_time_ms = 10;
+                    }
+                }
+                "scan-time-too-slow" => {
+                    if self.scan_time_ms > 1000 {
+                        self.scan_time_ms = 1000;
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Get runtime features information
+    pub fn get_runtime_features() -> crate::features::RuntimeFeatures {
+        crate::features::current()
+    }
 }
 
 // ============================================================================
@@ -2737,6 +2853,30 @@ impl Validatable for OpcuaConfig {
         
         Ok(())
     }
+}
+
+// ============================================================================
+// CONFIGURATION TEMPLATES
+// ============================================================================
+
+/// Pre-defined configuration templates
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+#[derive(Debug, Clone, Copy)]
+pub enum ConfigTemplate {
+    Basic,
+    Industrial,
+    Iot,
+    Enterprise,
+    Development,
+}
+
+/// Configuration file formats
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+#[derive(Debug, Clone, Copy)]
+pub enum ConfigFormat {
+    Yaml,
+    Json,
+    Toml,
 }
 
 // ============================================================================

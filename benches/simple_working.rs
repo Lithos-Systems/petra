@@ -1,13 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-fn basic_benchmark(c: &mut Criterion) {
-    c.bench_function("basic_test", |b| {
+fn simple_benchmark(c: &mut Criterion) {
+    c.bench_function("simple_test", |b| {
         b.iter(|| {
-            let x = 1 + 1;
-            black_box(x);
+            black_box(1 + 1)
         });
     });
 }
 
-criterion_group!(benches, basic_benchmark);
+criterion_group!(benches, simple_benchmark);
 criterion_main!(benches);

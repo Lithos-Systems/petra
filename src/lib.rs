@@ -103,6 +103,7 @@ pub mod engine;
 /// Runtime feature detection, validation of feature dependencies,
 /// and feature reporting for debugging and diagnostics.
 pub mod features;
+pub mod build_info;
 
 // ============================================================================
 // BLOCK SYSTEM (High Priority)
@@ -362,7 +363,7 @@ pub mod gui;
 pub use error::{PlcError, Result};
 pub use value::{Value, ValueType};
 pub use signal::SignalBus;
-pub use config::{Config, BlockConfig, SignalConfig};
+pub use config::{Config, BlockConfig, SignalConfig, LintSeverity, LintResult};
 pub use engine::EngineConfig;
 pub use engine::Engine;
 pub use features::{Features, RuntimeFeatures};
