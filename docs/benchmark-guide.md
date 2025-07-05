@@ -1,101 +1,177 @@
 # Benchmarks & Performance Guide
 
-The repository contains a small **Criterion-based benchmark** that measures the engine’s scan-cycle performance.  
-Benchmark definition: **`benches/engine_performance.rs`**
+The repository contains Criterion-based benchmarks that measure the engine's scan-cycle performance with **configurable signal and block counts**.
 
-```rust
-use criterion::{criterion_group, criterion_main, Criterion};
+## Quick Start
 
-fn benchmark_scan_performance(c: &mut Criterion) {
-    c.bench_function("scan_1000_signals", |b| {
-        let config = create_benchmark_config(1_000, 100);
-        let mut engine = Engine::new(config).unwrap();
-
-        b.iter(|| {
-            // Measure a single scan-cycle
-            engine.execute_scan_cycle();
-        });
-    });
-}
-
-criterion_group!(benches, benchmark_scan_performance);
-criterion_main!(benches);
-````
-
-The benchmark creates an engine with a **configurable number of signals** and repeatedly calls
-`execute_scan_cycle()` to gather timing statistics.
-
----
-
-## Running the Benchmarks
-
-1. **Compile & execute**
-
-   ```bash
-   cargo bench
-   ```
-
-2. **Open the report**
-
-   Criterion stores HTML reports under
-   `target/criterion/<benchmark-name>/report/index.html`.
-
-3. **(Optional) verbose logging**
-
-   ```bash
-   RUST_LOG=petra=debug cargo run --release -- config.yaml
-   ```
-
-4. **(Optional) memory / CPU profiling**
-
-   ```bash
-   cargo run --release --features pprof -- config.yaml
-   ```
-
----
-
-## Performance & Monitoring Commands
+### Using Presets (Recommended)
 
 ```bash
-# Standard Criterion run
-cargo bench
+# Quick development test (< 30 seconds)
+./scripts/run-benchmark-preset.sh quick
 
-# Run Petra with detailed runtime metrics
-RUST_LOG=petra=debug cargo run --release -- config.yaml
+# Standard CI/CD test (2-3 minutes)
+./scripts/run-benchmark-preset.sh standard
 
-# Enable pprof feature for flame-graphs / heap profiles
-cargo run --release --features pprof -- config.yaml
-
-# Override configured scan-time (example: 50 ms)
-cargo run --release -- config.yaml --scan-time 50
+# Stress test (10+ minutes)
+./scripts/run-benchmark-preset.sh stress
 ```
 
----
+### Custom Signal Counts
 
-## How Benchmarks Relate to Engine Metrics
+```bash
+# Test specific signal/block combinations
+./scripts/run-benchmarks-enhanced.sh --signals "1000,5000" --blocks "100,500"
 
-Inside the engine loop, several Prometheus-compatible metrics are recorded:
+# Test with specific features
+./scripts/run-benchmarks-enhanced.sh --signals "1000" --blocks "100" --features "--features optimized"
 
-```rust
-gauge!("petra_scan_jitter_avg_us").set(avg_jitter.as_micros() as f64);
-gauge!("petra_scan_jitter_max_us").set(max_jitter.as_micros() as f64);
-gauge!("petra_scan_variance_us").set(jitter.as_micros() as f64);
-histogram!("petra_scan_duration_seconds").record(scan_duration.as_secs_f64());
-gauge!("petra_scan_duration_ms").set(scan_duration.as_millis() as f64);
-counter!("petra_scan_overruns_total").increment(1);
+# Environment variable approach
+PETRA_BENCH_SIGNALS="100,1000" PETRA_BENCH_BLOCKS="10,100" cargo bench --bench engine_performance
 ```
 
-With the bundled **`metrics-exporter-prometheus`** backend you can observe scan duration, jitter, and overrun counts in real time while running benchmarks or production code.
+## Available Presets
 
----
+|Preset    |Signals |Blocks|Features          |Use Case              |
+|----------|--------|------|------------------|----------------------|
+|`quick`   |100-500 |10-50 |minimal           |Development testing   |
+|`standard`|100-5k  |10-500|optimized         |CI/CD validation      |
+|`stress`  |1k-50k  |100-5k|enhanced          |Performance validation|
+|`memory`  |10k-100k|1k-10k|optimized,realtime|Memory testing        |
+|`edge`    |50-500  |5-50  |minimal           |Edge devices          |
 
-## Notes & Caveats
+## Baseline Management
 
-* The benchmark depends on `create_benchmark_config` and `Engine::execute_scan_cycle()`.
-  Ensure these exist (or stub them) before running `cargo bench`.
+```bash
+# Save a baseline for comparison
+./scripts/run-benchmark-preset.sh standard --baseline "v1.0.0"
 
-* The first run may be slow because Criterion pulls and compiles many crates.
+# Compare current performance with baseline
+./scripts/run-benchmark-preset.sh standard --compare "v1.0.0"
 
-* Some optional crates require network access at build time―plan for extra compile time in CI.
+# Compare different feature sets
+./scripts/run-benchmarks-enhanced.sh --signals "1000" --blocks "100" --features "--no-default-features" --baseline "minimal"
+./scripts/run-benchmarks-enhanced.sh --signals "1000" --blocks "100" --features "--all-features" --compare "minimal"
+```
 
----
+## Configuration
+
+The benchmarks can be configured in multiple ways:
+
+### 1. Environment Variables
+
+```bash
+export PETRA_BENCH_SIGNALS="100,1000,10000"
+export PETRA_BENCH_BLOCKS="10,100,1000"
+cargo bench --bench engine_performance
+```
+
+### 2. Script Arguments
+
+```bash
+./scripts/run-benchmarks-enhanced.sh --signals "1000,5000,10000" --blocks "100,500,1000"
+```
+
+### 3. Preset Configurations
+
+```bash
+./scripts/run-benchmark-preset.sh stress  # Uses predefined stress test configuration
+```
+
+## Understanding Results
+
+The benchmark generates several performance metrics:
+
+### Core Benchmarks
+
+- **simple_test**: Basic signal bus operation (~190 ps)
+- **feature_diagnostic**: Feature availability check (~170 ps)
+- **value_creation**: Value type creation (~2.7 ns)
+- **signal_operations**: Signal bus read/write operations (~135 ns)
+
+### Scalability Benchmarks
+
+- **scan_performance**: Full engine scan cycle with configurable signal/block counts
+- **signal_bus_operations**: Signal bus performance at scale
+- **block_execution**: Block execution performance
+
+### Performance Analysis
+
+Look for these patterns in results:
+
+- **Linear scaling**: Performance should scale linearly with signal count
+- **Logarithmic block scaling**: Block execution should scale sub-linearly
+- **Memory efficiency**: Large signal counts should not cause excessive memory usage
+
+## Tips for Performance Testing
+
+### Development Testing
+
+```bash
+# Quick validation during development
+./scripts/run-benchmark-preset.sh quick
+```
+
+### CI/CD Integration
+
+```bash
+# Standard test for CI pipelines
+./scripts/run-benchmark-preset.sh standard --baseline "main"
+```
+
+### Performance Regression Detection
+
+```bash
+# Save current main branch baseline
+git checkout main
+./scripts/run-benchmark-preset.sh standard --baseline "main"
+
+# Test feature branch
+git checkout feature-branch
+./scripts/run-benchmark-preset.sh standard --compare "main"
+```
+
+### Memory and Resource Testing
+
+```bash
+# Test with large signal counts
+./scripts/run-benchmark-preset.sh memory
+
+# Monitor system resources during test
+htop &
+./scripts/run-benchmark-preset.sh stress
+```
+
+## Interpreting Results
+
+### Good Performance Indicators
+
+- Scan cycles < 1ms for 1000 signals/100 blocks
+- Linear signal bus scaling
+- Sub-linear block execution scaling
+- Consistent throughput across feature sets
+
+### Performance Regression Signs
+
+- Scan time increases > 20% for same configuration
+- Memory usage grows non-linearly
+- Timeout or panic errors during benchmarks
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Out of memory**: Reduce signal counts or use `edge` preset
+1. **Long test times**: Use `quick` preset for development
+1. **Inconsistent results**: Ensure system is idle during testing
+
+### Debugging
+
+```bash
+# Run with verbose output
+RUST_LOG=petra=debug ./scripts/run-benchmark-preset.sh quick
+
+# Check system resources
+free -h
+cat /proc/meminfo | grep Available
+```
