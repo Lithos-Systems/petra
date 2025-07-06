@@ -622,7 +622,7 @@ enum LogFormat {
 
 /// Cryptographic key types
 #[cfg(feature = "security")]
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum)]
 enum KeyType {
     /// RSA key pair
     Rsa,
@@ -636,8 +636,9 @@ enum KeyType {
 }
 
 /// Storage backend types
-#[cfg(feature = "advanced-storage")]
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[cfg(any(feature = "history", feature = "advanced-storage"))]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+
 enum StorageType {
     /// Parquet file storage
     #[cfg(feature = "history")]

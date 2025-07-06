@@ -117,6 +117,7 @@ uuid = { version = "1.10", features = ["v4", "serde"] }  # Unique identifiers
 base64 = { version = "0.22", optional = true }  # Base64 encoding for security
 once_cell = { version = "1.20", optional = true }  # Lazy static initialization
 regex = "1.11"  # Regular expressions for validation
+rpassword = "7.3"
 
 # === HIGH-PERFORMANCE COLLECTIONS ===
 # Concurrent data structures for signal bus and shared state

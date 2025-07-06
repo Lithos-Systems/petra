@@ -15,6 +15,9 @@ pub mod audit;
 #[cfg(feature = "signing")]
 pub mod signing;
 
+pub mod cli;
+pub use cli::{generate_key, create_user};
+
 /// Main security manager
 pub struct SecurityManager {
     // Add fields as needed
