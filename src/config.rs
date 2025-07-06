@@ -98,8 +98,6 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 #[cfg(feature = "mqtt")]
 use std::time::Duration;
-#[cfg(feature = "mqtt")]
-use uuid::Uuid;
 use tracing::{debug, info, warn};
 
 // ============================================================================
