@@ -621,7 +621,7 @@ enum LogFormat {
 
 /// Cryptographic key types
 #[cfg(feature = "security")]
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum)]
 enum KeyType {
     /// RSA key pair
     Rsa,
@@ -636,7 +636,7 @@ enum KeyType {
 
 /// Storage backend types
 #[cfg(any(feature = "history", feature = "advanced-storage"))]
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum)]
 enum StorageType {
     /// Parquet file storage
     #[cfg(feature = "history")]
@@ -1034,7 +1034,7 @@ fn print_detailed_config_info(config: &Config) {
     
     #[cfg(feature = "mqtt")]
     if let Some(mqtt_config) = &config.mqtt {
-        println!("  {} {} topics configured", "MQTT:".blue().bold(), mqtt_config.topics.len());
+        println!("  {} {} topics configured", "MQTT:".blue().bold(), mqtt_config.subscribe_topics.len());
     }
     
     #[cfg(feature = "history")]

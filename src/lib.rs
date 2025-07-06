@@ -166,6 +166,12 @@ pub mod protocols {
     pub mod zero_copy;
 }
 
+#[cfg(feature = "mqtt")]
+pub mod mqtt {
+    pub mod cli;
+    pub use cli::test_connection;
+}
+
 // ============================================================================
 // STORAGE MODULES (Feature-Gated)
 // ============================================================================
@@ -189,6 +195,9 @@ pub mod storage {
     //! 
     //! Provides multiple storage options from local databases
     //! to cloud storage with automatic data lifecycle management.
+
+    pub mod cli;
+    pub use cli::{initialize_storage, backup_data, restore_data, compact_storage};
 
     #[cfg(feature = "clickhouse")]
     #[cfg_attr(docsrs, doc(cfg(feature = "clickhouse")))]
