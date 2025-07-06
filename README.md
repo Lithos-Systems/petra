@@ -37,14 +37,6 @@ block_execution/execute_50_blocks        8.44µs
 block_execution/execute_100_blocks       16.59µs
 ```
 
-### Real-World Performance Targets
-
-| **Configuration** | **Scan Time** | **Throughput** | **Memory Usage** |
-|-------------------|---------------|----------------|------------------|
-| **Small System** (1K signals, 50 blocks) | <1ms | >10M elem/s | <100MB |
-| **Medium System** (10K signals, 100 blocks) | <20µs | >5M elem/s | <512MB |
-| **Large System** (50K signals, 1K blocks) | <100µs | >2M elem/s | <2GB |
-
 ### Benchmark Validation
 
 ```bash
