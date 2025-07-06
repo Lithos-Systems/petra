@@ -1,6 +1,7 @@
 //! Enhanced Engine performance benchmarks with configurable signal counts
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::measurement::WallTime;
 use petra::config::{BlockConfig, Config, SignalConfig};
 use petra::{Engine, SignalBus, Value};
 use std::collections::HashMap;
@@ -315,12 +316,16 @@ fn benchmark_value_operations(c: &mut Criterion) {
 // Add a simple test benchmark for quick validation
 fn benchmark_simple_test(c: &mut Criterion) {
     c.bench_function("simple_test", |b| {
-        let bus = SignalBus::new();
-        let _ = bus.set("test_signal", Value::Float(42.0));
-        
-        b.iter(|| {
-            let _ = black_box(bus.get("test_signal"));
-        });
+        b.iter_with_setup(
+            || {
+                let bus = SignalBus::new();
+                let _ = bus.set("test_signal", Value::Float(42.0));
+                bus
+            },
+            |bus| {
+                let _ = black_box(bus.get("test_signal"));
+            },
+        );
     });
 }
 
@@ -328,18 +333,25 @@ fn benchmark_simple_test(c: &mut Criterion) {
 fn benchmark_feature_diagnostic(c: &mut Criterion) {
     c.bench_function("feature_diagnostic", |b| {
         b.iter(|| {
-            // Test basic feature availability
+            let mut result = 0u32;
+
             #[cfg(feature = "enhanced-monitoring")]
-            let _enhanced = black_box(true);
-            
+            {
+                result += black_box(1);
+            }
+
             #[cfg(feature = "optimized")]
-            let _optimized = black_box(true);
-            
+            {
+                result += black_box(2);
+            }
+
             #[cfg(feature = "extended-types")]
-            let _extended = black_box(true);
-            
-            // Basic operation that should always work
-            let _value = black_box(Value::Float(1.0));
+            {
+                result += black_box(4);
+            }
+
+            let value = black_box(Value::Float(result as f64 + 1.0));
+            std::hint::black_box(value);
         });
     });
 }
@@ -348,12 +360,14 @@ criterion_group! {
     name = benches;
     config = Criterion::default()
         .sample_size(100)
-        .measurement_time(Duration::from_secs(5));
-    targets = 
+        .measurement_time(Duration::from_secs(5))
+        .with_output_color(true)
+        .with_measurement(WallTime);
+    targets =
         benchmark_simple_test,
         benchmark_feature_diagnostic,
-        benchmark_scan_performance, 
-        benchmark_signal_bus_operations, 
+        benchmark_scan_performance,
+        benchmark_signal_bus_operations,
         benchmark_block_execution, 
         benchmark_value_operations
 }
