@@ -305,6 +305,44 @@ impl RuntimeFeatures {
     pub fn is_enabled(&self, feature: &str) -> bool {
         self.enabled.contains(feature)
     }
+
+    /// Check if security features are enabled
+    pub fn has_security(&self) -> bool {
+        self.security.security
+            || self.enabled.contains("security")
+            || self.enabled.contains("basic-auth")
+            || self.enabled.contains("jwt-auth")
+            || self.enabled.contains("rbac")
+    }
+
+    /// Check if history features are enabled
+    pub fn has_history(&self) -> bool {
+        self.storage.history
+            || self.enabled.contains("history")
+            || self.enabled.contains("advanced-storage")
+    }
+
+    /// Check if S7 protocol support is enabled
+    pub fn has_s7(&self) -> bool {
+        self.protocols.s7 || self.enabled.contains("s7-support")
+    }
+
+    /// Check if Modbus protocol support is enabled
+    pub fn has_modbus(&self) -> bool {
+        self.protocols.modbus || self.enabled.contains("modbus-support")
+    }
+
+    /// Check if OPC-UA protocol support is enabled
+    pub fn has_opcua(&self) -> bool {
+        self.protocols.opcua || self.enabled.contains("opcua-support")
+    }
+
+    /// Check if web features are enabled
+    pub fn has_web(&self) -> bool {
+        self.enabled.contains("web")
+            || self.enabled.contains("web-ui")
+            || self.enabled.contains("http-api")
+    }
     
     /// Get all enabled features
     pub fn enabled_features(&self) -> Vec<&str> {
