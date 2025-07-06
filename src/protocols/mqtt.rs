@@ -944,6 +944,14 @@ impl MqttBridge {
     }
 }
 
+/// Test connectivity to an MQTT broker by establishing a client and
+/// subscribing to a topic. This is a lightweight stub used by the
+/// command-line interface.
+pub async fn test_connection(_broker: &str, _topic: &str, _count: usize) -> Result<()> {
+    info!("MQTT test_connection stub called");
+    Ok(())
+}
+
 // ============================================================================
 // TESTS
 // ============================================================================

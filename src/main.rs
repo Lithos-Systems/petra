@@ -63,6 +63,9 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use tracing_subscriber::filter::Directive;
 use colored::*;
 
+#[cfg(feature = "basic-auth")]
+use rpassword;
+
 // Feature-gated imports for optional functionality
 #[cfg(feature = "metrics")]
 use petra::MetricsServer;
@@ -73,8 +76,6 @@ use petra::health::HealthMonitor;
 #[cfg(feature = "realtime")]
 use petra::realtime::RealtimeScheduler;
 
-#[cfg(feature = "security")]
-use petra::security::SecurityManager;
 
 // ============================================================================
 // CLI ARGUMENT DEFINITIONS
@@ -287,7 +288,7 @@ enum Commands {
     },
     
     /// Database and storage utilities
-    #[cfg(any(feature = "history", feature = "advanced-storage"))]
+    #[cfg(feature = "advanced-storage")]
     Storage {
         #[command(subcommand)]
         storage_cmd: StorageCommands,
@@ -555,7 +556,7 @@ enum SecurityCommands {
 }
 
 /// Storage management subcommands
-#[cfg(any(feature = "history", feature = "advanced-storage"))]
+#[cfg(feature = "advanced-storage")]
 #[derive(Subcommand)]
 enum StorageCommands {
     /// Initialize storage backends
@@ -621,7 +622,7 @@ enum LogFormat {
 
 /// Cryptographic key types
 #[cfg(feature = "security")]
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, Debug, ValueEnum)]
 enum KeyType {
     /// RSA key pair
     Rsa,
@@ -635,8 +636,8 @@ enum KeyType {
 }
 
 /// Storage backend types
-#[cfg(any(feature = "history", feature = "advanced-storage"))]
-#[derive(Clone, Copy, ValueEnum)]
+#[cfg(feature = "advanced-storage")]
+#[derive(Clone, Copy, Debug, ValueEnum)]
 enum StorageType {
     /// Parquet file storage
     #[cfg(feature = "history")]
@@ -768,7 +769,7 @@ async fn main() -> Result<()> {
             handle_security_command(security_cmd).await
         }
         
-        #[cfg(any(feature = "history", feature = "advanced-storage"))]
+        #[cfg(feature = "advanced-storage")]
         Some(Commands::Storage { storage_cmd }) => {
             handle_storage_command(storage_cmd).await
         }
@@ -1034,7 +1035,7 @@ fn print_detailed_config_info(config: &Config) {
     
     #[cfg(feature = "mqtt")]
     if let Some(mqtt_config) = &config.mqtt {
-        println!("  {} {} topics configured", "MQTT:".blue().bold(), mqtt_config.topics.len());
+        println!("  {} {} topics configured", "MQTT:".blue().bold(), mqtt_config.subscribe_topics.len());
     }
     
     #[cfg(feature = "history")]
@@ -1607,7 +1608,7 @@ async fn handle_security_command(cmd: SecurityCommands) -> Result<()> {
 }
 
 /// Handle storage management commands
-#[cfg(any(feature = "history", feature = "advanced-storage"))]
+#[cfg(feature = "advanced-storage")]
 async fn handle_storage_command(cmd: StorageCommands) -> Result<()> {
     match cmd {
         StorageCommands::Init { storage_type, config } => {
