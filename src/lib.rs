@@ -213,35 +213,10 @@ pub mod storage {
 #[cfg(feature = "security")]
 #[cfg_attr(docsrs, doc(cfg(feature = "security")))]
 /// Comprehensive security framework
-/// 
+///
 /// Authentication, authorization, and audit logging with support
 /// for multiple authentication methods and role-based access control.
-pub mod security {
-    //! Security framework with authentication and authorization
-    //! 
-    //! Provides a comprehensive security system with pluggable
-    //! authentication backends and fine-grained access control.
-
-    #[cfg(feature = "basic-auth")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "basic-auth")))]
-    /// Basic username/password authentication
-    pub mod basic_auth;
-
-    #[cfg(feature = "jwt-auth")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "jwt-auth")))]
-    /// JWT token-based authentication
-    pub mod jwt_auth;
-
-    #[cfg(feature = "rbac")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rbac")))]
-    /// Role-based access control system
-    pub mod rbac;
-
-    #[cfg(feature = "audit")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "audit")))]
-    /// Security audit logging and compliance
-    pub mod audit;
-}
+pub mod security;
 
 // ============================================================================
 // VALIDATION MODULES (Feature-Gated)
@@ -367,6 +342,16 @@ pub use config::{Config, BlockConfig, SignalConfig, LintSeverity, LintResult};
 pub use engine::EngineConfig;
 pub use engine::Engine;
 pub use features::{Features, RuntimeFeatures};
+
+// Re-export commonly used protocol modules for convenience
+#[cfg(feature = "mqtt")]
+pub use protocols::mqtt;
+#[cfg(feature = "modbus-support")]
+pub use protocols::modbus;
+#[cfg(feature = "s7-support")]
+pub use protocols::s7;
+#[cfg(feature = "opcua-support")]
+pub use protocols::opcua;
 
 // Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
