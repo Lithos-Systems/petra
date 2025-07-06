@@ -5,7 +5,7 @@ A high-performance, production-ready automation engine built in **Rust** with ad
 
 ---
 
-## 🚀 Performance Benchmarks
+## Performance Benchmarks
 
 **PETRA delivers exceptional performance for industrial automation workloads:**
 
