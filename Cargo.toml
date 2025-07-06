@@ -212,6 +212,7 @@ rustls-pemfile = { version = "2", default-features = false, optional = true }  #
 
 # === AUTHENTICATION ===
 bcrypt = { version = "0.15", optional = true }                  # Password hashing
+rpassword = { version = "7.4", optional = true }               # Hidden password input
 jsonwebtoken = { version = "9.3", optional = true }            # JWT token handling
 ed25519-dalek = { version = "2.1", optional = true }           # Digital signatures
 
@@ -417,7 +418,7 @@ arrow = ["dep:arrow", "dep:arrow-array", "dep:arrow-schema"]
 security = ["dep:sha2", "dep:base64"]                  # Base security framework
 
 # === AUTHENTICATION METHODS ===
-basic-auth = ["security", "dep:bcrypt"]                # Username/password authentication
+basic-auth = ["security", "dep:bcrypt", "dep:rpassword"]                # Username/password authentication
 jwt-auth = ["security", "dep:jsonwebtoken"]            # JWT token authentication
 rbac = ["security"]                                     # Role-based access control
 audit = ["security"]                                    # Security audit logging
