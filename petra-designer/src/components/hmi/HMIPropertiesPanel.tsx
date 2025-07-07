@@ -516,6 +516,15 @@ function getPropertyFields(type: string): Array<{
           { value: 'control', label: 'Control Valve' },
         ]
       },
+      { key: 'showPosition', label: 'Show Position', type: 'boolean' },
+    ],
+    gauge: [
+      { key: 'min', label: 'Minimum', type: 'number' },
+      { key: 'max', label: 'Maximum', type: 'number' },
+      { key: 'value', label: 'Value', type: 'number' },
+      { key: 'units', label: 'Units', type: 'text' },
+      { key: 'showScale', label: 'Show Scale', type: 'boolean' },
+      { key: 'majorTicks', label: 'Major Ticks', type: 'number', min: 2, max: 10 },
     ],
     button: [
       { key: 'text', label: 'Text', type: 'text' },
@@ -543,6 +552,54 @@ function getPropertyFields(type: string): Array<{
           { value: 'right', label: 'Right' },
         ]
       },
+    ],
+    'heat-exchanger': [
+      { key: 'hotInletTemp', label: 'Hot Inlet Temp (°C)', type: 'number', min: 0, max: 200 },
+      { key: 'hotOutletTemp', label: 'Hot Outlet Temp (°C)', type: 'number', min: 0, max: 200 },
+      { key: 'coldInletTemp', label: 'Cold Inlet Temp (°C)', type: 'number', min: 0, max: 200 },
+      { key: 'coldOutletTemp', label: 'Cold Outlet Temp (°C)', type: 'number', min: 0, max: 200 },
+      { key: 'efficiency', label: 'Efficiency (%)', type: 'number', min: 0, max: 100 },
+      { key: 'showTemperatures', label: 'Show Temperatures', type: 'boolean' },
+    ],
+    conveyor: [
+      { key: 'running', label: 'Running', type: 'boolean' },
+      { key: 'speed', label: 'Speed (%)', type: 'number', min: 0, max: 100 },
+      {
+        key: 'direction',
+        label: 'Direction',
+        type: 'select',
+        options: [
+          { value: 'forward', label: 'Forward' },
+          { value: 'reverse', label: 'Reverse' },
+        ]
+      },
+      { key: 'material', label: 'Has Material', type: 'boolean' },
+    ],
+    mixer: [
+      { key: 'running', label: 'Running', type: 'boolean' },
+      { key: 'speed', label: 'Speed (RPM)', type: 'number', min: 0, max: 200 },
+      { key: 'level', label: 'Level (%)', type: 'number', min: 0, max: 100 },
+      {
+        key: 'agitatorType',
+        label: 'Agitator Type',
+        type: 'select',
+        options: [
+          { value: 'paddle', label: 'Paddle' },
+          { value: 'turbine', label: 'Turbine' },
+          { value: 'anchor', label: 'Anchor' },
+        ]
+      },
+      { key: 'temperature', label: 'Temperature (°C)', type: 'number', min: -50, max: 200 },
+    ],
+    motor: [
+      { key: 'running', label: 'Running', type: 'boolean' },
+      { key: 'speed', label: 'Speed (%)', type: 'number', min: 0, max: 100 },
+      { key: 'fault', label: 'Fault', type: 'boolean' },
+    ],
+    indicator: [
+      { key: 'on', label: 'On', type: 'boolean' },
+      { key: 'onColor', label: 'On Color', type: 'text' },
+      { key: 'offColor', label: 'Off Color', type: 'text' },
     ],
   }
 
