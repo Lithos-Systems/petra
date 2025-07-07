@@ -8,9 +8,10 @@ version: "1.0"
 # ============================================================================
 
 scan_time_ms: 100  # 100ms scan cycle for responsive control
-max_scan_jitter_ms:  10  # Maximum allowed jitter (25% of scan time)
+max_scan_jitter_ms: 10  # Maximum allowed jitter (10% of scan time)
 error_recovery: true
 max_consecutive_errors: 10
+
 # ============================================================================
 # SIGNAL DEFINITIONS
 # ============================================================================
@@ -43,7 +44,7 @@ signals:
     initial: 2000.0
     description: "Well pump flow rate when running"
     
-  # Well Pump Control Signals - MISSING SIGNALS ADDED
+  # Well Pump Control Signals
   - name: "well.start_request"
     type: "bool"
     initial: false
@@ -90,7 +91,7 @@ signals:
   - name: "pump1.setpoint_flow"
     type: "float"
     initial: 1500.0
-    description: "Pump 1 flow setpoint"
+    description: "Pump 1 flow rate when running"
     
   - name: "pump1.efficiency"
     type: "float"
@@ -100,58 +101,7 @@ signals:
   - name: "pump1.is_lead"
     type: "bool"
     initial: true
-    description: "Pump 1 is current lead pump"
-    
-  - name: "pump1.start_request"
-    type: "bool"
-    initial: false
-    description: "Start request for pump 1"
-    
-  - name: "pump1.stop_request"
-    type: "bool"
-    initial: false
-    description: "Stop request for pump 1"
-    
-  - name: "pump1.start_delay_active"
-    type: "bool"
-    initial: false
-    description: "Pump 1 start delay timer active"
-    
-  # MISSING PUMP 1 SIGNALS ADDED
-  - name: "pump1.lead_start_request"
-    type: "bool"
-    initial: false
-    description: "Pump 1 lead start request"
-    
-  - name: "pump1.lag_start_request"
-    type: "bool"
-    initial: false
-    description: "Pump 1 lag start request"
-    
-  - name: "pump1.lead_stop_request"
-    type: "bool"
-    initial: false
-    description: "Pump 1 lead stop request"
-    
-  - name: "pump1.lag_stop_request"
-    type: "bool"
-    initial: false
-    description: "Pump 1 lag stop request"
-    
-  - name: "pump1.is_lag"
-    type: "bool"
-    initial: false
-    description: "Pump 1 is lag pump"
-    
-  - name: "pump1.filtered_lag_stop"
-    type: "bool"
-    initial: false
-    description: "Pump 1 filtered lag stop signal"
-    
-  - name: "pump1.start_delayed"
-    type: "bool"
-    initial: false
-    description: "Pump 1 start with delay applied"
+    description: "Pump 1 is designated lead pump"
     
   # Booster Pump 2
   - name: "pump2.running"
@@ -167,7 +117,7 @@ signals:
   - name: "pump2.setpoint_flow"
     type: "float"
     initial: 1500.0
-    description: "Pump 2 flow setpoint"
+    description: "Pump 2 flow rate when running"
     
   - name: "pump2.efficiency"
     type: "float"
@@ -177,38 +127,7 @@ signals:
   - name: "pump2.is_lead"
     type: "bool"
     initial: false
-    description: "Pump 2 is current lead pump"
-    
-  - name: "pump2.start_request"
-    type: "bool"
-    initial: false
-    description: "Start request for pump 2"
-    
-  - name: "pump2.stop_request"
-    type: "bool"
-    initial: false
-    description: "Stop request for pump 2"
-    
-  - name: "pump2.start_delay_active"
-    type: "bool"
-    initial: false
-    description: "Pump 2 start delay timer active"
-    
-  # MISSING PUMP 2 SIGNALS ADDED
-  - name: "pump2.lead_start_request"
-    type: "bool"
-    initial: false
-    description: "Pump 2 lead start request"
-    
-  - name: "pump2.lag_start_request"
-    type: "bool"
-    initial: false
-    description: "Pump 2 lag start request"
-    
-  - name: "pump2.start_delayed"
-    type: "bool"
-    initial: false
-    description: "Pump 2 start with delay applied"
+    description: "Pump 2 is designated lead pump"
     
   # Booster Pump 3
   - name: "pump3.running"
@@ -224,7 +143,7 @@ signals:
   - name: "pump3.setpoint_flow"
     type: "float"
     initial: 2000.0
-    description: "Pump 3 flow setpoint"
+    description: "Pump 3 flow rate when running"
     
   - name: "pump3.efficiency"
     type: "float"
@@ -234,38 +153,44 @@ signals:
   - name: "pump3.is_lead"
     type: "bool"
     initial: false
-    description: "Pump 3 is current lead pump"
+    description: "Pump 3 is designated lead pump"
     
-  - name: "pump3.start_request"
+  # Pump Status Signals
+  - name: "pumps.any_running"
     type: "bool"
     initial: false
-    description: "Start request for pump 3"
+    description: "Any pump is running"
     
-  - name: "pump3.stop_request"
+  - name: "pumps.lead_running"
     type: "bool"
     initial: false
-    description: "Stop request for pump 3"
+    description: "Lead pump is running"
     
-  - name: "pump3.start_delay_active"
+  - name: "pumps.total_flow"
+    type: "float"
+    initial: 0.0
+    description: "Total flow from all pumps"
+    
+  # Pressure Monitoring Signals
+  - name: "pressure.low_for_lead"
     type: "bool"
     initial: false
-    description: "Pump 3 start delay timer active"
+    description: "Pressure low enough to start lead pump"
     
-  # MISSING PUMP 3 SIGNALS ADDED
-  - name: "pump3.lead_start_request"
+  - name: "pressure.high_for_lead"
     type: "bool"
     initial: false
-    description: "Pump 3 lead start request"
+    description: "Pressure high enough to stop lead pump"
     
-  - name: "pump3.lag_start_request"
+  - name: "pressure.low_for_lag"
     type: "bool"
     initial: false
-    description: "Pump 3 lag start request"
+    description: "Pressure low enough to start lag pumps"
     
-  - name: "pump3.start_delayed"
+  - name: "pressure.high_for_lag"
     type: "bool"
     initial: false
-    description: "Pump 3 start with delay applied"
+    description: "Pressure high enough to stop lag pumps"
     
   # Pressure Setpoints
   - name: "pressure.lead_start"
@@ -288,105 +213,26 @@ signals:
     initial: 70.0
     description: "Pressure to stop lag pumps (psi)"
     
-  # Pump Control Logic Signals
-  - name: "pumps.any_running"
-    type: "bool"
-    initial: false
-    description: "Any booster pump running"
-    
-  - name: "pumps.lead_running"
-    type: "bool"
-    initial: false
-    description: "Lead pump is running"
-    
-  - name: "pumps.total_flow"
-    type: "float"
-    initial: 0.0
-    description: "Total flow from all pumps"
-    
-  - name: "pressure.low_for_lead"
-    type: "bool"
-    initial: false
-    description: "Pressure low enough to start lead"
-    
-  - name: "pressure.high_for_lead"
-    type: "bool"
-    initial: false
-    description: "Pressure high enough to stop lead"
-    
-  - name: "pressure.low_for_lag"
-    type: "bool"
-    initial: false
-    description: "Pressure low enough to start lag"
-    
-  - name: "pressure.high_for_lag"
-    type: "bool"
-    initial: false
-    description: "Pressure high enough to stop lag"
-    
-  # MISSING INTERMEDIATE PUMP SIGNALS ADDED
-  - name: "pumps_12_any"
-    type: "bool"
-    initial: false
-    description: "Either pump 1 or 2 is running"
-    
-  - name: "lead1_running"
-    type: "bool"
-    initial: false
-    description: "Pump 1 running as lead"
-    
-  - name: "lead2_running"
-    type: "bool"
-    initial: false
-    description: "Pump 2 running as lead"
-    
-  - name: "lead3_running"
-    type: "bool"
-    initial: false
-    description: "Pump 3 running as lead"
-    
-  - name: "lead_12_any"
-    type: "bool"
-    initial: false
-    description: "Either pump 1 or 2 running as lead"
-    
-  # Lead/Lag Control
-  - name: "lead.rotation_counter"
-    type: "float"
-    initial: 1.0
-    description: "Current lead pump number"
-    
-  # Hydrotank 1
-  - name: "hydrotank1.water_level"
-    type: "float"
-    initial: 50.0
-    description: "Hydrotank 1 water level (%)"
-    
+  # Hydrotank Monitoring
   - name: "hydrotank1.air_blanket"
     type: "float"
     initial: 50.0
-    description: "Hydrotank 1 air blanket (%)"
-    
-  - name: "hydrotank1.compressor_running"
-    type: "bool"
-    initial: false
-    description: "Hydrotank 1 compressor status"
-    
-  # Hydrotank 2
-  - name: "hydrotank2.water_level"
-    type: "float"
-    initial: 50.0
-    description: "Hydrotank 2 water level (%)"
+    description: "Hydrotank 1 air blanket percentage"
     
   - name: "hydrotank2.air_blanket"
     type: "float"
     initial: 50.0
-    description: "Hydrotank 2 air blanket (%)"
+    description: "Hydrotank 2 air blanket percentage"
     
-  - name: "hydrotank2.compressor_running"
+  - name: "compressor1.running"
     type: "bool"
     initial: false
-    description: "Hydrotank 2 compressor status"
+    description: "Air compressor 1 running status"
+    
+  - name: "compressor2.running"
+    type: "bool"
+    initial: false
+    description: "Air compressor 2 running status"
     
   # Hydrotank Setpoints
   - name: "hydrotank.air_blanket_min"
@@ -399,7 +245,7 @@ signals:
     initial: 55.0
     description: "Maximum air blanket to stop compressor (%)"
     
-  # MISSING HYDROTANK SIGNALS ADDED
+  # Hydrotank Signals
   - name: "ht1.air_low"
     type: "bool"
     initial: false
@@ -447,30 +293,32 @@ signals:
     initial: 0.0
     description: "Constant zero value for flow calculations"
     
+  # Additional signals for SELECT block inputs
+  - name: "well.selector"
+    type: "integer"
+    initial: 0
+    description: "Selector for well flow rate (0=zero, 1=setpoint)"
+    
+  - name: "pump1.selector"
+    type: "integer"
+    initial: 0
+    description: "Selector for pump1 flow rate (0=zero, 1=setpoint)"
+    
+  - name: "pump2.selector"
+    type: "integer"
+    initial: 0
+    description: "Selector for pump2 flow rate (0=zero, 1=setpoint)"
+    
+  - name: "pump3.selector"
+    type: "integer"
+    initial: 0
+    description: "Selector for pump3 flow rate (0=zero, 1=setpoint)"
+    
+  # Other constants
   - name: "constants.hundred"
     type: "float"
     initial: 100.0
     description: "Constant hundred value for efficiency calculations"
-    
-  - name: "constants.one"
-    type: "float"
-    initial: 1.0
-    description: "Constant one value for calculations"
-    
-  - name: "constants.two"
-    type: "float"
-    initial: 2.0
-    description: "Constant two value for pump rotation"
-    
-  - name: "constants.three"
-    type: "float"
-    initial: 3.0
-    description: "Constant three value for pump rotation"
-    
-  - name: "constants.four"
-    type: "float"
-    initial: 4.0
-    description: "Constant four value for tank level percentage calculation"
     
   - name: "constants.five"
     type: "float"
@@ -497,6 +345,91 @@ signals:
     type: "float"
     initial: 0.0
     description: "Combined flow from pumps 1 and 2"
+    
+  - name: "pumps_12_any"
+    type: "bool"
+    initial: false
+    description: "Pump 1 or 2 running"
+    
+  - name: "lead1_running"
+    type: "bool"
+    initial: false
+    description: "Pump 1 running as lead"
+    
+  - name: "lead2_running"
+    type: "bool"
+    initial: false
+    description: "Pump 2 running as lead"
+    
+  - name: "lead3_running"
+    type: "bool"
+    initial: false
+    description: "Pump 3 running as lead"
+    
+  - name: "lead_12_any"
+    type: "bool"
+    initial: false
+    description: "Lead pump 1 or 2 running"
+    
+  - name: "pump1.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lead start request"
+    
+  - name: "pump1.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lag start request"
+    
+  - name: "pump1.start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 start request"
+    
+  - name: "pump1.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 1 start after delay"
+    
+  - name: "pump2.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 2 lead start request"
+    
+  - name: "pump2.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 2 lag start request"
+    
+  - name: "pump2.start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 2 start request"
+    
+  - name: "pump2.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 2 start after delay"
+    
+  - name: "pump3.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 3 lead start request"
+    
+  - name: "pump3.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 3 lag start request"
+    
+  - name: "pump3.start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 3 start request"
+    
+  - name: "pump3.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 3 start after delay"
 
 # ============================================================================
 # LOGIC BLOCKS
@@ -525,17 +458,22 @@ blocks:
     outputs:
       out: "well.stop_request"
       
-  # Well pump control latch (RS flip-flop behavior)
-  # This could be implemented as a custom block or using timers
-  # For now, we'll use the running signal directly from the HMI
-  
-  # Calculate well flow when running
+  # Convert well running state to selector index
+  - name: "well_selector_calc"
+    type: "ADD"  # Using ADD as a simple converter (bool to int)
+    inputs:
+      in1: "well.running"
+      in2: "constants.zero"
+    outputs:
+      out: "well.selector"
+      
+  # Calculate well flow when running using SELECT with integer selector
   - name: "well_flow_calc"
     type: "SELECT"
     inputs:
-      condition: "well.running"
-      true_value: "well.setpoint_flow"
-      false_value: "constants.zero"
+      selector: "well.selector"
+      in0: "constants.zero"        # When selector=0 (not running)
+      in1: "well.setpoint_flow"    # When selector=1 (running)
     outputs:
       out: "well.flow_rate"
       
@@ -578,36 +516,7 @@ blocks:
       out: "pressure.high_for_lag"
       
   # --------------------------------------------------------------------------
-  # LEAD PUMP DETERMINATION
-  # --------------------------------------------------------------------------
-  
-  # Check which pump is lead based on rotation counter
-  - name: "pump1_is_lead_check"
-    type: "EQ"
-    inputs:
-      in1: "lead.rotation_counter"
-      in2: "constants.one"
-    outputs:
-      out: "pump1.is_lead"
-      
-  - name: "pump2_is_lead_check"
-    type: "EQ"
-    inputs:
-      in1: "lead.rotation_counter"
-      in2: "constants.two"
-    outputs:
-      out: "pump2.is_lead"
-      
-  - name: "pump3_is_lead_check"
-    type: "EQ"
-    inputs:
-      in1: "lead.rotation_counter"
-      in2: "constants.three"
-    outputs:
-      out: "pump3.is_lead"
-      
-  # --------------------------------------------------------------------------
-  # PUMP START/STOP LOGIC
+  # PUMP START LOGIC
   # --------------------------------------------------------------------------
   
   # Pump 1 start conditions
@@ -635,47 +544,6 @@ blocks:
     outputs:
       out: "pump1.start_request"
       
-  # Pump 1 stop conditions
-  - name: "pump1_lead_stop"
-    type: "AND"
-    inputs:
-      in1: "pump1.is_lead"
-      in2: "pressure.high_for_lead"
-    outputs:
-      out: "pump1.lead_stop_request"
-      
-  - name: "pump1_lag_stop"
-    type: "AND"
-    inputs:
-      in1: "pressure.high_for_lag"
-      in2: "pump1.running"
-    outputs:
-      out: "pump1.lag_stop_request"
-  
-  - name: "pump1_not_lead"
-    type: "NOT"
-    inputs:
-      in: "pump1.is_lead"
-    outputs:
-      out: "pump1.is_lag"
-      
-  - name: "pump1_lag_stop_filter"
-    type: "AND"
-    inputs:
-      in1: "pump1.lag_stop_request"
-      in2: "pump1.is_lag"
-    outputs:
-      out: "pump1.filtered_lag_stop"
-      
-  - name: "pump1_stop_combine"
-    type: "OR"
-    inputs:
-      in1: "pump1.lead_stop_request"
-      in2: "pump1.filtered_lag_stop"
-    outputs:
-      out: "pump1.stop_request"
-      
-  # Pump 1 start delay timer (5 seconds for staging)
   - name: "pump1_start_timer"
     type: "ON_DELAY"
     inputs:
@@ -757,31 +625,56 @@ blocks:
   # PUMP FLOW CALCULATIONS
   # --------------------------------------------------------------------------
   
+  # Convert pump running states to selector indices
+  - name: "pump1_selector_calc"
+    type: "ADD"
+    inputs:
+      in1: "pump1.running"
+      in2: "constants.zero"
+    outputs:
+      out: "pump1.selector"
+      
+  - name: "pump2_selector_calc"
+    type: "ADD"
+    inputs:
+      in1: "pump2.running"
+      in2: "constants.zero"
+    outputs:
+      out: "pump2.selector"
+      
+  - name: "pump3_selector_calc"
+    type: "ADD"
+    inputs:
+      in1: "pump3.running"
+      in2: "constants.zero"
+    outputs:
+      out: "pump3.selector"
+  
   # Calculate flow for each pump when running
   - name: "pump1_flow_calc"
     type: "SELECT"
     inputs:
-      condition: "pump1.running"
-      true_value: "pump1.setpoint_flow"
-      false_value: "constants.zero"
+      selector: "pump1.selector"
+      in0: "constants.zero"
+      in1: "pump1.setpoint_flow"
     outputs:
       out: "pump1.flow_rate"
       
   - name: "pump2_flow_calc"
     type: "SELECT"
     inputs:
-      condition: "pump2.running"
-      true_value: "pump2.setpoint_flow"
-      false_value: "constants.zero"
+      selector: "pump2.selector"
+      in0: "constants.zero"
+      in1: "pump2.setpoint_flow"
     outputs:
       out: "pump2.flow_rate"
       
   - name: "pump3_flow_calc"
     type: "SELECT"
     inputs:
-      condition: "pump3.running"
-      true_value: "pump3.setpoint_flow"
-      false_value: "constants.zero"
+      selector: "pump3.selector"
+      in0: "constants.zero"
+      in1: "pump3.setpoint_flow"
     outputs:
       out: "pump3.flow_rate"
       
@@ -903,98 +796,87 @@ blocks:
       out: "ht2.air_high"
       
   # --------------------------------------------------------------------------
-  # ALARM GENERATION
+  # ALARMS
   # --------------------------------------------------------------------------
   
   # Tank level alarms
-  - name: "tank_low_alarm_check"
+  - name: "tank_low_alarm"
     type: "LT"
     inputs:
       in1: "tank.level_feet"
-      in2: "constants.five"  # 5 feet low alarm
+      in2: "constants.five"
     outputs:
       out: "alarm.tank_low"
       
-  - name: "tank_high_alarm_check"
+  - name: "tank_high_alarm"
     type: "GT"
     inputs:
       in1: "tank.level_feet"
-      in2: "constants.twenty_two_five"  # 22.5 feet high alarm (90%)
+      in2: "constants.twenty_two_five"
     outputs:
       out: "alarm.tank_high"
       
   # Pressure alarms
-  - name: "pressure_low_alarm_check"
+  - name: "pressure_low_alarm"
     type: "LT"
     inputs:
       in1: "system.pressure"
-      in2: "constants.forty"  # 40 psi low alarm
+      in2: "constants.forty"
     outputs:
       out: "alarm.pressure_low"
       
-  - name: "pressure_high_alarm_check"
+  - name: "pressure_high_alarm"
     type: "GT"
     inputs:
       in1: "system.pressure"
-      in2: "constants.eighty"  # 80 psi high alarm
+      in2: "constants.eighty"
     outputs:
       out: "alarm.pressure_high"
       
   # --------------------------------------------------------------------------
-  # TANK LEVEL CALCULATION
+  # TANK LEVEL PERCENTAGE CALCULATION
   # --------------------------------------------------------------------------
   
-  # Convert tank level feet to percentage
-  - name: "tank_level_to_percent"
-    type: "MUL"
+  - name: "tank_level_percent_calc"
+    type: "SCALE"
     inputs:
-      in1: "tank.level_feet"
-      in2: "constants.four"  # 25 feet = 100%, so multiply by 4
+      in: "tank.level_feet"
     outputs:
       out: "tank.level_percent"
+    params:
+      in_min: 0.0
+      in_max: 25.0    # 25 feet tank height
+      out_min: 0.0
+      out_max: 100.0  # Percentage
 
 # ============================================================================
-# MQTT CONFIGURATION (Optional)
+# PROTOCOL CONFIGURATIONS (Optional - requires protocol features)
 # ============================================================================
 
-mqtt:
-  host: "localhost"
-  port: 1883
-  client_id: "petra-water-plant"
-  username: null  # Optional: MQTT username
-  password: null  # Optional: MQTT password
-  keepalive_secs: 60
-  timeout_ms: 5000
-  use_tls: false
-  qos: 1
-  retain: false
-  subscribe_topics:
-    - "petra/water_plant/setpoints/+"
-  publish_topic_base: "petra/water_plant"
-  auto_reconnect: true
-  max_reconnect_attempts: 0  # 0 = unlimited
-  reconnect_delay_secs: 5
-
-# Note: The previous configuration used subscriptions/publications with detailed mappings.
-# The current PETRA implementation uses a simpler structure where:
-# - subscribe_topics: List of MQTT topics to subscribe to
-# - publish_topic_base: Base topic for publishing signals
-# 
-# Signal mapping is handled internally by the MQTT module based on topic patterns.
+# Example Modbus configuration (requires modbus-support feature)
+# protocols:
+#   - name: "tank_sensors"
+#     type: "modbus"
+#     config:
+#       host: "192.168.1.10"
+#       port: 502
+#       unit_id: 1
+#     tags:
+#       - address: 40001
+#         signal: "tank.level_feet"
+#         scale: 0.1
 
 # ============================================================================
-# HISTORY CONFIGURATION (Optional - requires history feature)
+# ALARM CONFIGURATIONS (Optional - requires alarms feature)
 # ============================================================================
 
-# history:
-#   backend: "parquet"
-#   retention_days: 30
-#   compression: "zstd"
-#   
-#   signals:
-#     - name: "tank.level_feet"
-#       interval_ms: 1000
-#     - name: "system.pressure"
-#       interval_ms: 1000
-#     - name: "pumps.total_flow"
-#       interval_ms: 1000
+# alarms:
+#   - name: "low_tank_alarm"
+#     signal: "alarm.tank_low"
+#     priority: "high"
+#     message: "Tank level critically low: {tank.level_feet} feet"
+#     actions:
+#       - type: "email"
+#         to: ["operator@waterplant.com"]
+#       - type: "sms"
+#         to: ["+1234567890"]
