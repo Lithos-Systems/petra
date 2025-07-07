@@ -22,6 +22,7 @@ import Toolbar from './components/Toolbar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import HMIDesigner from './components/hmi/HMIDesigner'
 import { FaProjectDiagram, FaDesktop } from 'react-icons/fa'
+import { PetraProvider } from './contexts/PetraContext'
 
 type DesignerMode = 'logic' | 'graphics'
 
@@ -234,9 +235,11 @@ function Flow() {
 function App() {
   return (
     <ErrorBoundary>
-      <ReactFlowProvider>
-        <Flow />
-      </ReactFlowProvider>
+      <PetraProvider>
+        <ReactFlowProvider>
+          <Flow />
+        </ReactFlowProvider>
+      </PetraProvider>
     </ErrorBoundary>
   )
 }
