@@ -59,6 +59,31 @@ const componentCategories: ComponentCategory[] = [
         icon: <FaCog className="w-6 h-6 text-blue-600" />,
         description: 'Electric motor with VFD'
       },
+      { 
+        type: 'mixer', 
+        label: 'Mixer', 
+        icon: <div className="w-6 h-6 border-2 border-gray-600 rounded-full relative">
+          <div className="absolute inset-0 flex items-center justify-center text-xs">M</div>
+        </div>,
+        description: 'Mixing vessel with agitator'
+      },
+      { 
+        type: 'heat-exchanger', 
+        label: 'Heat Exchanger', 
+        icon: <div className="w-8 h-6 border-2 border-gray-600 relative">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-1 h-full bg-gray-600 mx-px"></div>
+            <div className="w-1 h-full bg-gray-600 mx-px"></div>
+          </div>
+        </div>,
+        description: 'Plate heat exchanger'
+      },
+      { 
+        type: 'conveyor', 
+        label: 'Conveyor', 
+        icon: <FaGripLines className="w-6 h-6 text-gray-500" />,
+        description: 'Belt conveyor system'
+      },
     ]
   },
   {
