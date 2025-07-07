@@ -7,7 +7,7 @@ import TankComponent from './components/TankComponent'
 import PumpComponent from './components/PumpComponent'
 import ValveComponent from './components/ValveComponent'
 import GaugeComponent from './components/GaugeComponent'
-import { usePetraContext } from '../../contexts/PetraContext'
+import { usePetra } from '../../contexts/PetraContext'
 
 interface SimulationState {
   running: boolean
@@ -17,7 +17,7 @@ interface SimulationState {
 }
 
 export default function WaterPlantPetraDemo() {
-  const { signalBus, isConnected } = usePetraContext()
+  const { signalBus, isConnected } = usePetra()
   
   const [simulation, setSimulation] = useState<SimulationState>({
     running: true,
