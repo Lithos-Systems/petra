@@ -1,3 +1,5 @@
+// src/components/hmi/HMIToolbar.tsx
+
 import { 
   FaSave, 
   FaFileExport, 
