@@ -4,7 +4,7 @@ version: "1.0"
 
 # Optimized timing values - good balance of performance and stability
 scan_time_ms: 100        # 100ms scan time for stable operation
-max_scan_jitter_ms: 20   # 20% of scan time - good compromise
+max_scan_jitter_ms: 10   # 20% of scan time - good compromise
 error_recovery: true
 max_consecutive_errors: 10
 
