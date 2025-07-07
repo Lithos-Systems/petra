@@ -7,8 +7,527 @@ version: "1.0"
 # SYSTEM PARAMETERS
 # ============================================================================
 
-# Note: We're not setting engine parameters here - using defaults
-# The default scan_time_ms from command line or engine defaults will be used
+scan_time_ms: 100  # 100ms scan cycle for responsive control
+max_scan_jitter_ms: 25  # Maximum allowed jitter (25% of scan time)
+error_recovery: true
+max_consecutive_errors: 10
+  
+# ============================================================================
+# SIGNAL DEFINITIONS
+# ============================================================================
+
+signals:
+  # Tank Level Monitoring
+  - name: "tank.level_feet"
+    type: "float"
+    initial: 12.5  # 50% of 25ft tank
+    description: "Ground storage tank level in feet"
+    
+  - name: "tank.level_percent"
+    type: "float"
+    initial: 50.0
+    description: "Tank level percentage"
+    
+  # Well Pump Control
+  - name: "well.running"
+    type: "bool"
+    initial: false
+    description: "Well pump running status"
+    
+  - name: "well.flow_rate"
+    type: "float"
+    initial: 0.0
+    description: "Well pump flow rate (gpm)"
+    
+  - name: "well.setpoint_flow"
+    type: "float"
+    initial: 2000.0
+    description: "Well pump flow rate when running"
+    
+  # Well Pump Control Signals
+  - name: "well.start_request"
+    type: "bool"
+    initial: false
+    description: "Well pump start request signal"
+    
+  - name: "well.stop_request"
+    type: "bool"
+    initial: false
+    description: "Well pump stop request signal"
+    
+  # Well Pump Setpoints
+  - name: "well.start_level"
+    type: "float"
+    initial: 8.0
+    description: "Tank level to start well pump (feet)"
+    
+  - name: "well.stop_level"
+    type: "float"
+    initial: 20.0
+    description: "Tank level to stop well pump (feet)"
+    
+  # System Pressure
+  - name: "system.pressure"
+    type: "float"
+    initial: 60.0
+    description: "System pressure (psi)"
+    
+  - name: "system.demand"
+    type: "float"
+    initial: 2500.0
+    description: "System demand (gpm)"
+    
+  # Booster Pump 1
+  - name: "pump1.running"
+    type: "bool"
+    initial: false
+    description: "Pump 1 running status"
+    
+  - name: "pump1.flow_rate"
+    type: "float"
+    initial: 0.0
+    description: "Pump 1 actual flow (gpm)"
+    
+  - name: "pump1.setpoint_flow"
+    type: "float"
+    initial: 1500.0
+    description: "Pump 1 flow setpoint"
+    
+  - name: "pump1.efficiency"
+    type: "float"
+    initial: 85.0
+    description: "Pump 1 efficiency (%)"
+    
+  - name: "pump1.is_lead"
+    type: "bool"
+    initial: true
+    description: "Pump 1 is current lead pump"
+    
+  - name: "pump1.start_request"
+    type: "bool"
+    initial: false
+    description: "Start request for pump 1"
+    
+  - name: "pump1.stop_request"
+    type: "bool"
+    initial: false
+    description: "Stop request for pump 1"
+    
+  - name: "pump1.start_delay_active"
+    type: "bool"
+    initial: false
+    description: "Pump 1 start delay timer active"
+    
+  - name: "pump1.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lead start request"
+    
+  - name: "pump1.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lag start request"
+    
+  - name: "pump1.lead_stop_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lead stop request"
+    
+  - name: "pump1.lag_stop_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lag stop request"
+    
+  - name: "pump1.is_lag"
+    type: "bool"
+    initial: false
+    description: "Pump 1 is lag pump"
+    
+  - name: "pump1.filtered_lag_stop"
+    type: "bool"
+    initial: false
+    description: "Pump 1 filtered lag stop signal"
+    
+  - name: "pump1.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 1 start with delay applied"
+    
+  - name: "pump1.eff_factor"
+    type: "float"
+    initial: 0.85
+    description: "Pump 1 efficiency factor"
+    
+  - name: "pump1.flow_with_eff"
+    type: "float"
+    initial: 0.0
+    description: "Pump 1 flow with efficiency applied"
+    
+  # Booster Pump 2
+  - name: "pump2.running"
+    type: "bool"
+    initial: false
+    description: "Pump 2 running status"
+    
+  - name: "pump2.flow_rate"
+    type: "float"
+    initial: 0.0
+    description: "Pump 2 actual flow (gpm)"
+    
+  - name: "pump2.setpoint_flow"
+    type: "float"
+    initial: 1500.0
+    description: "Pump 2 flow setpoint"
+    
+  - name: "pump2.efficiency"
+    type: "float"
+    initial: 85.0
+    description: "Pump 2 efficiency (%)"
+    
+  - name: "pump2.is_lead"
+    type: "bool"
+    initial: false
+    description: "Pump 2 is current lead pump"
+    
+  - name: "pump2.start_request"
+    type: "bool"
+    initial: false
+    description: "Start request for pump 2"
+    
+  - name: "pump2.stop_request"
+    type: "bool"
+    initial: false
+    description: "Stop request for pump 2"
+    
+  - name: "pump2.start_delay_active"
+    type: "bool"
+    initial: false
+    description: "Pump 2 start delay timer active"
+    
+  - name: "pump2.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 2 lead start request"
+    
+  - name: "pump2.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 2 lag start request"
+    
+  - name: "pump2.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 2 start with delay applied"
+    
+  - name: "pump2.eff_factor"
+    type: "float"
+    initial: 0.85
+    description: "Pump 2 efficiency factor"
+    
+  - name: "pump2.flow_with_eff"
+    type: "float"
+    initial: 0.0
+    description: "Pump 2 flow with efficiency applied"
+    
+  # Booster Pump 3
+  - name: "pump3.running"
+    type: "bool"
+    initial: false
+    description: "Pump 3 running status"
+    
+  - name: "pump3.flow_rate"
+    type: "float"
+    initial: 0.0
+    description: "Pump 3 actual flow (gpm)"
+    
+  - name: "pump3.setpoint_flow"
+    type: "float"
+    initial: 2000.0
+    description: "Pump 3 flow setpoint"
+    
+  - name: "pump3.efficiency"
+    type: "float"
+    initial: 90.0
+    description: "Pump 3 efficiency (%)"
+    
+  - name: "pump3.is_lead"
+    type: "bool"
+    initial: false
+    description: "Pump 3 is current lead pump"
+    
+  - name: "pump3.start_request"
+    type: "bool"
+    initial: false
+    description: "Start request for pump 3"
+    
+  - name: "pump3.stop_request"
+    type: "bool"
+    initial: false
+    description: "Stop request for pump 3"
+    
+  - name: "pump3.start_delay_active"
+    type: "bool"
+    initial: false
+    description: "Pump 3 start delay timer active"
+    
+  - name: "pump3.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 3 lead start request"
+    
+  - name: "pump3.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 3 lag start request"
+    
+  - name: "pump3.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 3 start with delay applied"
+    
+  - name: "pump3.eff_factor"
+    type: "float"
+    initial: 0.90
+    description: "Pump 3 efficiency factor"
+    
+  - name: "pump3.flow_with_eff"
+    type: "float"
+    initial: 0.0
+    description: "Pump 3 flow with efficiency applied"
+    
+  # Pressure Setpoints
+  - name: "pressure.lead_start"
+    type: "float"
+    initial: 55.0
+    description: "Pressure to start lead pump (psi)"
+    
+  - name: "pressure.lead_stop"
+    type: "float"
+    initial: 65.0
+    description: "Pressure to stop lead pump (psi)"
+    
+  - name: "pressure.lag_start"
+    type: "float"
+    initial: 50.0
+    description: "Pressure to start lag pumps (psi)"
+    
+  - name: "pressure.lag_stop"
+    type: "float"
+    initial: 70.0
+    description: "Pressure to stop lag pumps (psi)"
+    
+  # Pump Control Logic Signals
+  - name: "pumps.any_running"
+    type: "bool"
+    initial: false
+    description: "Any booster pump running"
+    
+  - name: "pumps.lead_running"
+    type: "bool"
+    initial: false
+    description: "Lead pump is running"
+    
+  - name: "pumps.total_flow"
+    type: "float"
+    initial: 0.0
+    description: "Total flow from all pumps"
+    
+  - name: "pressure.low_for_lead"
+    type: "bool"
+    initial: false
+    description: "Pressure low enough to start lead"
+    
+  - name: "pressure.high_for_lead"
+    type: "bool"
+    initial: false
+    description: "Pressure high enough to stop lead"
+    
+  - name: "pressure.low_for_lag"
+    type: "bool"
+    initial: false
+    description: "Pressure low enough to start lag"
+    
+  - name: "pressure.high_for_lag"
+    type: "bool"
+    initial: false
+    description: "Pressure high enough to stop lag"
+    
+  - name: "pressure.fault"
+    type: "bool"
+    initial: false
+    description: "Pressure alarm condition"
+    
+  # Intermediate pump signals
+  - name: "pumps_12_any"
+    type: "bool"
+    initial: false
+    description: "Either pump 1 or 2 is running"
+    
+  - name: "pump_flow_partial"
+    type: "float"
+    initial: 0.0
+    description: "Combined flow from pumps 1 and 2"
+    
+  - name: "lead1_running"
+    type: "bool"
+    initial: false
+    description: "Pump 1 running as lead"
+    
+  - name: "lead2_running"
+    type: "bool"
+    initial: false
+    description: "Pump 2 running as lead"
+    
+  - name: "lead3_running"
+    type: "bool"
+    initial: false
+    description: "Pump 3 running as lead"
+    
+  - name: "lead_12_any"
+    type: "bool"
+    initial: false
+    description: "Either pump 1 or 2 running as lead"
+    
+  # Lead/Lag Control
+  - name: "lead.rotation_counter"
+    type: "float"
+    initial: 1.0
+    description: "Current lead pump number"
+    
+  # Hydrotank 1
+  - name: "hydrotank1.water_level"
+    type: "float"
+    initial: 50.0
+    description: "Hydrotank 1 water level (%)"
+    
+  - name: "hydrotank1.air_blanket"
+    type: "float"
+    initial: 50.0
+    description: "Hydrotank 1 air blanket (%)"
+    
+  - name: "hydrotank1.compressor_running"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 1 compressor status"
+    
+  # Hydrotank 2
+  - name: "hydrotank2.water_level"
+    type: "float"
+    initial: 50.0
+    description: "Hydrotank 2 water level (%)"
+    
+  - name: "hydrotank2.air_blanket"
+    type: "float"
+    initial: 50.0
+    description: "Hydrotank 2 air blanket (%)"
+    
+  - name: "hydrotank2.compressor_running"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 2 compressor status"
+    
+  # Hydrotank Setpoints
+  - name: "hydrotank.air_blanket_min"
+    type: "float"
+    initial: 45.0
+    description: "Minimum air blanket to start compressor (%)"
+    
+  - name: "hydrotank.air_blanket_max"
+    type: "float"
+    initial: 55.0
+    description: "Maximum air blanket to stop compressor (%)"
+    
+  - name: "ht1.air_low"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 1 air blanket low condition"
+    
+  - name: "ht1.air_high"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 1 air blanket high condition"
+    
+  - name: "ht2.air_low"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 2 air blanket low condition"
+    
+  - name: "ht2.air_high"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 2 air blanket high condition"
+    
+  # Alarms
+  - name: "alarm.tank_low"
+    type: "bool"
+    initial: false
+    description: "Tank low level alarm"
+    
+  - name: "alarm.tank_high"
+    type: "bool"
+    initial: false
+    description: "Tank high level alarm"
+    
+  - name: "alarm.pressure_low"
+    type: "bool"
+    initial: false
+    description: "System low pressure alarm"
+    
+  - name: "alarm.pressure_high"
+    type: "bool"
+    initial: false
+    description: "System high pressure alarm"
+
+  # Constant values for comparisons and calculations
+  - name: "constants.zero"
+    type: "float"
+    initial: 0.0
+    description: "Constant zero for SELECT blocks"
+    
+  - name: "constants.one"
+    type: "float"
+    initial: 1.0
+    description: "Constant one for pump 1 comparison"
+    
+  - name: "constants.two"
+    type: "float"
+    initial: 2.0
+    description: "Constant two for pump 2 comparison"
+    
+  - name: "constants.three"
+    type: "float"
+    initial: 3.0
+    description: "Constant three for pump 3 comparison"
+    
+  - name: "constants.four"
+    type: "float"
+    initial: 4.0
+    description: "Multiplier for tank level percentage"
+    
+  - name: "constants.five"
+    type: "float"
+    initial: 5.0
+    description: "Tank low alarm level (feet)"
+    
+  - name: "constants.twenty_two_five"
+    type: "float"
+    initial: 22.5
+    description: "Tank high alarm level (feet)"
+    
+  - name: "constants.forty"
+    type: "float"
+    initial: 40.0
+    description: "Pressure low alarm (psi)"
+    
+  - name: "constants.eighty"
+    type: "float"
+    initial: 80.0
+    description: "Pressure high alarm (psi)"
+    
+  - name: "constants.hundred"
+    type: "float"
+    initial: 100.0
+    description: "Constant 100 for efficiency calculations"
   
 # ============================================================================
 # SIGNAL DEFINITIONS
