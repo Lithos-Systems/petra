@@ -42,6 +42,17 @@ signals:
     initial: 2000.0
     description: "Well pump flow rate when running"
     
+  # Well Pump Control Signals - MISSING SIGNALS ADDED
+  - name: "well.start_request"
+    type: "bool"
+    initial: false
+    description: "Well pump start request signal"
+    
+  - name: "well.stop_request"
+    type: "bool"
+    initial: false
+    description: "Well pump stop request signal"
+    
   # Well Pump Setpoints
   - name: "well.start_level"
     type: "float"
@@ -105,6 +116,42 @@ signals:
     initial: false
     description: "Pump 1 start delay timer active"
     
+  # MISSING PUMP 1 SIGNALS ADDED
+  - name: "pump1.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lead start request"
+    
+  - name: "pump1.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lag start request"
+    
+  - name: "pump1.lead_stop_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lead stop request"
+    
+  - name: "pump1.lag_stop_request"
+    type: "bool"
+    initial: false
+    description: "Pump 1 lag stop request"
+    
+  - name: "pump1.is_lag"
+    type: "bool"
+    initial: false
+    description: "Pump 1 is lag pump"
+    
+  - name: "pump1.filtered_lag_stop"
+    type: "bool"
+    initial: false
+    description: "Pump 1 filtered lag stop signal"
+    
+  - name: "pump1.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 1 start with delay applied"
+    
   # Booster Pump 2
   - name: "pump2.running"
     type: "bool"
@@ -146,6 +193,22 @@ signals:
     initial: false
     description: "Pump 2 start delay timer active"
     
+  # MISSING PUMP 2 SIGNALS ADDED
+  - name: "pump2.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 2 lead start request"
+    
+  - name: "pump2.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 2 lag start request"
+    
+  - name: "pump2.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 2 start with delay applied"
+    
   # Booster Pump 3
   - name: "pump3.running"
     type: "bool"
@@ -186,6 +249,22 @@ signals:
     type: "bool"
     initial: false
     description: "Pump 3 start delay timer active"
+    
+  # MISSING PUMP 3 SIGNALS ADDED
+  - name: "pump3.lead_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 3 lead start request"
+    
+  - name: "pump3.lag_start_request"
+    type: "bool"
+    initial: false
+    description: "Pump 3 lag start request"
+    
+  - name: "pump3.start_delayed"
+    type: "bool"
+    initial: false
+    description: "Pump 3 start with delay applied"
     
   # Pressure Setpoints
   - name: "pressure.lead_start"
@@ -244,6 +323,32 @@ signals:
     initial: false
     description: "Pressure high enough to stop lag"
     
+  # MISSING INTERMEDIATE PUMP SIGNALS ADDED
+  - name: "pumps_12_any"
+    type: "bool"
+    initial: false
+    description: "Either pump 1 or 2 is running"
+    
+  - name: "lead1_running"
+    type: "bool"
+    initial: false
+    description: "Pump 1 running as lead"
+    
+  - name: "lead2_running"
+    type: "bool"
+    initial: false
+    description: "Pump 2 running as lead"
+    
+  - name: "lead3_running"
+    type: "bool"
+    initial: false
+    description: "Pump 3 running as lead"
+    
+  - name: "lead_12_any"
+    type: "bool"
+    initial: false
+    description: "Either pump 1 or 2 running as lead"
+    
   # Lead/Lag Control
   - name: "lead.rotation_counter"
     type: "float"
@@ -292,6 +397,27 @@ signals:
     type: "float"
     initial: 55.0
     description: "Maximum air blanket to stop compressor (%)"
+    
+  # MISSING HYDROTANK SIGNALS ADDED
+  - name: "ht1.air_low"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 1 air blanket low condition"
+    
+  - name: "ht1.air_high"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 1 air blanket high condition"
+    
+  - name: "ht2.air_low"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 2 air blanket low condition"
+    
+  - name: "ht2.air_high"
+    type: "bool"
+    initial: false
+    description: "Hydrotank 2 air blanket high condition"
     
   # Alarms
   - name: "alarm.tank_low"
@@ -467,7 +593,7 @@ blocks:
       in2: "pump1.running"
     outputs:
       out: "pump1.lag_stop_request"
-      
+  
   - name: "pump1_not_lead"
     type: "NOT"
     inputs:
@@ -573,102 +699,57 @@ blocks:
   # PUMP FLOW CALCULATIONS
   # --------------------------------------------------------------------------
   
-  # Calculate pump 1 actual flow
-  - name: "pump1_efficiency_factor"
-    type: "DIV"
-    inputs:
-      in1: "pump1.efficiency"
-      in2: "100.0"
-    outputs:
-      out: "pump1.eff_factor"
-      
-  - name: "pump1_flow_with_eff"
-    type: "MUL"
-    inputs:
-      in1: "pump1.setpoint_flow"
-      in2: "pump1.eff_factor"
-    outputs:
-      out: "pump1.flow_with_eff"
-      
+  # Calculate flow for each pump when running
   - name: "pump1_flow_calc"
     type: "SELECT"
     inputs:
       condition: "pump1.running"
-      true_value: "pump1.flow_with_eff"
+      true_value: "pump1.setpoint_flow"
       false_value: "0.0"
     outputs:
       out: "pump1.flow_rate"
-      
-  # Similar calculations for pumps 2 and 3
-  - name: "pump2_efficiency_factor"
-    type: "DIV"
-    inputs:
-      in1: "pump2.efficiency"
-      in2: "100.0"
-    outputs:
-      out: "pump2.eff_factor"
-      
-  - name: "pump2_flow_with_eff"
-    type: "MUL"
-    inputs:
-      in1: "pump2.setpoint_flow"
-      in2: "pump2.eff_factor"
-    outputs:
-      out: "pump2.flow_with_eff"
       
   - name: "pump2_flow_calc"
     type: "SELECT"
     inputs:
       condition: "pump2.running"
-      true_value: "pump2.flow_with_eff"
+      true_value: "pump2.setpoint_flow"
       false_value: "0.0"
     outputs:
       out: "pump2.flow_rate"
-      
-  - name: "pump3_efficiency_factor"
-    type: "DIV"
-    inputs:
-      in1: "pump3.efficiency"
-      in2: "100.0"
-    outputs:
-      out: "pump3.eff_factor"
-      
-  - name: "pump3_flow_with_eff"
-    type: "MUL"
-    inputs:
-      in1: "pump3.setpoint_flow"
-      in2: "pump3.eff_factor"
-    outputs:
-      out: "pump3.flow_with_eff"
       
   - name: "pump3_flow_calc"
     type: "SELECT"
     inputs:
       condition: "pump3.running"
-      true_value: "pump3.flow_with_eff"
+      true_value: "pump3.setpoint_flow"
       false_value: "0.0"
     outputs:
       out: "pump3.flow_rate"
       
-  # Total pump flow calculation
-  - name: "pump_flow_12"
+  # Calculate total pump flow
+  - name: "pump_12_flow"
     type: "ADD"
     inputs:
       in1: "pump1.flow_rate"
       in2: "pump2.flow_rate"
     outputs:
-      out: "pump_flow_partial"
+      out: "pump_12_total"
       
-  - name: "pump_flow_total"
+  - name: "total_pump_flow"
     type: "ADD"
     inputs:
-      in1: "pump_flow_partial"
+      in1: "pump_12_total"
       in2: "pump3.flow_rate"
     outputs:
       out: "pumps.total_flow"
       
-  # Any pump running check
-  - name: "pumps_12_running"
+  # --------------------------------------------------------------------------
+  # PUMP STATUS MONITORING
+  # --------------------------------------------------------------------------
+  
+  # Check if any pumps are running
+  - name: "pumps_12_check"
     type: "OR"
     inputs:
       in1: "pump1.running"
