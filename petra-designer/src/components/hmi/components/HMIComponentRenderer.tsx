@@ -1,3 +1,5 @@
+// src/components/hmi/components/HMIComponentRenderer.tsx
+
 import { Group, Rect, Circle, Text, RegularPolygon, Transformer } from 'react-konva'
 import { useEffect, useRef } from 'react'
 import type { HMIComponent } from '@/types/hmi'
@@ -7,6 +9,9 @@ import ValveComponent from './ValveComponent'
 import GaugeComponent from './GaugeComponent'
 import TrendComponent from './TrendComponent'
 import ButtonComponent from './ButtonComponent'
+import HeatExchangerComponent from './HeatExchangerComponent'
+import ConveyorComponent from './ConveyorComponent'
+import MixerComponent from './MixerComponent'
 
 interface HMIComponentRendererProps {
   component: HMIComponent
@@ -139,6 +144,36 @@ export function HMIComponentRenderer({
             bindings={component.bindings}
             style={component.style}
             interactions={component.interactions}
+          />
+        )
+
+      case 'heat-exchanger':
+        return (
+          <HeatExchangerComponent
+            {...commonProps}
+            properties={component.properties}
+            bindings={component.bindings}
+            style={component.style}
+          />
+        )
+
+      case 'conveyor':
+        return (
+          <ConveyorComponent
+            {...commonProps}
+            properties={component.properties}
+            bindings={component.bindings}
+            style={component.style}
+          />
+        )
+
+      case 'mixer':
+        return (
+          <MixerComponent
+            {...commonProps}
+            properties={component.properties}
+            bindings={component.bindings}
+            style={component.style}
           />
         )
 
