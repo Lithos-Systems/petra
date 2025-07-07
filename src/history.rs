@@ -353,6 +353,7 @@ impl HistoryManager {
         Ok(())
     }
     
+    #[allow(dead_code)]
     async fn cleanup_old_files(config: &HistoryConfig) -> Result<()> {
         let cutoff = Utc::now() - Duration::days(config.retention_days as i64);
         let mut dir_entries = tokio::fs::read_dir(&config.data_dir).await?;
