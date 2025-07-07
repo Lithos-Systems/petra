@@ -307,6 +307,26 @@ export default function WaterPlantDemo() {
         const newLevelPercent = (newLevel / prev.tankCapacity) * 100
         const newLevelFeet = (newLevelPercent / 100) * prev.tankHeight
         
+        // Calculate target pressure based on pump capacity vs demand
+        let targetSystemPressure = 0
+        const runningPumps = updatedPumps.filter(p => p.running)
+        
+        if (runningPumps.length > 0 && totalPumpOutput > 0) {
+          // Base pressure when supply meets demand
+          const basePressure = 60
+          
+          // Calculate supply/demand ratio
+          const supplyDemandRatio = totalPumpOutput / prev.demand
+          
+          if (supplyDemandRatio >= 1) {
+            // Excess capacity increases pressure (up to max 100 psi)
+            targetSystemPressure = Math.min(100, basePressure + (supplyDemandRatio - 1) * 20)
+          } else {
+            // Insufficient capacity decreases pressure
+            targetSystemPressure = basePressure * supplyDemandRatio
+          }
+        }
+        
         // Update hydrotanks
         const totalHydrotankCapacity = prev.hydrotanks.reduce((sum, ht) => sum + ht.capacity, 0)
         const netSystemFlow = totalPumpOutput - prev.demand // Net flow into hydrotanks
@@ -336,42 +356,35 @@ export default function WaterPlantDemo() {
             newAirBlanket = 100 - newWaterPercent
           }
           
-          // Calculate pressure based on air blanket (simplified model)
-          // More air = higher pressure capability
-          const basePressure = prev.systemPressure
-          const airEffect = (newAirBlanket / 50) * 10 // +/- 10 psi variation
-          const htPressure = Math.round(basePressure + airEffect - 10)
-          
           return {
             ...ht,
             waterLevel: newWaterLevel,
             waterLevelPercent: newWaterPercent,
             airBlanketPercent: newAirBlanket,
-            pressure: htPressure,
+            pressure: 0, // Will be set to system pressure
             compressorRunning,
           }
         })
         
-        // Calculate system pressure with hydrotank buffering
-        const runningPumps = updatedPumps.filter(p => p.running)
-        let newPressure = 0
+        // Apply hydrotank dampening to pressure changes
+        // Hydrotanks slow down pressure changes but don't affect the target
+        const pressureChangeRate = 0.1 // 10% change per time step
+        let newPressure = prev.systemPressure
         
-        if (runningPumps.length > 0) {
-          const avgPumpPressure = runningPumps.reduce((sum, p) => sum + p.pressure, 0) / runningPumps.length
-          const avgHydrotankPressure = updatedHydrotanks.reduce((sum, ht) => sum + ht.pressure, 0) / updatedHydrotanks.length
-          
-          // Hydrotanks provide pressure buffering
-          newPressure = (avgPumpPressure * 0.7 + avgHydrotankPressure * 0.3)
-          
-          // Demand effect on pressure
-          const demandRatio = prev.demand / totalPumpOutput
-          if (demandRatio > 1) {
-            newPressure *= Math.max(0.5, 1 - (demandRatio - 1) * 0.2)
-          }
+        if (targetSystemPressure > prev.systemPressure) {
+          newPressure = Math.min(targetSystemPressure, prev.systemPressure + (targetSystemPressure - prev.systemPressure) * pressureChangeRate)
         } else {
-          // System pressure from hydrotanks only
-          newPressure = updatedHydrotanks.reduce((sum, ht) => sum + ht.pressure, 0) / updatedHydrotanks.length
+          newPressure = Math.max(targetSystemPressure, prev.systemPressure - (prev.systemPressure - targetSystemPressure) * pressureChangeRate)
         }
+        
+        // Ensure pressure stays within bounds
+        newPressure = Math.max(0, Math.min(100, newPressure))
+        
+        // Update hydrotank pressures to match system
+        const finalHydrotanks = updatedHydrotanks.map(ht => ({
+          ...ht,
+          pressure: Math.round(newPressure)
+        }))
         
         // Check alarms
         const { updatedPumps: alarmedPumps, newAlarms } = checkAlarms({
@@ -387,7 +400,7 @@ export default function WaterPlantDemo() {
           ...prev,
           wellRunning,
           boosterPumps: alarmedPumps,
-          hydrotanks: updatedHydrotanks,
+          hydrotanks: finalHydrotanks,
           tankLevel: newLevel,
           tankLevelPercent: newLevelPercent,
           tankLevelFeet: newLevelFeet,
