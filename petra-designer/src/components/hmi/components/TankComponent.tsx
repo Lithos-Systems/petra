@@ -1,6 +1,22 @@
+// src/components/hmi/components/TankComponent.tsx
+
 import { useEffect, useState, useRef } from 'react'
 import { Group, Rect, Text, Line, Shape } from 'react-konva'
 import type { TankProperties } from '@/types/hmi'
+
+// Helper function to adjust color brightness
+function adjustColor(color: string, factor: number): string {
+  const hex = color.replace('#', '')
+  const r = parseInt(hex.substr(0, 2), 16)
+  const g = parseInt(hex.substr(2, 2), 16)
+  const b = parseInt(hex.substr(4, 2), 16)
+  
+  return `#${[r, g, b]
+    .map(c => Math.round(c * factor))
+    .map(c => Math.min(255, c))
+    .map(c => c.toString(16).padStart(2, '0'))
+    .join('')}`
+}
 
 interface TankComponentProps {
   id: string
@@ -85,12 +101,31 @@ export default function TankComponent({
     return properties.liquidColor || '#4488ff'
   }
 
-  // Wave animation for liquid surface
+  // Enhanced wave animation for liquid surface
+  const [waveOffset, setWaveOffset] = useState(0)
+  const waveAnimationRef = useRef<any>()
+  
+  useEffect(() => {
+    if (properties.showWaveAnimation) {
+      const animate = () => {
+        setWaveOffset(prev => prev + 0.05)
+        waveAnimationRef.current = requestAnimationFrame(animate)
+      }
+      waveAnimationRef.current = requestAnimationFrame(animate)
+    }
+    
+    return () => {
+      if (waveAnimationRef.current) {
+        cancelAnimationFrame(waveAnimationRef.current)
+      }
+    }
+  }, [properties.showWaveAnimation])
+  
   const wavePoints = []
-  const waveAmplitude = 3
+  const waveAmplitude = Math.min(5, (animatedLevel / 100) * 8)
   const waveFrequency = 0.02
   for (let i = 0; i <= width; i += 2) {
-    const waveY = Math.sin((i + Date.now() * 0.001) * waveFrequency) * waveAmplitude
+    const waveY = Math.sin((i * waveFrequency) + waveOffset) * waveAmplitude
     wavePoints.push(i, waveY)
   }
 
@@ -151,14 +186,20 @@ export default function TankComponent({
         ctx.lineTo(width - 2, 2)
         ctx.closePath()
       }}>
-        {/* Liquid */}
+        {/* Gradient liquid fill */}
         <Rect
           x={2}
           y={fillY}
           width={width - 4}
-          height={fillHeight + 10} // Extra height for wave animation
-          fill={getLiquidColor()}
-          opacity={0.8}
+          height={fillHeight + 10}
+          fillLinearGradientStartPoint={{ x: 0, y: 0 }}
+          fillLinearGradientEndPoint={{ x: 0, y: fillHeight }}
+          fillLinearGradientColorStops={[
+            0, getLiquidColor(),
+            0.5, adjustColor(getLiquidColor(), 0.8),
+            1, adjustColor(getLiquidColor(), 0.6)
+          ]}
+          opacity={0.9}
         />
 
         {/* Wave animation on surface */}
