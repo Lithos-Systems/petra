@@ -49,6 +49,10 @@ export default function HMIToolbar({
     selectedComponentId,
     alignComponents,
     duplicateComponent,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useHMIStore()
 
   const handleSave = () => {
@@ -147,16 +151,26 @@ export default function HMIToolbar({
           <div className="w-px h-6 bg-gray-300 mx-1" />
           
           <button
-            className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+            onClick={undo}
+            className={`p-2 rounded transition-colors ${
+              canUndo() 
+                ? 'text-gray-600 hover:text-gray-800 hover:bg-gray-100' 
+                : 'text-gray-400 cursor-not-allowed'
+            }`}
             title="Undo"
-            disabled
+            disabled={!canUndo()}
           >
             <FaUndo className="w-4 h-4" />
           </button>
           <button
-            className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+            onClick={redo}
+            className={`p-2 rounded transition-colors ${
+              canRedo() 
+                ? 'text-gray-600 hover:text-gray-800 hover:bg-gray-100' 
+                : 'text-gray-400 cursor-not-allowed'
+            }`}
             title="Redo"
-            disabled
+            disabled={!canRedo()}
           >
             <FaRedo className="w-4 h-4" />
           </button>
