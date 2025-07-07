@@ -17,7 +17,7 @@ export default function HMIPreviewModal({ isOpen, onClose }: HMIPreviewModalProp
   const { components: storeComponents, currentDisplay } = useHMIStore()
   const [components, setComponents] = useState<HMIComponent[]>([])
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const { signals, connected } = usePetra()
+  const { signals, connected, subscribeSignal, unsubscribeSignal } = usePetra()
   
   // Copy components for preview (no editing)
   useEffect(() => {
