@@ -257,7 +257,6 @@ export default function WaterPlantDemo() {
         // Round-robin lead/lag pump control
         let currentLeadPump = prev.currentLeadPump
         const leadPump = prev.boosterPumps.find(p => p.pumpNumber === currentLeadPump)
-        const runningPumps = prev.boosterPumps.filter(p => p.running)
         
         let updatedPumps = [...prev.boosterPumps]
         
