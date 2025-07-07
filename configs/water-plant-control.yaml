@@ -7,8 +7,10 @@ version: "1.0"
 # SYSTEM PARAMETERS
 # ============================================================================
 
-engine:
-  scan_time_ms: 100  # 100ms scan cycle for responsive control
+scan_time_ms: 100  # 100ms scan cycle for responsive control
+max_scan_jitter_ms: 50  # Maximum allowed jitter (50% of scan time)
+error_recovery: true
+max_consecutive_errors: 10
   
 # ============================================================================
 # SIGNAL DEFINITIONS
