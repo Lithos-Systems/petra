@@ -1601,6 +1601,19 @@ fn default_table_prefix() -> String { "petra_".to_string() }
 const fn default_pool_size() -> u32 { 10 }
 fn default_s3_prefix() -> String { "petra/".to_string() }
 
+/// Calculate a recommended jitter limit based on the scan time and environment.
+///
+/// This helper provides conservative defaults that can be used when generating
+/// new configurations programmatically.
+pub fn recommended_jitter_limit(scan_time_ms: u64, environment: &str) -> u64 {
+    match environment {
+        "production" | "realtime" => scan_time_ms / 10,
+        "staging" => scan_time_ms / 5,
+        "development" => scan_time_ms / 4,
+        _ => scan_time_ms / 8,
+    }
+}
+
 // Alarm defaults
 fn default_alarm_severity() -> String { "warning".to_string() }
 const fn default_ack_timeout() -> u64 { 3600 }
@@ -1868,10 +1881,26 @@ impl Config {
         }
         
         // Jitter validation
+        // Allow jitter equal to scan time but warn about potential timing issues
         if self.max_scan_jitter_ms > self.scan_time_ms {
             return Err(PlcError::Config(
                 "Maximum jitter cannot exceed scan time".to_string()
             ));
+        }
+
+        if self.max_scan_jitter_ms == self.scan_time_ms {
+            warn!(
+                "Maximum jitter equals scan time ({}ms) - timing stability may be affected",
+                self.scan_time_ms
+            );
+        }
+
+        if self.max_scan_jitter_ms > self.scan_time_ms / 2 {
+            warn!(
+                "Maximum jitter ({}ms) is more than 50% of scan time ({}ms) - consider reducing",
+                self.max_scan_jitter_ms,
+                self.scan_time_ms
+            );
         }
         
         // Error handling validation
@@ -3051,6 +3080,31 @@ mod tests {
         };
 
         let _options = config.connection_options();
+    }
+
+    #[test]
+    fn test_jitter_validation_edge_cases() {
+        let mut config = Config::example_basic().unwrap();
+
+        // jitter < scan_time should pass
+        config.scan_time_ms = 100;
+        config.max_scan_jitter_ms = 50;
+        assert!(config.validate_engine_settings().is_ok());
+
+        // jitter == scan_time should pass
+        config.max_scan_jitter_ms = 100;
+        assert!(config.validate_engine_settings().is_ok());
+
+        // jitter > scan_time should fail
+        config.max_scan_jitter_ms = 150;
+        assert!(config.validate_engine_settings().is_err());
+    }
+
+    #[test]
+    fn test_recommended_jitter_limits() {
+        assert_eq!(recommended_jitter_limit(100, "production"), 10);
+        assert_eq!(recommended_jitter_limit(100, "development"), 25);
+        assert_eq!(recommended_jitter_limit(50, "realtime"), 5);
     }
 }
 
