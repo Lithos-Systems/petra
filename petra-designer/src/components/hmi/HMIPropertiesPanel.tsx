@@ -1,4 +1,135 @@
-// src/components/hmi/HMIPropertiesPanel.tsx
+const renderAnimationsTab = () => {
+    const addAnimation = () => {
+      const newAnimation: Animation = {
+        id: Date.now().toString(),
+        property: 'rotation',
+        trigger: {
+          type: 'signal',
+          signal: '',
+          condition: 'equals',
+          value: true
+        },
+        animation: {
+          from: 0,
+          to: 360,
+          duration: 2000,
+          easing: 'linear',
+          repeat: true
+        }
+      }
+      onUpdate({
+        animations: [...component.animations, newAnimation]
+      })
+    }
+
+    const updateAnimation = (index: number, updates: Partial<Animation>) => {
+      const newAnimations = [...component.animations]
+      newAnimations[index] = { ...newAnimations[index], ...updates }
+      onUpdate({ animations: newAnimations })
+    }
+
+    const removeAnimation = (index: number) => {
+      onUpdate({
+        animations: component.animations.filter((_, i) => i !== index)
+      })
+    }
+
+    return (
+      <div className="space-y-3">
+        <div className="flex justify-between items-center mb-2">
+          <h4 className="text-sm font-medium text-gray-700">Animations</h4>
+          <button
+            onClick={addAnimation}
+            className="text-petra-600 hover:text-petra-700 p-1"
+          >
+            <FaPlus className="w-4 h-4" />
+          </button>
+        </div>
+
+        {component.animations.map((animation, index) => (
+          <div key={animation.id} className="p-3 bg-gray-50 rounded-md space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Animation {index + 1}</span>
+              <button
+                onClick={() => removeAnimation(index)}
+                className="text-red-500 hover:text-red-600 p-1"
+              >
+                <FaTimes className="w-3 h-3" />
+              </button>
+            </div>
+
+            <select
+              value={animation.property}
+              onChange={(e) => updateAnimation(index, { 
+                ...animation,
+                property: e.target.value 
+              })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+            >
+              <option value="rotation">Rotation</option>
+              <option value="opacity">Opacity</option>
+              <option value="scale">Scale</option>
+              <option value="x">X Position</option>
+              <option value="y">Y Position</option>
+            </select>
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                placeholder="From"
+                value={animation.animation.from}
+                onChange={(e) => updateAnimation(index, {
+                  ...animation,
+                  animation: { ...animation.animation, from: parseFloat(e.target.value) }
+                })}
+                className="px-2 py-1 text-sm border border-gray-300 rounded"
+              />
+              <input
+                type="number"
+                placeholder="To"
+                value={animation.animation.to}
+                onChange={(e) => updateAnimation(index, {
+                  ...animation,
+                  animation: { ...animation.animation, to: parseFloat(e.target.value) }
+                })}
+                className="px-2 py-1 text-sm border border-gray-300 rounded"
+              />
+            </div>
+
+            <input
+              type="number"
+              placeholder="Duration (ms)"
+              value={animation.animation.duration}
+              onChange={(e) => updateAnimation(index, {
+                ...animation,
+                animation: { ...animation.animation, duration: parseInt(e.target.value) }
+              })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+            />
+
+            <label className="flex items-center text-sm">
+              <input
+                type="checkbox"
+                checked={animation.animation.repeat || false}
+                onChange={(e) => updateAnimation(index, {
+                  ...animation,
+                  animation: { ...animation.animation, repeat: e.target.checked }
+                })}
+                className="mr-2"
+              />
+              Repeat
+            </label>
+          </div>
+        ))}
+
+        {component.animations.length === 0 && (
+          <p className="text-sm text-gray-500 text-center py-4">
+            No animations configured. Click + to add one.
+          </p>
+        )}
+      </div>
+    )
+  }// src/components/hmi/HMIPropertiesPanel.tsx
 
 import { useState } from 'react'
 import { FaTrash, FaLock, FaUnlock, FaEye, FaEyeSlash, FaPlus, FaTimes } from 'react-icons/fa'
@@ -337,7 +468,7 @@ export default function HMIPropertiesPanel({
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'properties' && renderPropertiesTab()}
         {activeTab === 'bindings' && renderBindingsTab()}
-        {activeTab === 'animations' && <div className="text-sm text-gray-500">Animations coming soon...</div>}
+        {activeTab === 'animations' && renderAnimationsTab()}
         {activeTab === 'style' && renderStyleTab()}
       </div>
     </div>
