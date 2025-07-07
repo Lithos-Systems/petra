@@ -64,41 +64,27 @@ export default function Toolbar() {
   }
 
   return (
-    <div className="bg-white border-b border-gray-200 px-4 py-2">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-petra-700">Petra Designer</h1>
-
-        <div className="flex items-center gap-2">
-          <button onClick={handleSave} className="btn-primary" title="Save to browser (Ctrl+S)">
-            <FaSave className="icon" />
-            Save
-          </button>
-
-          <button onClick={handleLoad} className="btn-secondary" title="Load from browser">
-            <FaUpload className="icon" />
-            Load
-          </button>
-
-          <div className="border-l border-gray-300 mx-2 h-6" />
-
-          <button onClick={handleExport} className="btn-secondary" title="Export to file">
-            <FaFileExport className="icon" />
-            Export
-          </button>
-
-          <button onClick={handleImport} className="btn-secondary" title="Import from file">
-            <FaFileImport className="icon" />
-            Import
-          </button>
-
-          <div className="border-l border-gray-300 mx-2 h-6" />
-
-          <button onClick={handleClear} className="btn-danger" title="Clear all (Ctrl+Shift+D)">
-            <FaTrash className="icon" />
-            Clear
-          </button>
-        </div>
-      </div>
+    <div className="flex items-center gap-2">
+      <button onClick={handleSave} className="btn-toolbar" title="Save">
+        <FaSave className="icon" />
+        <span className="hidden sm:inline">Save</span>
+      </button>
+      <button onClick={handleLoad} className="btn-toolbar" title="Load">
+        <FaUpload className="icon" />
+        <span className="hidden sm:inline">Load</span>
+      </button>
+      <button onClick={handleExport} className="btn-toolbar" title="Export">
+        <FaFileExport className="icon" />
+        <span className="hidden sm:inline">Export</span>
+      </button>
+      <button onClick={handleImport} className="btn-toolbar" title="Import">
+        <FaFileImport className="icon" />
+        <span className="hidden sm:inline">Import</span>
+      </button>
+      <button onClick={handleClear} className="btn-toolbar text-red-600 hover:text-red-700" title="Clear">
+        <FaTrash className="icon" />
+        <span className="hidden sm:inline">Clear</span>
+      </button>
     </div>
   )
 }
