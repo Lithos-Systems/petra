@@ -2,11 +2,19 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Stage, Layer, Group, Rect, Circle, Line, Text, Path } from 'react-konva'
-import { FaPlay, FaPause, FaCog, FaChartLine } from 'react-icons/fa'
+import { FaPlay, FaPause, FaCog, FaChartLine, FaExclamationTriangle } from 'react-icons/fa'
 import TankComponent from './components/TankComponent'
 import PumpComponent from './components/PumpComponent'
 import ValveComponent from './components/ValveComponent'
 import GaugeComponent from './components/GaugeComponent'
+
+interface PumpSetpoints {
+  startLevel: number // Tank level % to start
+  stopLevel: number // Tank level % to stop
+  alarmLowPressure: number // Low pressure alarm (psi)
+  alarmHighPressure: number // High pressure alarm (psi)
+  alarmHighFlow: number // High flow alarm (gpm)
+}
 
 interface SimulationState {
   // Tank parameters
@@ -17,6 +25,7 @@ interface SimulationState {
   // Well parameters
   wellFlowRate: number // gpm
   wellRunning: boolean
+  wellSetpoints: PumpSetpoints
   
   // Pump parameters
   boosterPumps: Array<{
@@ -26,6 +35,9 @@ interface SimulationState {
     running: boolean
     efficiency: number // %
     pressure: number // psi
+    setpoints: PumpSetpoints
+    inAlarm: boolean
+    alarmMessage?: string
   }>
   
   // System parameters
@@ -36,6 +48,15 @@ interface SimulationState {
   // Simulation
   running: boolean
   timeMultiplier: number
+  
+  // Alarms
+  activeAlarms: Array<{
+    id: string
+    source: string
+    message: string
+    severity: 'low' | 'medium' | 'high'
+    timestamp: Date
+  }>
 }
 
 export default function WaterPlantDemo() {
@@ -45,21 +66,121 @@ export default function WaterPlantDemo() {
     tankLevelPercent: 50,
     wellFlowRate: 2000,
     wellRunning: true,
+    wellSetpoints: {
+      startLevel: 30,
+      stopLevel: 80,
+      alarmLowPressure: 0,
+      alarmHighPressure: 100,
+      alarmHighFlow: 3000,
+    },
     boosterPumps: [
-      { id: 'bp1', name: 'Booster 1', flowRate: 1500, running: true, efficiency: 85, pressure: 60 },
-      { id: 'bp2', name: 'Booster 2', flowRate: 1500, running: false, efficiency: 85, pressure: 60 },
-      { id: 'bp3', name: 'Booster 3', flowRate: 2000, running: false, efficiency: 90, pressure: 65 },
+      { 
+        id: 'bp1', 
+        name: 'Booster 1', 
+        flowRate: 1500, 
+        running: true, 
+        efficiency: 85, 
+        pressure: 60,
+        setpoints: {
+          startLevel: 40,
+          stopLevel: 70,
+          alarmLowPressure: 40,
+          alarmHighPressure: 80,
+          alarmHighFlow: 2000,
+        },
+        inAlarm: false
+      },
+      { 
+        id: 'bp2', 
+        name: 'Booster 2', 
+        flowRate: 1500, 
+        running: false, 
+        efficiency: 85, 
+        pressure: 60,
+        setpoints: {
+          startLevel: 35,
+          stopLevel: 75,
+          alarmLowPressure: 40,
+          alarmHighPressure: 80,
+          alarmHighFlow: 2000,
+        },
+        inAlarm: false
+      },
+      { 
+        id: 'bp3', 
+        name: 'Booster 3', 
+        flowRate: 2000, 
+        running: false, 
+        efficiency: 90, 
+        pressure: 65,
+        setpoints: {
+          startLevel: 30,
+          stopLevel: 80,
+          alarmLowPressure: 45,
+          alarmHighPressure: 85,
+          alarmHighFlow: 2500,
+        },
+        inAlarm: false
+      },
     ],
     demand: 2500,
     systemPressure: 55,
     targetPressure: 60,
     running: true,
     timeMultiplier: 10,
+    activeAlarms: [],
   })
   
   const [showControls, setShowControls] = useState(true)
+  const [selectedPump, setSelectedPump] = useState<string | null>(null)
   const simulationRef = useRef<SimulationState>(simulation)
   simulationRef.current = simulation
+  
+  // Check alarms
+  const checkAlarms = (state: SimulationState) => {
+    const newAlarms: typeof state.activeAlarms = []
+    const updatedPumps = state.boosterPumps.map(pump => {
+      const pumpAlarms: string[] = []
+      
+      if (pump.running) {
+        if (pump.pressure < pump.setpoints.alarmLowPressure) {
+          pumpAlarms.push(`Low pressure: ${pump.pressure} psi`)
+        }
+        if (pump.pressure > pump.setpoints.alarmHighPressure) {
+          pumpAlarms.push(`High pressure: ${pump.pressure} psi`)
+        }
+        if (pump.flowRate > pump.setpoints.alarmHighFlow) {
+          pumpAlarms.push(`High flow: ${pump.flowRate} gpm`)
+        }
+      }
+      
+      const inAlarm = pumpAlarms.length > 0
+      if (inAlarm) {
+        newAlarms.push({
+          id: `${pump.id}-${Date.now()}`,
+          source: pump.name,
+          message: pumpAlarms.join(', '),
+          severity: 'medium' as const,
+          timestamp: new Date(),
+        })
+      }
+      
+      return { ...pump, inAlarm, alarmMessage: pumpAlarms[0] }
+    })
+    
+    // Check well alarms
+    if (state.wellRunning && state.wellFlowRate > state.wellSetpoints.alarmHighFlow) {
+      newAlarms.push({
+        id: `well-${Date.now()}`,
+        source: 'Well Pump',
+        message: `High flow: ${state.wellFlowRate} gpm`,
+        severity: 'medium' as const,
+        timestamp: new Date(),
+      })
+    }
+    
+    return { updatedPumps, newAlarms }
+  }
   
   // Simulation loop
   useEffect(() => {
@@ -69,13 +190,32 @@ export default function WaterPlantDemo() {
       setSimulation(prev => {
         const timeStep = 1 / 60 * prev.timeMultiplier // 1 second of simulation time
         
+        // Automatic well control based on tank level
+        let wellRunning = prev.wellRunning
+        if (prev.tankLevelPercent <= prev.wellSetpoints.startLevel) {
+          wellRunning = true
+        } else if (prev.tankLevelPercent >= prev.wellSetpoints.stopLevel) {
+          wellRunning = false
+        }
+        
+        // Automatic pump control based on setpoints
+        const updatedPumps = prev.boosterPumps.map(pump => {
+          let running = pump.running
+          if (prev.tankLevelPercent <= pump.setpoints.startLevel && prev.systemPressure < prev.targetPressure) {
+            running = true
+          } else if (prev.tankLevelPercent >= pump.setpoints.stopLevel || prev.systemPressure > prev.targetPressure * 1.1) {
+            running = false
+          }
+          return { ...pump, running }
+        })
+        
         // Calculate total pump output
-        const totalPumpOutput = prev.boosterPumps
+        const totalPumpOutput = updatedPumps
           .filter(p => p.running)
           .reduce((sum, pump) => sum + pump.flowRate * (pump.efficiency / 100), 0)
         
         // Calculate net flow (well + pumps - demand)
-        const wellFlow = prev.wellRunning ? prev.wellFlowRate : 0
+        const wellFlow = wellRunning ? prev.wellFlowRate : 0
         const netFlow = wellFlow - prev.demand + totalPumpOutput
         
         // Update tank level
@@ -83,7 +223,7 @@ export default function WaterPlantDemo() {
         const newLevelPercent = (newLevel / prev.tankCapacity) * 100
         
         // Calculate system pressure based on running pumps and tank level
-        const runningPumps = prev.boosterPumps.filter(p => p.running)
+        const runningPumps = updatedPumps.filter(p => p.running)
         let newPressure = 0
         
         if (runningPumps.length > 0) {
@@ -100,11 +240,25 @@ export default function WaterPlantDemo() {
           }
         }
         
+        // Check alarms
+        const { updatedPumps: alarmedPumps, newAlarms } = checkAlarms({
+          ...prev,
+          boosterPumps: updatedPumps,
+          wellRunning,
+          systemPressure: Math.round(newPressure),
+        })
+        
+        // Keep only last 10 alarms
+        const allAlarms = [...prev.activeAlarms, ...newAlarms].slice(-10)
+        
         return {
           ...prev,
+          wellRunning,
+          boosterPumps: alarmedPumps,
           tankLevel: newLevel,
           tankLevelPercent: newLevelPercent,
           systemPressure: Math.round(newPressure),
+          activeAlarms: allAlarms,
         }
       })
     }, 100) // Update every 100ms
@@ -121,12 +275,21 @@ export default function WaterPlantDemo() {
     }))
   }
   
-  const updatePumpFlowRate = (pumpId: string, flowRate: number) => {
+  const updatePumpSetpoint = (pumpId: string, field: keyof PumpSetpoints, value: number) => {
     setSimulation(prev => ({
       ...prev,
       boosterPumps: prev.boosterPumps.map(pump =>
-        pump.id === pumpId ? { ...pump, flowRate } : pump
+        pump.id === pumpId 
+          ? { ...pump, setpoints: { ...pump.setpoints, [field]: value } }
+          : pump
       )
+    }))
+  }
+  
+  const updateWellSetpoint = (field: keyof PumpSetpoints, value: number) => {
+    setSimulation(prev => ({
+      ...prev,
+      wellSetpoints: { ...prev.wellSetpoints, [field]: value }
     }))
   }
   
@@ -134,7 +297,7 @@ export default function WaterPlantDemo() {
     <div className="flex h-full bg-gray-50">
       {/* Control Panel */}
       {showControls && (
-        <div className="w-80 bg-white border-r border-gray-200 p-4 overflow-y-auto">
+        <div className="w-96 bg-white border-r border-gray-200 p-4 overflow-y-auto">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
             <FaCog className="text-petra-600" />
             Water Plant Controls
@@ -203,6 +366,141 @@ export default function WaterPlantDemo() {
             </div>
           </div>
           
+          {/* Well Setpoints */}
+          <div className="mb-6">
+            <h3 className="font-semibold mb-3">Well Pump Setpoints</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span>Start Level (%):</span>
+                <input
+                  type="number"
+                  value={simulation.wellSetpoints.startLevel}
+                  onChange={(e) => updateWellSetpoint('startLevel', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                  min="0"
+                  max="100"
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Stop Level (%):</span>
+                <input
+                  type="number"
+                  value={simulation.wellSetpoints.stopLevel}
+                  onChange={(e) => updateWellSetpoint('stopLevel', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                  min="0"
+                  max="100"
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                <span>High Flow Alarm (gpm):</span>
+                <input
+                  type="number"
+                  value={simulation.wellSetpoints.alarmHighFlow}
+                  onChange={(e) => updateWellSetpoint('alarmHighFlow', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                />
+              </div>
+            </div>
+          </div>
+          
+          {/* Booster Pump Controls */}
+          <div className="mb-6">
+            <h3 className="font-semibold mb-3">Booster Pumps</h3>
+            <div className="space-y-3">
+              {simulation.boosterPumps.map(pump => (
+                <div 
+                  key={pump.id} 
+                  className={`p-3 border rounded-lg ${
+                    pump.inAlarm ? 'border-red-500 bg-red-50' : 'border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium">{pump.name}</span>
+                    <button
+                      onClick={() => togglePump(pump.id)}
+                      className={`px-3 py-1 rounded text-sm ${
+                        pump.running 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-gray-300 text-gray-700'
+                      }`}
+                    >
+                      {pump.running ? 'Running' : 'Stopped'}
+                    </button>
+                  </div>
+                  
+                  {pump.inAlarm && (
+                    <div className="flex items-center gap-2 text-red-600 text-sm mb-2">
+                      <FaExclamationTriangle />
+                      <span>{pump.alarmMessage}</span>
+                    </div>
+                  )}
+                  
+                  <button
+                    onClick={() => setSelectedPump(selectedPump === pump.id ? null : pump.id)}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    {selectedPump === pump.id ? 'Hide' : 'Show'} Setpoints
+                  </button>
+                  
+                  {selectedPump === pump.id && (
+                    <div className="mt-2 pt-2 border-t space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Start Level (%):</span>
+                        <input
+                          type="number"
+                          value={pump.setpoints.startLevel}
+                          onChange={(e) => updatePumpSetpoint(pump.id, 'startLevel', parseInt(e.target.value))}
+                          className="w-16 px-1 py-0.5 border rounded text-right"
+                          min="0"
+                          max="100"
+                        />
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Stop Level (%):</span>
+                        <input
+                          type="number"
+                          value={pump.setpoints.stopLevel}
+                          onChange={(e) => updatePumpSetpoint(pump.id, 'stopLevel', parseInt(e.target.value))}
+                          className="w-16 px-1 py-0.5 border rounded text-right"
+                          min="0"
+                          max="100"
+                        />
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Low Pressure (psi):</span>
+                        <input
+                          type="number"
+                          value={pump.setpoints.alarmLowPressure}
+                          onChange={(e) => updatePumpSetpoint(pump.id, 'alarmLowPressure', parseInt(e.target.value))}
+                          className="w-16 px-1 py-0.5 border rounded text-right"
+                        />
+                      </div>
+                      <div className="flex justify-between">
+                        <span>High Pressure (psi):</span>
+                        <input
+                          type="number"
+                          value={pump.setpoints.alarmHighPressure}
+                          onChange={(e) => updatePumpSetpoint(pump.id, 'alarmHighPressure', parseInt(e.target.value))}
+                          className="w-16 px-1 py-0.5 border rounded text-right"
+                        />
+                      </div>
+                      <div className="flex justify-between">
+                        <span>High Flow (gpm):</span>
+                        <input
+                          type="number"
+                          value={pump.setpoints.alarmHighFlow}
+                          onChange={(e) => updatePumpSetpoint(pump.id, 'alarmHighFlow', parseInt(e.target.value))}
+                          className="w-16 px-1 py-0.5 border rounded text-right"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          
           {/* Demand Control */}
           <div className="mb-6">
             <h3 className="font-semibold mb-3">Demand Control</h3>
@@ -216,124 +514,42 @@ export default function WaterPlantDemo() {
               onChange={(e) => setSimulation(prev => ({ ...prev, demand: parseInt(e.target.value) }))}
               className="w-full"
             />
-            <div className="flex justify-between text-sm text-gray-500">
-              <span>0</span>
-              <span>{(simulation.demand / 1000).toFixed(1)}k gpm</span>
-              <span>10k</span>
-            </div>
+            <div className="text-sm text-gray-500 mt-1">{simulation.demand.toLocaleString()} gpm</div>
           </div>
           
-          {/* Tank Configuration */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Ground Storage Tank</h3>
-            <div className="space-y-2">
-              <div>
-                <label className="text-sm text-gray-600">Capacity (gallons)</label>
-                <input
-                  type="number"
-                  value={simulation.tankCapacity}
-                  onChange={(e) => setSimulation(prev => ({ ...prev, tankCapacity: parseInt(e.target.value) }))}
-                  className="w-full px-2 py-1 border rounded"
-                  step="10000"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Current Level</label>
-                <div className="text-sm font-medium">
-                  {simulation.tankLevel.toLocaleString()} gal ({simulation.tankLevelPercent.toFixed(1)}%)
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Well Control */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Well Pump</h3>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={simulation.wellRunning}
-                  onChange={(e) => setSimulation(prev => ({ ...prev, wellRunning: e.target.checked }))}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">Well Pump Running</span>
-              </label>
-              <div>
-                <label className="text-sm text-gray-600">Flow Rate (gpm)</label>
-                <input
-                  type="number"
-                  value={simulation.wellFlowRate}
-                  onChange={(e) => setSimulation(prev => ({ ...prev, wellFlowRate: parseInt(e.target.value) }))}
-                  className="w-full px-2 py-1 border rounded"
-                  step="100"
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Booster Pumps */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Booster Pumps</h3>
-            <div className="space-y-3">
-              {simulation.boosterPumps.map(pump => (
-                <div key={pump.id} className="p-3 border rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">{pump.name}</span>
-                    <button
-                      onClick={() => togglePump(pump.id)}
-                      className={`px-3 py-1 rounded text-sm text-white transition-colors ${
-                        pump.running ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 hover:bg-gray-500'
-                      }`}
-                    >
-                      {pump.running ? 'Running' : 'Stopped'}
-                    </button>
+          {/* Active Alarms */}
+          {simulation.activeAlarms.length > 0 && (
+            <div className="mb-6 p-4 bg-red-50 rounded-lg">
+              <h3 className="font-semibold mb-2 text-red-700">Active Alarms</h3>
+              <div className="space-y-1 text-sm">
+                {simulation.activeAlarms.slice(-5).reverse().map(alarm => (
+                  <div key={alarm.id} className="text-red-600">
+                    <span className="font-medium">{alarm.source}:</span> {alarm.message}
                   </div>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Flow Rate:</span>
-                      <input
-                        type="number"
-                        value={pump.flowRate}
-                        onChange={(e) => updatePumpFlowRate(pump.id, parseInt(e.target.value))}
-                        className="w-20 px-1 py-0.5 border rounded text-right"
-                        step="100"
-                        disabled={pump.running}
-                      />
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Pressure:</span>
-                      <span>{pump.pressure} psi</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Efficiency:</span>
-                      <span>{pump.efficiency}%</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
       
-      {/* Toggle Controls Button */}
+      {/* Toggle Control Panel Button */}
       <button
         onClick={() => setShowControls(!showControls)}
-        className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-white p-2 rounded-r shadow-lg z-10"
+        className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-white border border-gray-300 rounded-r-lg px-2 py-4 shadow-lg hover:bg-gray-50 z-10"
       >
         {showControls ? '◀' : '▶'}
       </button>
       
       {/* Main Display */}
       <div className="flex-1 relative">
-        <Stage width={window.innerWidth - (showControls ? 320 : 0)} height={window.innerHeight - 60}>
+        <Stage width={window.innerWidth - (showControls ? 384 : 0)} height={window.innerHeight - 60}>
           <Layer>
             {/* Background */}
             <Rect
               x={0}
               y={0}
-              width={window.innerWidth - (showControls ? 320 : 0)}
+              width={window.innerWidth - (showControls ? 384 : 0)}
               height={window.innerHeight - 60}
               fill="#f8fafc"
             />
@@ -401,7 +617,7 @@ export default function WaterPlantDemo() {
                 height={80}
                 properties={{
                   running: simulation.wellRunning,
-                  fault: false,
+                  fault: simulation.wellFlowRate > simulation.wellSetpoints.alarmHighFlow,
                   speed: simulation.wellRunning ? 100 : 0,
                   showStatus: true,
                   runAnimation: true,
@@ -450,7 +666,7 @@ export default function WaterPlantDemo() {
                   height={80}
                   properties={{
                     running: pump.running,
-                    fault: false,
+                    fault: pump.inAlarm,
                     speed: pump.running ? (pump.efficiency / 100) * 100 : 0,
                     showStatus: true,
                     runAnimation: true,
@@ -545,131 +761,32 @@ export default function WaterPlantDemo() {
               />
               <Text
                 x={0}
-                y={-30}
+                y={155}
                 width={150}
                 text="System Pressure"
-                fontSize={16}
-                fontStyle="bold"
+                fontSize={14}
                 align="center"
                 fill="#0284c7"
               />
             </Group>
             
-            {/* Demand Indicator */}
-            <Group x={850} y={300}>
-              <Rect
+            {/* Demand indicator */}
+            <Group x={900} y={300}>
+              <Text
                 x={0}
                 y={0}
-                width={150}
-                height={80}
-                fill="#fee2e2"
-                stroke="#dc2626"
-                strokeWidth={2}
-                cornerRadius={5}
-              />
-              <Text
-                x={0}
-                y={10}
-                width={150}
-                text="System Demand"
-                fontSize={14}
+                text="Current Demand"
+                fontSize={16}
                 fontStyle="bold"
-                align="center"
-                fill="#dc2626"
+                fill="#0284c7"
               />
               <Text
                 x={0}
-                y={35}
-                width={150}
-                text={`${simulation.demand.toLocaleString()}`}
+                y={25}
+                text={`${simulation.demand.toLocaleString()} gpm`}
                 fontSize={24}
                 fontStyle="bold"
-                align="center"
-                fill="#dc2626"
-              />
-              <Text
-                x={0}
-                y={60}
-                width={150}
-                text="gpm"
-                fontSize={14}
-                align="center"
-                fill="#dc2626"
-              />
-              
-              {/* Demand arrow */}
-              <Line
-                points={[75, 80, 75, 120, 85, 110, 75, 120, 65, 110]}
-                stroke="#dc2626"
-                strokeWidth={3}
-              />
-            </Group>
-            
-            {/* Flow Summary */}
-            <Group x={400} y={100}>
-              <Rect
-                x={0}
-                y={0}
-                width={300}
-                height={120}
-                fill="#ffffff"
-                stroke="#64748b"
-                strokeWidth={1}
-                cornerRadius={5}
-              />
-              <Text
-                x={10}
-                y={10}
-                text="Flow Summary"
-                fontSize={14}
-                fontStyle="bold"
-                fill="#1e293b"
-              />
-              <Text
-                x={10}
-                y={35}
-                text={`Well Input: ${simulation.wellRunning ? simulation.wellFlowRate : 0} gpm`}
-                fontSize={12}
-                fill="#64748b"
-              />
-              <Text
-                x={10}
-                y={55}
-                text={`Booster Output: ${simulation.boosterPumps
-                  .filter(p => p.running)
-                  .reduce((sum, p) => sum + p.flowRate * (p.efficiency / 100), 0)
-                  .toFixed(0)} gpm`}
-                fontSize={12}
-                fill="#64748b"
-              />
-              <Text
-                x={10}
-                y={75}
-                text={`System Demand: ${simulation.demand} gpm`}
-                fontSize={12}
-                fill="#64748b"
-              />
-              <Text
-                x={10}
-                y={95}
-                text={`Net Flow: ${(
-                  (simulation.wellRunning ? simulation.wellFlowRate : 0) +
-                  simulation.boosterPumps
-                    .filter(p => p.running)
-                    .reduce((sum, p) => sum + p.flowRate * (p.efficiency / 100), 0) -
-                  simulation.demand
-                ).toFixed(0)} gpm`}
-                fontSize={12}
-                fontStyle="bold"
-                fill={
-                  (simulation.wellRunning ? simulation.wellFlowRate : 0) +
-                  simulation.boosterPumps
-                    .filter(p => p.running)
-                    .reduce((sum, p) => sum + p.flowRate * (p.efficiency / 100), 0) -
-                  simulation.demand >= 0
-                    ? '#16a34a'
-                    : '#dc2626'
-                }
+                fill="#0284c7"
               />
             </Group>
           </Layer>
