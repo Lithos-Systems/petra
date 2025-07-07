@@ -255,8 +255,14 @@ export default function HMISidebar() {
 
       {/* Templates section */}
       <div className="p-4 border-t border-gray-200">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">Templates</h4>
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Templates & Demos</h4>
         <div className="space-y-2">
+          <button 
+            onClick={() => window.open('#/water-plant-demo', '_blank')}
+            className="w-full text-left px-3 py-2 text-sm bg-blue-50 hover:bg-blue-100 rounded transition-colors text-blue-700 font-medium"
+          >
+            💧 Water Plant Demo
+          </button>
           <button className="w-full text-left px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded transition-colors">
             Motor Control Panel
           </button>
