@@ -257,65 +257,42 @@ export default function WaterPlantDemo() {
         // Round-robin lead/lag pump control
         let currentLeadPump = prev.currentLeadPump
         const leadPump = prev.boosterPumps.find(p => p.pumpNumber === currentLeadPump)
-        
+
         let updatedPumps = [...prev.boosterPumps]
-        
-        // Check if we need to rotate lead pump
-        if (leadPump?.running && prev.systemPressure >= prev.pumpSetpoints.leadStopPressure) {
-          // Stop current lead and rotate to next
-          updatedPumps = updatedPumps.map(pump => {
-            if (pump.pumpNumber === currentLeadPump) {
-              return { ...pump, running: false, currentFlow: 0, startDelay: undefined }
-            }
-            return pump
-          })
-          
-          // Increment lead pump for next cycle
-          currentLeadPump = (currentLeadPump % 3) + 1
+
+        const runningCount = updatedPumps.filter(p => p.running).length
+
+        // Start lead pump when pressure drops below lead start
+        if (!leadPump?.running && prev.systemPressure <= prev.pumpSetpoints.leadStartPressure) {
+          updatedPumps = updatedPumps.map(pump =>
+            pump.pumpNumber === currentLeadPump ? { ...pump, running: true } : pump
+          )
         }
-        
-        // Lead pump start logic
-        const newLeadPump = updatedPumps.find(p => p.pumpNumber === currentLeadPump)
-        if (!newLeadPump?.running && prev.systemPressure < prev.pumpSetpoints.leadStartPressure) {
-          updatedPumps = updatedPumps.map(pump => {
-            if (pump.pumpNumber === currentLeadPump) {
-              return { ...pump, running: true }
-            }
-            return pump
-          })
-        }
-        
-        // Lag pump control
-        const currentlyRunning = updatedPumps.filter(p => p.running)
-        
-        // Start lag pumps if pressure is low and lead is running
-        if (prev.systemPressure < prev.pumpSetpoints.lagStartPressure && currentlyRunning.length > 0) {
-          // Find next pump to start (not already running)
-          const availablePumps = updatedPumps.filter(p => !p.running && !p.startDelay)
-          if (availablePumps.length > 0) {
-            const nextPump = availablePumps[0]
-            updatedPumps = updatedPumps.map(pump => {
-              if (pump.id === nextPump.id) {
-                // Add staging delay
-                return { ...pump, startDelay: 5 } // 5 second delay
-              }
-              return pump
-            })
+
+        // Start lag pumps sequentially if pressure remains low
+        if (prev.systemPressure <= prev.pumpSetpoints.lagStartPressure && runningCount > 0) {
+          const nextPump = updatedPumps.find(p => !p.running && !p.startDelay)
+          if (nextPump) {
+            updatedPumps = updatedPumps.map(pump =>
+              pump.id === nextPump.id ? { ...pump, startDelay: 5 } : pump
+            )
           }
         }
-        
-        // Stop lag pumps if pressure is high (stop non-lead pumps first)
-        if (prev.systemPressure > prev.pumpSetpoints.lagStopPressure) {
-          const nonLeadRunning = updatedPumps.filter(p => p.running && p.pumpNumber !== currentLeadPump)
-          if (nonLeadRunning.length > 0) {
-            // Stop the last started lag pump
-            const pumpToStop = nonLeadRunning[nonLeadRunning.length - 1]
-            updatedPumps = updatedPumps.map(pump => {
-              if (pump.id === pumpToStop.id) {
-                return { ...pump, running: false, currentFlow: 0, startDelay: undefined }
-              }
-              return pump
-            })
+
+        // Stop lag pumps once pressure recovers
+        if (prev.systemPressure >= prev.pumpSetpoints.lagStopPressure) {
+          const lagRunning = updatedPumps.filter(p => p.running && p.pumpNumber !== currentLeadPump)
+          if (lagRunning.length > 0) {
+            const pumpToStop = lagRunning[lagRunning.length - 1]
+            updatedPumps = updatedPumps.map(pump =>
+              pump.id === pumpToStop.id ? { ...pump, running: false, currentFlow: 0, startDelay: undefined } : pump
+            )
+          } else if (leadPump?.running && prev.systemPressure >= prev.pumpSetpoints.leadStopPressure) {
+            // No lag pumps running and pressure high - stop lead and rotate
+            updatedPumps = updatedPumps.map(pump =>
+              pump.pumpNumber === currentLeadPump ? { ...pump, running: false, currentFlow: 0, startDelay: undefined } : pump
+            )
+            currentLeadPump = (currentLeadPump % 3) + 1
           }
         }
         
@@ -523,6 +500,21 @@ export default function WaterPlantDemo() {
               />
               <span className="text-sm text-gray-500">{simulation.timeMultiplier}x</span>
             </div>
+
+            {/* Demand Control */}
+            <div className="mt-4">
+              <label className="text-sm text-gray-600">System Demand (gpm)</label>
+              <input
+                type="range"
+                min="0"
+                max="10000"
+                step="100"
+                value={simulation.demand}
+                onChange={(e) => setSimulation(prev => ({ ...prev, demand: parseInt(e.target.value) }))}
+                className="w-full"
+              />
+              <div className="text-sm text-gray-500 mt-1">{simulation.demand.toLocaleString()} gpm</div>
+            </div>
           </div>
           
           {/* System Status */}
@@ -547,10 +539,6 @@ export default function WaterPlantDemo() {
                   onChange={(e) => setSimulation(prev => ({ ...prev, targetPressure: parseInt(e.target.value) }))}
                   className="w-20 px-2 py-1 border rounded text-right"
                 />
-              </div>
-              <div className="flex justify-between">
-                <span>Current Demand:</span>
-                <span className="font-bold">{simulation.demand.toLocaleString()} gpm</span>
               </div>
               <div className="flex justify-between">
                 <span>Tank Level:</span>
@@ -789,22 +777,6 @@ export default function WaterPlantDemo() {
                 </div>
               ))}
             </div>
-          </div>
-          
-          {/* Demand Control */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Demand Control</h3>
-            <label className="text-sm text-gray-600">Demand (gpm)</label>
-            <input
-              type="range"
-              min="0"
-              max="10000"
-              step="100"
-              value={simulation.demand}
-              onChange={(e) => setSimulation(prev => ({ ...prev, demand: parseInt(e.target.value) }))}
-              className="w-full"
-            />
-            <div className="text-sm text-gray-500 mt-1">{simulation.demand.toLocaleString()} gpm</div>
           </div>
           
           {/* Active Alarms */}
