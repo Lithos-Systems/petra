@@ -788,6 +788,7 @@ fn create_tls_config(config: &TlsConfig) -> Result<TlsConfiguration> {
 }
 
 /// Convert payload data based on signal type - FIXED VERSION
+#[allow(dead_code)]
 fn parse_value(payload: &[u8], data_type: &str) -> Result<Value> {
     let payload_str = std::str::from_utf8(payload)
         .map_err(|e| PlcError::Protocol(format!("Invalid UTF-8 in MQTT payload: {}", e)))?;

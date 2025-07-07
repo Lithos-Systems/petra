@@ -1494,7 +1494,7 @@ async fn handle_protocol_command(cmd: ProtocolCommands) -> Result<()> {
     match cmd {
         #[cfg(feature = "mqtt")]
         ProtocolCommands::Mqtt { broker, topic, count } => {
-            petra::mqtt::test_connection(&broker, &topic, count).await?;
+            petra::mqtt::test_connection(&broker, &topic, count as u32).await?;
         }
         
         #[cfg(feature = "modbus-support")]
@@ -1559,7 +1559,7 @@ async fn start_health_server(port: u16, bind: String, check_interval: u64) -> Re
 async fn handle_security_command(cmd: SecurityCommands) -> Result<()> {
     match cmd {
         SecurityCommands::KeyGen { key_type, output } => {
-            petra::security::generate_key(key_type, &output).await?;
+            petra::security::generate_key(&key_type.to_string(), &output).await?;
             println!("{} Generated {} key: {}", 
                 "SUCCESS".green().bold(),
                 format!("{:?}", key_type).to_lowercase(), 
@@ -1581,10 +1581,13 @@ async fn handle_security_command(cmd: SecurityCommands) -> Result<()> {
             };
             
             petra::security::create_user(
-                &username, 
+                &username,
                 &pwd,
+                None,
                 #[cfg(feature = "rbac")]
-                &roles
+                roles,
+                #[cfg(not(feature = "rbac"))]
+                Vec::new()
             ).await?;
             println!("{} Created user: {}", "SUCCESS".green().bold(), username);
         }
