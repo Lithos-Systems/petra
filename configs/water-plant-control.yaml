@@ -6,7 +6,11 @@ version: "1.0"
 # ============================================================================
 # SYSTEM PARAMETERS
 # ============================================================================
-  
+
+scan_time_ms: 100  # 100ms scan cycle for responsive control
+max_scan_jitter_ms:  10  # Maximum allowed jitter (25% of scan time)
+error_recovery: true
+max_consecutive_errors: 10
 # ============================================================================
 # SIGNAL DEFINITIONS
 # ============================================================================
