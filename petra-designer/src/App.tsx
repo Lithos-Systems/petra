@@ -1,3 +1,5 @@
+// src/App.tsx
+
 import { useCallback, useEffect, DragEvent, MouseEvent, useState } from 'react'
 import {
   ReactFlow,
@@ -21,6 +23,7 @@ import YamlPreview from './components/YamlPreview'
 import Toolbar from './components/Toolbar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import HMIDesigner from './components/hmi/HMIDesigner'
+import WaterPlantDemo from './components/hmi/WaterPlantDemo'
 import { FaProjectDiagram, FaDesktop } from 'react-icons/fa'
 import { PetraProvider } from './contexts/PetraContext'
 
@@ -236,6 +239,19 @@ function Flow() {
 }
 
 function App() {
+  // Check if we're loading a specific demo
+  const isWaterPlantDemo = window.location.hash === '#/water-plant-demo'
+  
+  if (isWaterPlantDemo) {
+    return (
+      <ErrorBoundary>
+        <PetraProvider>
+          <WaterPlantDemo />
+        </PetraProvider>
+      </ErrorBoundary>
+    )
+  }
+  
   return (
     <ErrorBoundary>
       <PetraProvider>
