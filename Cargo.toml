@@ -355,6 +355,9 @@ high-performance = ["parallel-execution", "simd-math", "zero-copy-protocols", "m
 
 # === CONNECTIVITY ===
 mqtt = ["dep:rumqttc"]       # MQTT protocol support
+mqtt-persistence = ["mqtt"]  # Requires base mqtt feature
+mqtt-5 = ["mqtt"]           # MQTT v5 support
+mqtt-bridge = ["mqtt"]      # MQTT bridging support
 
 # ================================================================================
 # MONITORING FEATURES

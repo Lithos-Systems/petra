@@ -1,6 +1,6 @@
 //! MQTT CLI utilities
 
-use crate::{PlcError, Result};
+use crate::Result;
 
 /// Test MQTT connection
 pub async fn test_connection(broker: &str, topic: &str, count: u32) -> Result<()> {

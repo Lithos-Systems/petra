@@ -353,8 +353,6 @@ pub use engine::Engine;
 pub use features::{Features, RuntimeFeatures};
 
 // Re-export commonly used protocol modules for convenience
-#[cfg(feature = "mqtt")]
-pub use protocols::mqtt;
 #[cfg(feature = "modbus-support")]
 pub use protocols::modbus;
 #[cfg(feature = "s7-support")]
