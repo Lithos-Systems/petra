@@ -1,3 +1,5 @@
+// src/components/hmi/GridOverlay.tsx
+
 import { Line, Group } from 'react-konva'
 
 interface GridOverlayProps {
