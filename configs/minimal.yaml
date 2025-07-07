@@ -1,34 +1,32 @@
-# minimal.yaml
+# Minimal test configuration for debugging
 version: "1.0"
-engine:
-  scan_time_ms: 100
-  
-blocks:
-  - name: input_signal
-    type: DATA_GENERATOR
-    outputs:
-      value: signals.input
-    parameters:
-      mode: sine
-      frequency: 1.0
-      
-  - name: threshold_check
-    type: GT
-    inputs:
-      in1: signals.input
-      in2: signals.threshold
-    outputs:
-      out: signals.alarm
-      
-  - name: alarm_timer
-    type: ON_DELAY
-    inputs:
-      in: signals.alarm
-    outputs:
-      out: signals.delayed_alarm
-    parameters:
-      delay_ms: 5000
+
+scan_time_ms: 100
+max_scan_jitter_ms: 50
+error_recovery: true
+max_consecutive_errors: 10
 
 signals:
-  signals.threshold:
-    initial_value: 0.5
+  - name: "test.input"
+    type: "float"
+    initial: 0.0
+    description: "Test input signal"
+    
+  - name: "test.output"
+    type: "bool"
+    initial: false
+    description: "Test output signal"
+    
+  - name: "constants.threshold"
+    type: "float"
+    initial: 0.5
+    description: "Threshold value"
+
+blocks:
+  - name: "threshold_check"
+    type: "GT"
+    inputs:
+      in1: "test.input"
+      in2: "constants.threshold"
+    outputs:
+      out: "test.output"
