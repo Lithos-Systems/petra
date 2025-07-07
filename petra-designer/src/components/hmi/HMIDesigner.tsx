@@ -12,6 +12,8 @@ import { nanoid } from 'nanoid'
 import type { HMIComponent } from '@/types/hmi'
 import GridOverlay from './GridOverlay'
 
+import { useHMIKeyboardShortcuts } from '@/hooks/useHMIKeyboardShortcuts'
+
 export default function HMIDesigner() {
   const stageRef = useRef<any>(null)
   const {
@@ -25,6 +27,9 @@ export default function HMIDesigner() {
     showGrid,
     snapToGrid,
   } = useHMIStore()
+
+  // Enable keyboard shortcuts
+  useHMIKeyboardShortcuts()
 
   const [stageSize, setStageSize] = useState({ width: 1920, height: 1080 })
   const [scale, setScale] = useState(1)
