@@ -52,23 +52,8 @@ export default function PumpComponent({
   const strokeColor = style.stroke || '#374151'
   const statusColor = getPumpColor()
 
-  // IEC 60617 compliant pump symbol path
-  // This creates a circle with internal triangle (simplified centrifugal pump symbol)
-  const pumpPath = `
-    M ${centerX - 25 * scale} ${centerY}
-    A ${25 * scale} ${25 * scale} 0 1 1 ${centerX + 25 * scale} ${centerY}
-    A ${25 * scale} ${25 * scale} 0 1 1 ${centerX - 25 * scale} ${centerY}
-    M ${centerX - 15 * scale} ${centerY + 10 * scale}
-    L ${centerX} ${centerY - 15 * scale}
-    L ${centerX + 15 * scale} ${centerY + 10 * scale}
-    Z
-  `
-
-  // Motor representation (small rectangle on top)
-  const motorWidth = 30 * scale
-  const motorHeight = 15 * scale
-  const motorX = centerX - motorWidth / 2
-  const motorY = centerY - 25 * scale - motorHeight - 5 * scale
+  // IEC 60617 compliant pump symbol
+  const radius = 25 * scale
 
   return (
     <Group
@@ -82,10 +67,10 @@ export default function PumpComponent({
       {/* Selection indicator */}
       {isSelected && (
         <Rect
-          x={-5}
-          y={motorY - 5}
-          width={width + 10}
-          height={height + 10}
+          x={centerX - radius - 10}
+          y={centerY - radius - 10}
+          width={radius * 2 + 20}
+          height={radius * 2 + 20}
           stroke="#3b82f6"
           strokeWidth={2}
           dash={[5, 5]}
@@ -93,77 +78,56 @@ export default function PumpComponent({
         />
       )}
 
-      {/* Motor */}
-      <Rect
-        x={motorX}
-        y={motorY}
-        width={motorWidth}
-        height={motorHeight}
+      {/* Pump circle */}
+      <Circle
+        x={centerX}
+        y={centerY}
+        radius={radius}
         fill={fillColor}
         stroke={strokeColor}
         strokeWidth={2 * scale}
       />
 
-      {/* Motor status indicator */}
-      <Rect
-        x={motorX + 2}
-        y={motorY + 2}
-        width={motorWidth - 4}
-        height={motorHeight - 4}
-        fill={properties.running ? statusColor : 'transparent'}
-        opacity={0.3}
-      />
-
-      {/* Pump body */}
+      {/* Interior triangle (IEC pump symbol) */}
       <Path
-        data={pumpPath}
-        fill={fillColor}
-        stroke={strokeColor}
-        strokeWidth={2 * scale}
+        data={`
+          M ${centerX} ${centerY - radius * 0.7}
+          L ${centerX - radius * 0.6} ${centerY + radius * 0.35}
+          L ${centerX + radius * 0.6} ${centerY + radius * 0.35}
+          Z
+        `}
+        fill={properties.running ? statusColor : strokeColor}
+        opacity={properties.running ? 0.8 : 0.3}
       />
 
-      {/* Running indicator (fill the triangle) */}
-      {properties.running && (
-        <Path
-          data={`
-            M ${centerX - 15 * scale} ${centerY + 10 * scale}
-            L ${centerX} ${centerY - 15 * scale}
-            L ${centerX + 15 * scale} ${centerY + 10 * scale}
-            Z
-          `}
-          fill={statusColor}
-          opacity={0.5}
-        />
-      )}
-
-      {/* Inlet pipe */}
+      {/* Inlet pipe (left side) */}
       <Line
         points={[
-          centerX - 25 * scale - 15 * scale, centerY,
-          centerX - 25 * scale, centerY
+          centerX - radius - 20 * scale, centerY,
+          centerX - radius, centerY
         ]}
         stroke={strokeColor}
-        strokeWidth={6 * scale}
+        strokeWidth={4 * scale}
         lineCap="round"
       />
 
-      {/* Outlet pipe */}
+      {/* Outlet pipe (top) */}
       <Line
         points={[
-          centerX, centerY - 25 * scale,
-          centerX, centerY - 25 * scale - 15 * scale
+          centerX, centerY - radius,
+          centerX, centerY - radius - 20 * scale
         ]}
         stroke={strokeColor}
-        strokeWidth={6 * scale}
+        strokeWidth={4 * scale}
         lineCap="round"
       />
 
       {/* Flow direction arrow on outlet */}
       <Path
         data={`
-          M ${centerX - 4 * scale} ${centerY - 35 * scale}
-          L ${centerX} ${centerY - 42 * scale}
-          L ${centerX + 4 * scale} ${centerY - 35 * scale}
+          M ${centerX - 3 * scale} ${centerY - radius - 15 * scale}
+          L ${centerX} ${centerY - radius - 20 * scale}
+          L ${centerX + 3 * scale} ${centerY - radius - 15 * scale}
         `}
         fill={strokeColor}
       />
@@ -171,9 +135,9 @@ export default function PumpComponent({
       {/* Status indicator dot */}
       {properties.showStatus && (
         <Circle
-          x={centerX + 25 * scale + 10 * scale}
-          y={centerY}
-          radius={5 * scale}
+          x={centerX + radius + 8 * scale}
+          y={centerY - radius + 5 * scale}
+          radius={4 * scale}
           fill={statusColor}
           stroke={strokeColor}
           strokeWidth={1}
@@ -181,10 +145,10 @@ export default function PumpComponent({
       )}
 
       {/* Speed indicator (if variable speed) */}
-      {properties.speed !== undefined && properties.speed !== 100 && (
+      {properties.speed !== undefined && properties.speed !== 100 && properties.running && (
         <Text
           x={centerX - 20 * scale}
-          y={centerY + 35 * scale}
+          y={centerY + radius + 5 * scale}
           width={40 * scale}
           text={`${Math.round(properties.speed)}%`}
           fontSize={10 * scale}
@@ -195,15 +159,22 @@ export default function PumpComponent({
 
       {/* Fault indicator */}
       {properties.fault && (
-        <Text
-          x={centerX - 10 * scale}
-          y={motorY - 15 * scale}
-          text="!"
-          fontSize={16 * scale}
-          fontStyle="bold"
-          fill="#ef4444"
-          align="center"
-        />
+        <Group>
+          <Circle
+            x={centerX}
+            y={centerY - radius - 35 * scale}
+            radius={8 * scale}
+            fill="#ef4444"
+          />
+          <Text
+            x={centerX - 4 * scale}
+            y={centerY - radius - 39 * scale}
+            text="!"
+            fontSize={12 * scale}
+            fontStyle="bold"
+            fill="#ffffff"
+          />
+        </Group>
       )}
     </Group>
   )
