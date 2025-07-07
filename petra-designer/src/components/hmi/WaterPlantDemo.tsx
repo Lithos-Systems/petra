@@ -710,3 +710,36 @@ export default function WaterPlantPetraDemo() {
               />
               <Text
                 x={0}
+                y={-30}
+                width={200}
+                text="Ground Storage Tank"
+                fontSize={16}
+                fontStyle="bold"
+                align="center"
+                fill="#0284c7"
+              />
+              <Text
+                x={0}
+                y={260}
+                width={200}
+                text={`Level: ${signals.tankLevelFeet.toFixed(1)} ft`}
+                fontSize={12}
+                align="center"
+                fill="#64748b"
+              />
+              <Text
+                x={0}
+                y={275}
+                width={200}
+                text={`Start: ${signals.wellStartLevel} ft | Stop: ${signals.wellStopLevel} ft`}
+                fontSize={10}
+                align="center"
+                fill="#94a3b8"
+              />
+            </Group>
+          </Layer>
+        </Stage>
+      </div>
+    </div>
+  )
+}
