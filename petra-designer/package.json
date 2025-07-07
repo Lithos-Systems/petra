@@ -20,7 +20,10 @@
     "react-icons": "^5.0.1",
     "prismjs": "^1.29.0",
     "react-simple-code-editor": "^0.13.1",
-    "nanoid": "^5.0.4"
+    "nanoid": "^5.0.4",
+    "react-konva": "^19.0.7",
+    "konva": "^9.3.12",
+    "react-color": "^2.19.3"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
