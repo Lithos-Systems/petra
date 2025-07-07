@@ -184,3 +184,18 @@ PETRA represents a generational leap in automation technology:
 PETRA isn't just another soft PLC—it's a fundamental rethinking of automation architecture using modern computer science. By leveraging lock-free data structures, memory-safe systems programming, and cloud-native design patterns, PETRA delivers performance and reliability impossible with traditional approaches.
 
 **Ready to experience the future of industrial automation? PETRA is open-source and available today.**
+
+## Contributing
+
+PETRA is currently in rapid development with a focused roadmap. 
+We're not accepting external contributions at this time, but we 
+appreciate your interest!
+
+Ways to help:
+- ⭐ Star the project
+- Report bugs via issues  
+- Share feature ideas in discussions
+- Spread the word
+
+We plan to open contributions in the future with proper CLA 
+infrastructure. Follow the project to be notified!
