@@ -4,7 +4,7 @@ version: "1.0"
 
 # Conservative timing values to avoid jitter validation edge cases
 scan_time_ms: 100
-max_scan_jitter_ms: 25  # Much less than scan time to avoid any edge cases
+max_scan_jitter_ms: 10  # 10% of scan time - very conservative to avoid validation issues
 error_recovery: true
 max_consecutive_errors: 10
 
