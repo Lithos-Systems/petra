@@ -14,8 +14,11 @@ import GridOverlay from './GridOverlay'
 
 import { useHMIKeyboardShortcuts } from '@/hooks/useHMIKeyboardShortcuts'
 
+import MQTTTestDisplay from './MQTTTestDisplay'
+
 export default function HMIDesigner() {
   const stageRef = useRef<any>(null)
+  const [showMQTTTest, setShowMQTTTest] = useState(false)
   const {
     components,
     selectedComponentId,
@@ -166,6 +169,14 @@ export default function HMIDesigner() {
           <div className="absolute bottom-4 left-4 bg-white px-3 py-2 rounded shadow text-sm text-gray-600">
             Canvas: {stageSize.width} × {stageSize.height}px | Zoom: {Math.round(scale * 100)}%
           </div>
+          
+          {/* MQTT Test Toggle */}
+          <button
+            onClick={() => setShowMQTTTest(!showMQTTTest)}
+            className="absolute bottom-4 right-4 bg-petra-500 text-white px-3 py-2 rounded shadow hover:bg-petra-600 transition-colors text-sm"
+          >
+            {showMQTTTest ? 'Hide' : 'Show'} MQTT Test
+          </button>
         </div>
       </div>
 
@@ -176,6 +187,9 @@ export default function HMIDesigner() {
           onDelete={() => deleteComponent(selectedComponent.id)}
         />
       )}
+      
+      {/* MQTT Test Display */}
+      {showMQTTTest && <MQTTTestDisplay />}
     </div>
   )
 }
