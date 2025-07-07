@@ -1,3 +1,5 @@
+// src/components/hmi/HMIDesigner.tsx
+
 import { useState, useCallback, useRef } from 'react'
 import { Stage, Layer } from 'react-konva'
 import { KonvaEventObject } from 'konva/lib/Node'
@@ -240,18 +242,21 @@ function getDefaultProperties(type: string) {
       alarmLow: 20,
       showLabel: true,
       units: '%',
+      showWaveAnimation: true,
     },
     pump: {
       running: false,
       fault: false,
       speed: 0,
       showStatus: true,
+      runAnimation: true,
     },
     valve: {
       open: false,
       fault: false,
       position: 0,
       valveType: 'gate',
+      showPosition: true,
     },
     gauge: {
       min: 0,
@@ -276,6 +281,27 @@ function getDefaultProperties(type: string) {
       text: 'Button',
       action: 'toggle',
       confirmRequired: false,
+    },
+    'heat-exchanger': {
+      hotInletTemp: 80,
+      hotOutletTemp: 60,
+      coldInletTemp: 20,
+      coldOutletTemp: 40,
+      efficiency: 85,
+      showTemperatures: true,
+    },
+    conveyor: {
+      running: false,
+      speed: 50,
+      direction: 'forward',
+      material: false,
+    },
+    mixer: {
+      running: false,
+      speed: 60,
+      level: 75,
+      agitatorType: 'paddle',
+      temperature: 25,
     },
   }
   return properties[type] || {}
