@@ -1559,7 +1559,14 @@ async fn start_health_server(port: u16, bind: String, check_interval: u64) -> Re
 async fn handle_security_command(cmd: SecurityCommands) -> Result<()> {
     match cmd {
         SecurityCommands::KeyGen { key_type, output } => {
-            petra::security::generate_key(&key_type.to_string(), &output).await?;
+            let key_type_str = match key_type {
+                KeyType::Rsa => "rsa",
+                KeyType::Ed25519 => "ed25519",
+                KeyType::Aes => "aes",
+                #[cfg(feature = "jwt-auth")]
+                KeyType::Jwt => "jwt",
+            };
+            petra::security::generate_key(key_type_str, &output).await?;
             println!("{} Generated {} key: {}", 
                 "SUCCESS".green().bold(),
                 format!("{:?}", key_type).to_lowercase(), 
