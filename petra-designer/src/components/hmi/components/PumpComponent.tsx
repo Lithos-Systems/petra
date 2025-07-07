@@ -1,3 +1,5 @@
+// src/components/hmi/components/PumpComponent.tsx
+
 import { useEffect, useRef } from 'react'
 import { Group, Circle, Line, Text, Wedge } from 'react-konva'
 import type { PumpProperties } from '@/types/hmi'
