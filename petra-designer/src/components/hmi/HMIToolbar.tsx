@@ -1,5 +1,6 @@
 // src/components/hmi/HMIToolbar.tsx
 
+import { useState } from 'react'
 import { 
   FaSave, 
   FaFileExport, 
@@ -22,6 +23,8 @@ import {
 import { useHMIStore } from '@/store/hmiStore'
 import toast from 'react-hot-toast'
 
+import HMIPreviewModal from './HMIPreviewModal'
+
 interface HMIToolbarProps {
   scale: number
   onScaleChange: (scale: number) => void
@@ -35,6 +38,7 @@ export default function HMIToolbar({
   stageSize,
   onStageSizeChange,
 }: HMIToolbarProps) {
+  const [showPreview, setShowPreview] = useState(false)
   const {
     showGrid,
     snapToGrid,
@@ -277,6 +281,7 @@ export default function HMIToolbar({
 
           {/* Runtime preview */}
           <button
+            onClick={() => setShowPreview(true)}
             className="flex items-center gap-2 px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
             title="Preview Display"
           >
@@ -285,6 +290,12 @@ export default function HMIToolbar({
           </button>
         </div>
       </div>
+      
+      {/* Preview Modal */}
+      <HMIPreviewModal 
+        isOpen={showPreview} 
+        onClose={() => setShowPreview(false)} 
+      />
     </div>
   )
 }
