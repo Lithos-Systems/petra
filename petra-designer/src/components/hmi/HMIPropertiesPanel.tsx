@@ -1,3 +1,5 @@
+// src/components/hmi/HMIPropertiesPanel.tsx
+
 import { useState } from 'react'
 import { FaTrash, FaLock, FaUnlock, FaEye, FaEyeSlash, FaPlus, FaTimes } from 'react-icons/fa'
 import { SketchPicker } from 'react-color'
