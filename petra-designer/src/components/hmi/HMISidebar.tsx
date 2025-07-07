@@ -1,3 +1,5 @@
+// src/components/hmi/HMISidebar.tsx
+
 import { useState } from 'react'
 import { 
   FaSquare, 
