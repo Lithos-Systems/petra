@@ -7,8 +7,6 @@
 use crate::{error::*, signal::SignalBus, value::Value};
 use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, QoS, Packet};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use tracing::{info, error, debug, trace};
 
 #[cfg(feature = "mqtt-persistence")]
@@ -704,7 +702,6 @@ impl MqttClient {
                 serde_json::to_string(obj)
                     .map_err(|e| PlcError::Mqtt(format!("Failed to serialize object: {}", e)))
             }
-            _ => Ok(format!("{:?}", value)),
         }
     }
     
