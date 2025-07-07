@@ -18,12 +18,22 @@ interface HMIStore {
   snapToGrid: boolean
   gridSize: number
   
+  // History for undo/redo
+  history: Array<{ components: HMIComponent[] }>
+  historyIndex: number
+  
   // Actions
   addComponent: (component: HMIComponent) => void
   updateComponent: (id: string, updates: Partial<HMIComponent>) => void
   deleteComponent: (id: string) => void
   selectComponent: (id: string) => void
   clearSelection: () => void
+  
+  // History management
+  undo: () => void
+  redo: () => void
+  canUndo: () => boolean
+  canRedo: () => boolean
   
   // Display management
   createDisplay: (name: string, size: { width: number; height: number }) => void
@@ -50,12 +60,32 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
   showGrid: true,
   snapToGrid: true,
   gridSize: 20,
+  history: [{ components: [] }],
+  historyIndex: 0,
+
+  // Helper to save to history
+  saveToHistory: () => {
+    const state = get()
+    const newHistory = state.history.slice(0, state.historyIndex + 1)
+    newHistory.push({ components: [...state.components] })
+    
+    // Limit history to 50 items
+    if (newHistory.length > 50) {
+      newHistory.shift()
+    }
+    
+    set({
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+    })
+  },
 
   addComponent: (component) => {
     set((state) => ({
       components: [...state.components, component],
       selectedComponentId: component.id,
     }))
+    get().saveToHistory()
   },
 
   updateComponent: (id, updates) => {
@@ -64,6 +94,7 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
         c.id === id ? { ...c, ...updates } : c
       ),
     }))
+    get().saveToHistory()
   },
 
   deleteComponent: (id) => {
@@ -71,7 +102,35 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
       components: state.components.filter((c) => c.id !== id),
       selectedComponentId: state.selectedComponentId === id ? null : state.selectedComponentId,
     }))
+    get().saveToHistory()
   },
+
+  undo: () => {
+    const state = get()
+    if (state.historyIndex > 0) {
+      const newIndex = state.historyIndex - 1
+      set({
+        components: [...state.history[newIndex].components],
+        historyIndex: newIndex,
+        selectedComponentId: null,
+      })
+    }
+  },
+
+  redo: () => {
+    const state = get()
+    if (state.historyIndex < state.history.length - 1) {
+      const newIndex = state.historyIndex + 1
+      set({
+        components: [...state.history[newIndex].components],
+        historyIndex: newIndex,
+        selectedComponentId: null,
+      })
+    }
+  },
+
+  canUndo: () => get().historyIndex > 0,
+  canRedo: () => get().historyIndex < get().history.length - 1,
 
   selectComponent: (id) => {
     set({ selectedComponentId: id })
