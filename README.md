@@ -1,6 +1,6 @@
 # Why Use PETRA: The Next-Generation Automation Compute Engine
 
-PETRA is a high-performance, Rust-based automation compute engine that revolutionizes industrial automation through modern concurrent architectures. Built on state-of-the-art lock-free data structures, PETRA delivers **0.15 microseconds/block** execution, scales to **25+ million concurrent signals** with minimal overhead, and achieves **1.0 millisecond** writes for 10,000 I/O operations. Below, we explore why PETRA represents a fundamental leap forward in automation technology.
+PETRA (Programmable Engine for Telemetry, Runtime, and Automation) is a high-performance, Rust-based automation compute engine that revolutionizes industrial automation through modern concurrent architectures. Built on state-of-the-art lock-free data structures, PETRA delivers **0.15 microseconds/block** execution, scales to **25+ million concurrent signals** with minimal overhead, and achieves **1.0 millisecond** writes for 10,000 I/O operations. Below, we explore why PETRA represents a fundamental leap forward in automation technology.
 
 ## What Makes PETRA Different
 
