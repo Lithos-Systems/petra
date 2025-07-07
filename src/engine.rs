@@ -480,6 +480,18 @@ impl Engine {
         
         // Validate configuration
         config.validate()?;
+
+        debug!(
+            "Engine validation: scan_time={}ms, max_jitter={}ms",
+            config.scan_time_ms,
+            config.max_scan_jitter_ms
+        );
+
+        if config.max_scan_jitter_ms > config.scan_time_ms {
+            return Err(PlcError::Config(
+                "Maximum jitter cannot exceed scan time".to_string(),
+            ));
+        }
         
         // Initialize signals from configuration
         Self::initialize_signals(&bus, &config)?;

@@ -1,7 +1,7 @@
 //! Enhanced Engine performance benchmarks with configurable signal counts
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use criterion::measurement::WallTime;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use petra::config::{BlockConfig, Config, SignalConfig};
 use petra::{Engine, SignalBus, Value};
 use std::collections::HashMap;
@@ -22,13 +22,13 @@ fn parse_counts(env_var: &str, default: &str) -> Vec<usize> {
 fn get_benchmark_config() -> (Vec<usize>, Vec<usize>) {
     let signals = parse_counts("PETRA_BENCH_SIGNALS", "100,1000,10000");
     let blocks = parse_counts("PETRA_BENCH_BLOCKS", "10,100,1000");
-    
+
     // Ensure we have matching counts or use defaults
     if signals.is_empty() || blocks.is_empty() || signals.len() != blocks.len() {
         eprintln!("Warning: Invalid signal/block configuration, using defaults");
         return (vec![100, 1000, 10000], vec![10, 100, 1000]);
     }
-    
+
     (signals, blocks)
 }
 
@@ -104,7 +104,8 @@ fn create_benchmark_config(num_signals: usize, num_blocks: usize) -> Config {
     Config {
         // Core engine settings
         scan_time_ms: 50,
-        max_scan_jitter_ms: 50,
+        // Use a conservative jitter value to avoid validation edge cases
+        max_scan_jitter_ms: 20,
         error_recovery: true,
         max_consecutive_errors: 10,
         restart_delay_ms: 5000,
@@ -150,7 +151,7 @@ fn benchmark_scan_performance(c: &mut Criterion) {
 
     // Get configurable signal/block counts
     let (signal_counts, block_counts) = get_benchmark_config();
-    
+
     // Print configuration for debugging
     eprintln!("Benchmark configuration:");
     for (signals, blocks) in signal_counts.iter().zip(block_counts.iter()) {
@@ -235,11 +236,9 @@ fn benchmark_signal_bus_operations(c: &mut Criterion) {
 
         b.iter(|| {
             for i in 0..update_signals {
-                let _ = bus.update(&format!("counter_{}", i), |old| {
-                    match old {
-                        Some(Value::Integer(n)) => Value::Integer(n + 1),
-                        _ => Value::Integer(1),
-                    }
+                let _ = bus.update(&format!("counter_{}", i), |old| match old {
+                    Some(Value::Integer(n)) => Value::Integer(n + 1),
+                    _ => Value::Integer(1),
                 });
             }
         });
@@ -253,7 +252,7 @@ fn benchmark_block_execution(c: &mut Criterion) {
 
     // Test different block counts
     let (_, block_counts) = get_benchmark_config();
-    
+
     for &num_blocks in &block_counts {
         if num_blocks > 10000 {
             continue; // Skip very large block counts for individual block tests
@@ -368,7 +367,7 @@ criterion_group! {
         benchmark_feature_diagnostic,
         benchmark_scan_performance,
         benchmark_signal_bus_operations,
-        benchmark_block_execution, 
+        benchmark_block_execution,
         benchmark_value_operations
 }
 
