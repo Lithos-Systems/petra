@@ -116,7 +116,7 @@ struct Cli {
     scan_time: u64,
     
     /// Validate configuration only, don't run engine
-    #[arg(short, long)]
+    #[arg(short = 'd', long)]
     validate_only: bool,
     
     /// Enable verbose logging (debug level)
@@ -133,7 +133,7 @@ struct Cli {
     
     /// CPU affinity (Linux only, comma-separated core IDs)
     #[cfg(target_os = "linux")]
-    #[arg(long, value_delimiter = ',')]
+    #[arg(short = 'a', long, value_delimiter = ',')]
     cpu_affinity: Vec<usize>,
     
     /// Thread priority (0-99, requires privileges)
@@ -155,7 +155,7 @@ enum Commands {
         config: PathBuf,
         
         /// Engine scan time in milliseconds
-        #[arg(short, long, default_value = "10")]
+        #[arg(short = 't', long, default_value = "10")]
         scan_time: u64,
         
         /// Enable enhanced monitoring and diagnostics
@@ -170,7 +170,7 @@ enum Commands {
         
         /// CPU affinity for worker threads (Linux only)
         #[cfg(target_os = "linux")]
-        #[arg(long, value_delimiter = ',')]
+        #[arg(short = 'a', long, value_delimiter = ',')]
         cpu_affinity: Option<Vec<usize>>,
         
         /// Real-time thread priority (0-99)
@@ -403,7 +403,7 @@ enum DevCommands {
         blocks: usize,
         
         /// Target scan time in milliseconds
-        #[arg(short, long, default_value = "10")]
+        #[arg(short = 't', long, default_value = "10")]
         scan_time: u64,
         
         /// Memory stress testing
