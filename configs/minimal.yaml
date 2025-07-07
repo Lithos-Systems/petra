@@ -1,10 +1,10 @@
-# Minimal test configuration for debugging
-# Fixed jitter validation issue
+# Optimized minimal configuration for PETRA
+# Addresses the jitter validation while providing good performance
 version: "1.0"
 
-# Conservative timing values to avoid jitter validation edge cases
-scan_time_ms: 100
-max_scan_jitter_ms: 10  # 10% of scan time - very conservative to avoid validation issues
+# Optimized timing values - good balance of performance and stability
+scan_time_ms: 100        # 100ms scan time for stable operation
+max_scan_jitter_ms: 20   # 20% of scan time - good compromise
 error_recovery: true
 max_consecutive_errors: 10
 
