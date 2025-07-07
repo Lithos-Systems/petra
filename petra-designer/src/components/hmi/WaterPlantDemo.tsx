@@ -9,10 +9,17 @@ import ValveComponent from './components/ValveComponent'
 import GaugeComponent from './components/GaugeComponent'
 
 interface PumpSetpoints {
-  startLevel: number // Tank level % to start
-  stopLevel: number // Tank level % to stop
+  leadStartPressure: number // PSI - Lead pump starts
+  leadStopPressure: number // PSI - Lead pump stops  
+  lagStartPressure: number // PSI - Lag pumps start
+  lagStopPressure: number // PSI - Lag pumps stop
   alarmLowPressure: number // Low pressure alarm (psi)
   alarmHighPressure: number // High pressure alarm (psi)
+}
+
+interface WellSetpoints {
+  startLevel: number // Tank level feet to start
+  stopLevel: number // Tank level feet to stop
   alarmHighFlow: number // High flow alarm (gpm)
 }
 
@@ -21,21 +28,27 @@ interface SimulationState {
   tankCapacity: number // gallons
   tankLevel: number // gallons
   tankLevelPercent: number // %
+  tankLevelFeet: number // feet
+  tankHeight: number // feet
   
   // Well parameters
   wellFlowRate: number // gpm
   wellRunning: boolean
-  wellSetpoints: PumpSetpoints
+  wellSetpoints: WellSetpoints
+  
+  // System pressure setpoints (common for all pumps)
+  pumpSetpoints: PumpSetpoints
   
   // Pump parameters
   boosterPumps: Array<{
     id: string
     name: string
-    flowRate: number // gpm
+    flowRate: number // gpm when running at full capacity
     running: boolean
     efficiency: number // %
     pressure: number // psi
-    setpoints: PumpSetpoints
+    currentFlow: number // actual flow (0 when stopped)
+    role: 'lead' | 'lag1' | 'lag2'
     inAlarm: boolean
     alarmMessage?: string
   }>
@@ -64,62 +77,55 @@ export default function WaterPlantDemo() {
     tankCapacity: 200000,
     tankLevel: 100000,
     tankLevelPercent: 50,
+    tankLevelFeet: 12.5, // 50% of 25ft
+    tankHeight: 25,
     wellFlowRate: 2000,
     wellRunning: true,
     wellSetpoints: {
-      startLevel: 30,
-      stopLevel: 80,
-      alarmLowPressure: 0,
-      alarmHighPressure: 100,
+      startLevel: 8,  // 8 feet
+      stopLevel: 20,  // 20 feet
       alarmHighFlow: 3000,
+    },
+    pumpSetpoints: {
+      leadStartPressure: 55,
+      leadStopPressure: 65,
+      lagStartPressure: 50,
+      lagStopPressure: 70,
+      alarmLowPressure: 40,
+      alarmHighPressure: 80,
     },
     boosterPumps: [
       { 
         id: 'bp1', 
-        name: 'Booster 1', 
-        flowRate: 1500, 
+        name: 'Lead Pump', 
+        flowRate: 1500,
+        currentFlow: 1500,
         running: true, 
         efficiency: 85, 
         pressure: 60,
-        setpoints: {
-          startLevel: 40,
-          stopLevel: 70,
-          alarmLowPressure: 40,
-          alarmHighPressure: 80,
-          alarmHighFlow: 2000,
-        },
+        role: 'lead',
         inAlarm: false
       },
       { 
         id: 'bp2', 
-        name: 'Booster 2', 
-        flowRate: 1500, 
+        name: 'Lag Pump 1', 
+        flowRate: 1500,
+        currentFlow: 0,
         running: false, 
         efficiency: 85, 
         pressure: 60,
-        setpoints: {
-          startLevel: 35,
-          stopLevel: 75,
-          alarmLowPressure: 40,
-          alarmHighPressure: 80,
-          alarmHighFlow: 2000,
-        },
+        role: 'lag1',
         inAlarm: false
       },
       { 
         id: 'bp3', 
-        name: 'Booster 3', 
-        flowRate: 2000, 
+        name: 'Lag Pump 2', 
+        flowRate: 2000,
+        currentFlow: 0,
         running: false, 
         efficiency: 90, 
         pressure: 65,
-        setpoints: {
-          startLevel: 30,
-          stopLevel: 80,
-          alarmLowPressure: 45,
-          alarmHighPressure: 85,
-          alarmHighFlow: 2500,
-        },
+        role: 'lag2',
         inAlarm: false
       },
     ],
@@ -132,7 +138,6 @@ export default function WaterPlantDemo() {
   })
   
   const [showControls, setShowControls] = useState(true)
-  const [selectedPump, setSelectedPump] = useState<string | null>(null)
   const simulationRef = useRef<SimulationState>(simulation)
   simulationRef.current = simulation
   
@@ -143,14 +148,11 @@ export default function WaterPlantDemo() {
       const pumpAlarms: string[] = []
       
       if (pump.running) {
-        if (pump.pressure < pump.setpoints.alarmLowPressure) {
+        if (pump.pressure < state.pumpSetpoints.alarmLowPressure) {
           pumpAlarms.push(`Low pressure: ${pump.pressure} psi`)
         }
-        if (pump.pressure > pump.setpoints.alarmHighPressure) {
+        if (pump.pressure > state.pumpSetpoints.alarmHighPressure) {
           pumpAlarms.push(`High pressure: ${pump.pressure} psi`)
-        }
-        if (pump.flowRate > pump.setpoints.alarmHighFlow) {
-          pumpAlarms.push(`High flow: ${pump.flowRate} gpm`)
         }
       }
       
@@ -190,52 +192,70 @@ export default function WaterPlantDemo() {
       setSimulation(prev => {
         const timeStep = 1 / 60 * prev.timeMultiplier // 1 second of simulation time
         
-        // Automatic well control based on tank level
+        // Calculate tank level in feet
+        const currentLevelFeet = (prev.tankLevelPercent / 100) * prev.tankHeight
+        
+        // Automatic well control based on tank level in feet
         let wellRunning = prev.wellRunning
-        if (prev.tankLevelPercent <= prev.wellSetpoints.startLevel) {
+        if (currentLevelFeet <= prev.wellSetpoints.startLevel) {
           wellRunning = true
-        } else if (prev.tankLevelPercent >= prev.wellSetpoints.stopLevel) {
+        } else if (currentLevelFeet >= prev.wellSetpoints.stopLevel) {
           wellRunning = false
         }
         
-        // Automatic pump control based on setpoints
-        const updatedPumps = prev.boosterPumps.map(pump => {
+        // Lead/Lag pump control based on pressure
+        const leadPump = prev.boosterPumps.find(p => p.role === 'lead')
+        const lagPumps = prev.boosterPumps.filter(p => p.role.startsWith('lag'))
+        
+        let updatedPumps = prev.boosterPumps.map(pump => {
           let running = pump.running
-          if (prev.tankLevelPercent <= pump.setpoints.startLevel && prev.systemPressure < prev.targetPressure) {
-            running = true
-          } else if (prev.tankLevelPercent >= pump.setpoints.stopLevel || prev.systemPressure > prev.targetPressure * 1.1) {
-            running = false
+          let currentFlow = pump.currentFlow
+          
+          if (pump.role === 'lead') {
+            // Lead pump control
+            if (prev.systemPressure < prev.pumpSetpoints.leadStartPressure) {
+              running = true
+            } else if (prev.systemPressure > prev.pumpSetpoints.leadStopPressure) {
+              running = false
+            }
+          } else {
+            // Lag pump control
+            if (prev.systemPressure < prev.pumpSetpoints.lagStartPressure && leadPump?.running) {
+              running = true
+            } else if (prev.systemPressure > prev.pumpSetpoints.lagStopPressure) {
+              running = false
+            }
           }
-          return { ...pump, running }
+          
+          // Update current flow based on running state
+          currentFlow = running ? pump.flowRate * (pump.efficiency / 100) : 0
+          
+          return { ...pump, running, currentFlow }
         })
         
         // Calculate total pump output
-        const totalPumpOutput = updatedPumps
-          .filter(p => p.running)
-          .reduce((sum, pump) => sum + pump.flowRate * (pump.efficiency / 100), 0)
+        const totalPumpOutput = updatedPumps.reduce((sum, pump) => sum + pump.currentFlow, 0)
         
-        // Calculate net flow (well + pumps - demand)
+        // Calculate net flow
         const wellFlow = wellRunning ? prev.wellFlowRate : 0
         const netFlow = wellFlow - prev.demand + totalPumpOutput
         
         // Update tank level
         const newLevel = Math.max(0, Math.min(prev.tankCapacity, prev.tankLevel + (netFlow * timeStep)))
         const newLevelPercent = (newLevel / prev.tankCapacity) * 100
+        const newLevelFeet = (newLevelPercent / 100) * prev.tankHeight
         
-        // Calculate system pressure based on running pumps and tank level
+        // Calculate system pressure
         const runningPumps = updatedPumps.filter(p => p.running)
         let newPressure = 0
         
         if (runningPumps.length > 0) {
-          // Average pressure from running pumps, adjusted by tank level
           const avgPumpPressure = runningPumps.reduce((sum, p) => sum + p.pressure, 0) / runningPumps.length
-          const tankLevelFactor = 0.5 + (newLevelPercent / 100) * 0.5 // 50-100% efficiency based on tank level
+          const tankLevelFactor = 0.5 + (newLevelPercent / 100) * 0.5
           newPressure = avgPumpPressure * tankLevelFactor
           
-          // Adjust for demand
           const demandRatio = prev.demand / totalPumpOutput
           if (demandRatio > 1) {
-            // Demand exceeds supply, pressure drops
             newPressure *= Math.max(0.5, 1 - (demandRatio - 1) * 0.3)
           }
         }
@@ -248,7 +268,6 @@ export default function WaterPlantDemo() {
           systemPressure: Math.round(newPressure),
         })
         
-        // Keep only last 10 alarms
         const allAlarms = [...prev.activeAlarms, ...newAlarms].slice(-10)
         
         return {
@@ -257,11 +276,12 @@ export default function WaterPlantDemo() {
           boosterPumps: alarmedPumps,
           tankLevel: newLevel,
           tankLevelPercent: newLevelPercent,
+          tankLevelFeet: newLevelFeet,
           systemPressure: Math.round(newPressure),
           activeAlarms: allAlarms,
         }
       })
-    }, 100) // Update every 100ms
+    }, 100)
     
     return () => clearInterval(interval)
   }, [simulation.running, simulation.timeMultiplier])
@@ -275,18 +295,14 @@ export default function WaterPlantDemo() {
     }))
   }
   
-  const updatePumpSetpoint = (pumpId: string, field: keyof PumpSetpoints, value: number) => {
+  const updatePumpSetpoint = (field: keyof PumpSetpoints, value: number) => {
     setSimulation(prev => ({
       ...prev,
-      boosterPumps: prev.boosterPumps.map(pump =>
-        pump.id === pumpId 
-          ? { ...pump, setpoints: { ...pump.setpoints, [field]: value } }
-          : pump
-      )
+      pumpSetpoints: { ...prev.pumpSetpoints, [field]: value }
     }))
   }
   
-  const updateWellSetpoint = (field: keyof PumpSetpoints, value: number) => {
+  const updateWellSetpoint = (field: keyof WellSetpoints, value: number) => {
     setSimulation(prev => ({
       ...prev,
       wellSetpoints: { ...prev.wellSetpoints, [field]: value }
@@ -361,7 +377,7 @@ export default function WaterPlantDemo() {
               </div>
               <div className="flex justify-between">
                 <span>Tank Level:</span>
-                <span className="font-bold">{simulation.tankLevelPercent.toFixed(1)}%</span>
+                <span className="font-bold">{simulation.tankLevelFeet.toFixed(1)} ft ({simulation.tankLevelPercent.toFixed(1)}%)</span>
               </div>
             </div>
           </div>
@@ -371,25 +387,27 @@ export default function WaterPlantDemo() {
             <h3 className="font-semibold mb-3">Well Pump Setpoints</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center">
-                <span>Start Level (%):</span>
+                <span>Start Level (ft):</span>
                 <input
                   type="number"
                   value={simulation.wellSetpoints.startLevel}
-                  onChange={(e) => updateWellSetpoint('startLevel', parseInt(e.target.value))}
+                  onChange={(e) => updateWellSetpoint('startLevel', parseFloat(e.target.value))}
                   className="w-20 px-2 py-1 border rounded text-right"
                   min="0"
-                  max="100"
+                  max={simulation.tankHeight}
+                  step="0.5"
                 />
               </div>
               <div className="flex justify-between items-center">
-                <span>Stop Level (%):</span>
+                <span>Stop Level (ft):</span>
                 <input
                   type="number"
                   value={simulation.wellSetpoints.stopLevel}
-                  onChange={(e) => updateWellSetpoint('stopLevel', parseInt(e.target.value))}
+                  onChange={(e) => updateWellSetpoint('stopLevel', parseFloat(e.target.value))}
                   className="w-20 px-2 py-1 border rounded text-right"
                   min="0"
-                  max="100"
+                  max={simulation.tankHeight}
+                  step="0.5"
                 />
               </div>
               <div className="flex justify-between items-center">
@@ -404,9 +422,75 @@ export default function WaterPlantDemo() {
             </div>
           </div>
           
-          {/* Booster Pump Controls */}
+          {/* Pump Pressure Setpoints */}
           <div className="mb-6">
-            <h3 className="font-semibold mb-3">Booster Pumps</h3>
+            <h3 className="font-semibold mb-3">Pump Pressure Setpoints (PSI)</h3>
+            <div className="space-y-2 text-sm">
+              <div className="font-medium text-gray-700 mt-2">Lead Pump</div>
+              <div className="flex justify-between items-center">
+                <span>Start Pressure:</span>
+                <input
+                  type="number"
+                  value={simulation.pumpSetpoints.leadStartPressure}
+                  onChange={(e) => updatePumpSetpoint('leadStartPressure', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Stop Pressure:</span>
+                <input
+                  type="number"
+                  value={simulation.pumpSetpoints.leadStopPressure}
+                  onChange={(e) => updatePumpSetpoint('leadStopPressure', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                />
+              </div>
+              
+              <div className="font-medium text-gray-700 mt-3">Lag Pumps</div>
+              <div className="flex justify-between items-center">
+                <span>Start Pressure:</span>
+                <input
+                  type="number"
+                  value={simulation.pumpSetpoints.lagStartPressure}
+                  onChange={(e) => updatePumpSetpoint('lagStartPressure', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Stop Pressure:</span>
+                <input
+                  type="number"
+                  value={simulation.pumpSetpoints.lagStopPressure}
+                  onChange={(e) => updatePumpSetpoint('lagStopPressure', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                />
+              </div>
+              
+              <div className="font-medium text-gray-700 mt-3">Alarms</div>
+              <div className="flex justify-between items-center">
+                <span>Low Pressure:</span>
+                <input
+                  type="number"
+                  value={simulation.pumpSetpoints.alarmLowPressure}
+                  onChange={(e) => updatePumpSetpoint('alarmLowPressure', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                <span>High Pressure:</span>
+                <input
+                  type="number"
+                  value={simulation.pumpSetpoints.alarmHighPressure}
+                  onChange={(e) => updatePumpSetpoint('alarmHighPressure', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                />
+              </div>
+            </div>
+          </div>
+          
+          {/* Booster Pump Status */}
+          <div className="mb-6">
+            <h3 className="font-semibold mb-3">Booster Pump Status</h3>
             <div className="space-y-3">
               {simulation.boosterPumps.map(pump => (
                 <div 
@@ -436,66 +520,11 @@ export default function WaterPlantDemo() {
                     </div>
                   )}
                   
-                  <button
-                    onClick={() => setSelectedPump(selectedPump === pump.id ? null : pump.id)}
-                    className="text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    {selectedPump === pump.id ? 'Hide' : 'Show'} Setpoints
-                  </button>
-                  
-                  {selectedPump === pump.id && (
-                    <div className="mt-2 pt-2 border-t space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Start Level (%):</span>
-                        <input
-                          type="number"
-                          value={pump.setpoints.startLevel}
-                          onChange={(e) => updatePumpSetpoint(pump.id, 'startLevel', parseInt(e.target.value))}
-                          className="w-16 px-1 py-0.5 border rounded text-right"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Stop Level (%):</span>
-                        <input
-                          type="number"
-                          value={pump.setpoints.stopLevel}
-                          onChange={(e) => updatePumpSetpoint(pump.id, 'stopLevel', parseInt(e.target.value))}
-                          className="w-16 px-1 py-0.5 border rounded text-right"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Low Pressure (psi):</span>
-                        <input
-                          type="number"
-                          value={pump.setpoints.alarmLowPressure}
-                          onChange={(e) => updatePumpSetpoint(pump.id, 'alarmLowPressure', parseInt(e.target.value))}
-                          className="w-16 px-1 py-0.5 border rounded text-right"
-                        />
-                      </div>
-                      <div className="flex justify-between">
-                        <span>High Pressure (psi):</span>
-                        <input
-                          type="number"
-                          value={pump.setpoints.alarmHighPressure}
-                          onChange={(e) => updatePumpSetpoint(pump.id, 'alarmHighPressure', parseInt(e.target.value))}
-                          className="w-16 px-1 py-0.5 border rounded text-right"
-                        />
-                      </div>
-                      <div className="flex justify-between">
-                        <span>High Flow (gpm):</span>
-                        <input
-                          type="number"
-                          value={pump.setpoints.alarmHighFlow}
-                          onChange={(e) => updatePumpSetpoint(pump.id, 'alarmHighFlow', parseInt(e.target.value))}
-                          className="w-16 px-1 py-0.5 border rounded text-right"
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <div className="text-sm text-gray-600">
+                    <div>Flow: {pump.currentFlow.toFixed(0)} / {pump.flowRate} gpm</div>
+                    <div>Efficiency: {pump.efficiency}%</div>
+                    <div>Pressure: {pump.pressure} psi</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -606,6 +635,15 @@ export default function WaterPlantDemo() {
                 align="center"
                 fill="#64748b"
               />
+              <Text
+                x={0}
+                y={275}
+                width={200}
+                text={`Level: ${simulation.tankLevelFeet.toFixed(1)} ft`}
+                fontSize={12}
+                align="center"
+                fill="#64748b"
+              />
             </Group>
             
             {/* Well Pump */}
@@ -624,7 +662,7 @@ export default function WaterPlantDemo() {
                 }}
                 bindings={[]}
                 style={{
-                  fill: '#ddd6fe',
+                  fill: '#ffffff',
                   stroke: '#7c3aed',
                   strokeWidth: 2,
                 }}
@@ -673,7 +711,7 @@ export default function WaterPlantDemo() {
                   }}
                   bindings={[]}
                   style={{
-                    fill: pump.running ? '#dcfce7' : '#f3f4f6',
+                    fill: '#ffffff',
                     stroke: pump.running ? '#16a34a' : '#6b7280',
                     strokeWidth: 2,
                   }}
@@ -692,7 +730,7 @@ export default function WaterPlantDemo() {
                   x={-20}
                   y={85}
                   width={120}
-                  text={`${pump.flowRate} gpm`}
+                  text={`${pump.currentFlow.toFixed(0)} gpm`}
                   fontSize={12}
                   align="center"
                   fill="#64748b"
