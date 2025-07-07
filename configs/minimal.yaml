@@ -1,8 +1,10 @@
 # Minimal test configuration for debugging
+# Fixed jitter validation issue
 version: "1.0"
 
+# Conservative timing values to avoid jitter validation edge cases
 scan_time_ms: 100
-max_scan_jitter_ms: 50
+max_scan_jitter_ms: 25  # Much less than scan time to avoid any edge cases
 error_recovery: true
 max_consecutive_errors: 10
 
