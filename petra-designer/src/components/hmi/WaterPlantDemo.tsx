@@ -21,6 +21,7 @@ interface WellSetpoints {
   startLevel: number // Tank level feet to start
   stopLevel: number // Tank level feet to stop
   alarmHighFlow: number // High flow alarm (gpm)
+  flowRate: number // Well pump flow rate when running
 }
 
 interface HydrotankSetpoints {
@@ -38,7 +39,7 @@ interface SimulationState {
   tankHeight: number // feet
   
   // Well parameters
-  wellFlowRate: number // gpm
+  wellFlowRate: number // Current flow rate (0 when stopped)
   wellRunning: boolean
   wellSetpoints: WellSetpoints
   
@@ -49,7 +50,8 @@ interface SimulationState {
   boosterPumps: Array<{
     id: string
     name: string
-    flowRate: number // gpm when running at full capacity
+    maxFlowRate: number // Maximum flow rate capability
+    flowRate: number // Current setpoint flow rate
     running: boolean
     efficiency: number // %
     pressure: number // psi
@@ -102,12 +104,13 @@ export default function WaterPlantDemo() {
     tankLevelPercent: 50,
     tankLevelFeet: 12.5, // 50% of 25ft
     tankHeight: 25,
-    wellFlowRate: 2000,
-    wellRunning: true,
+    wellFlowRate: 0,
+    wellRunning: false,
     wellSetpoints: {
       startLevel: 8,  // 8 feet
       stopLevel: 20,  // 20 feet
       alarmHighFlow: 3000,
+      flowRate: 2000, // Well pump flow rate when running
     },
     pumpSetpoints: {
       leadStartPressure: 55,
@@ -121,6 +124,7 @@ export default function WaterPlantDemo() {
       { 
         id: 'bp1', 
         name: 'Pump 1', 
+        maxFlowRate: 3000,
         flowRate: 1500,
         currentFlow: 0,
         running: false, 
@@ -132,6 +136,7 @@ export default function WaterPlantDemo() {
       { 
         id: 'bp2', 
         name: 'Pump 2', 
+        maxFlowRate: 3000,
         flowRate: 1500,
         currentFlow: 0,
         running: false, 
@@ -143,6 +148,7 @@ export default function WaterPlantDemo() {
       { 
         id: 'bp3', 
         name: 'Pump 3', 
+        maxFlowRate: 3000,
         flowRate: 2000,
         currentFlow: 0,
         running: false, 
@@ -189,8 +195,20 @@ export default function WaterPlantDemo() {
   })
   
   const [showControls, setShowControls] = useState(true)
-  const simulationRef = useRef<SimulationState>(simulation)
-  simulationRef.current = simulation
+  const [stageSize, setStageSize] = useState({ width: 800, height: 600 })
+  
+  // Update stage size on window resize
+  useEffect(() => {
+    const updateSize = () => {
+      setStageSize({
+        width: window.innerWidth - (showControls ? 384 : 0),
+        height: window.innerHeight - 60
+      })
+    }
+    updateSize()
+    window.addEventListener('resize', updateSize)
+    return () => window.removeEventListener('resize', updateSize)
+  }, [showControls])
   
   // Check alarms
   const checkAlarms = (state: SimulationState) => {
@@ -248,10 +266,16 @@ export default function WaterPlantDemo() {
         
         // Well pump control based solely on tank level
         let wellRunning = prev.wellRunning
+        let wellFlowRate = prev.wellFlowRate
+        
         if (currentLevelFeet <= prev.wellSetpoints.startLevel && !wellRunning) {
           wellRunning = true
+          wellFlowRate = prev.wellSetpoints.flowRate
         } else if (currentLevelFeet >= prev.wellSetpoints.stopLevel && wellRunning) {
           wellRunning = false
+          wellFlowRate = 0
+        } else if (wellRunning) {
+          wellFlowRate = prev.wellSetpoints.flowRate
         }
         
         // Round-robin lead/lag pump control
@@ -308,7 +332,7 @@ export default function WaterPlantDemo() {
             }
           }
           
-          // Update current flow based on running state
+          // Update current flow based on running state and setpoint
           currentFlow = running ? pump.flowRate * (pump.efficiency / 100) : 0
           
           return { ...pump, running, currentFlow, startDelay }
@@ -318,8 +342,7 @@ export default function WaterPlantDemo() {
         const totalPumpOutput = updatedPumps.reduce((sum, pump) => sum + pump.currentFlow, 0)
         
         // Calculate net flow to storage tank
-        const wellFlow = wellRunning ? prev.wellFlowRate : 0
-        const netFlow = wellFlow - totalPumpOutput // Pumps draw from tank
+        const netFlow = wellFlowRate - totalPumpOutput // Pumps draw from tank
         
         // Update tank level
         const newLevel = Math.max(0, Math.min(prev.tankCapacity, prev.tankLevel + (netFlow * timeStep)))
@@ -335,7 +358,7 @@ export default function WaterPlantDemo() {
           const basePressure = 60
           
           // Calculate supply/demand ratio
-          const supplyDemandRatio = totalPumpOutput / prev.demand
+          const supplyDemandRatio = totalPumpOutput / Math.max(1, prev.demand)
           
           if (supplyDemandRatio >= 1) {
             // Excess capacity increases pressure (up to max 100 psi)
@@ -359,6 +382,10 @@ export default function WaterPlantDemo() {
           let newWaterPercent = (newWaterLevel / ht.capacity) * 100
           let newAirBlanket = 100 - newWaterPercent
           
+          // Ensure values stay within bounds
+          newWaterPercent = Math.max(0, Math.min(100, newWaterPercent))
+          newAirBlanket = Math.max(0, Math.min(100, newAirBlanket))
+          
           // Air compressor control
           let compressorRunning = ht.compressorRunning
           if (newAirBlanket < prev.hydrotankSetpoints.compressorStartLevel) {
@@ -373,6 +400,10 @@ export default function WaterPlantDemo() {
             newWaterLevel = Math.max(0, newWaterLevel - (airInjectionRate * timeStep))
             newWaterPercent = (newWaterLevel / ht.capacity) * 100
             newAirBlanket = 100 - newWaterPercent
+            
+            // Ensure bounds after air injection
+            newWaterPercent = Math.max(0, Math.min(100, newWaterPercent))
+            newAirBlanket = Math.max(0, Math.min(100, newAirBlanket))
           }
           
           return {
@@ -386,7 +417,6 @@ export default function WaterPlantDemo() {
         })
         
         // Apply hydrotank dampening to pressure changes
-        // Hydrotanks slow down pressure changes but don't affect the target
         const pressureChangeRate = 0.1 // 10% change per time step
         let newPressure = prev.systemPressure
         
@@ -410,6 +440,7 @@ export default function WaterPlantDemo() {
           ...prev,
           boosterPumps: updatedPumps,
           wellRunning,
+          wellFlowRate,
           systemPressure: Math.round(newPressure),
         })
         
@@ -418,6 +449,7 @@ export default function WaterPlantDemo() {
         return {
           ...prev,
           wellRunning,
+          wellFlowRate,
           boosterPumps: alarmedPumps,
           hydrotanks: finalHydrotanks,
           tankLevel: newLevel,
@@ -460,6 +492,24 @@ export default function WaterPlantDemo() {
     setSimulation(prev => ({
       ...prev,
       hydrotankSetpoints: { ...prev.hydrotankSetpoints, [field]: value }
+    }))
+  }
+  
+  const updatePumpFlowRate = (pumpId: string, flowRate: number) => {
+    setSimulation(prev => ({
+      ...prev,
+      boosterPumps: prev.boosterPumps.map(pump =>
+        pump.id === pumpId ? { ...pump, flowRate: Math.min(flowRate, pump.maxFlowRate) } : pump
+      )
+    }))
+  }
+  
+  const updatePumpEfficiency = (pumpId: string, efficiency: number) => {
+    setSimulation(prev => ({
+      ...prev,
+      boosterPumps: prev.boosterPumps.map(pump =>
+        pump.id === pumpId ? { ...pump, efficiency: Math.max(0, Math.min(100, efficiency)) } : pump
+      )
     }))
   }
   
@@ -532,24 +582,19 @@ export default function WaterPlantDemo() {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Target Pressure:</span>
-                <input
-                  type="number"
-                  value={simulation.targetPressure}
-                  onChange={(e) => setSimulation(prev => ({ ...prev, targetPressure: parseInt(e.target.value) }))}
-                  className="w-20 px-2 py-1 border rounded text-right"
-                />
+                <span>Tank Level:</span>
+                <span className="font-medium">{simulation.tankLevelFeet.toFixed(1)} ft ({simulation.tankLevelPercent.toFixed(0)}%)</span>
               </div>
               <div className="flex justify-between">
-                <span>Tank Level:</span>
-                <span className="font-bold">{simulation.tankLevelFeet.toFixed(1)} ft ({simulation.tankLevelPercent.toFixed(1)}%)</span>
+                <span>Total Flow:</span>
+                <span className="font-medium">{simulation.boosterPumps.reduce((sum, p) => sum + p.currentFlow, 0).toFixed(0)} gpm</span>
               </div>
             </div>
           </div>
           
-          {/* Well Setpoints */}
+          {/* Well Pump Setpoints */}
           <div className="mb-6">
-            <h3 className="font-semibold mb-3">Well Pump Setpoints</h3>
+            <h3 className="font-semibold mb-3">Well Pump Control</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center">
                 <span>Start Level (ft):</span>
@@ -576,22 +621,41 @@ export default function WaterPlantDemo() {
                 />
               </div>
               <div className="flex justify-between items-center">
-                <span>High Flow Alarm (gpm):</span>
+                <span>Flow Rate (gpm):</span>
+                <input
+                  type="number"
+                  value={simulation.wellSetpoints.flowRate}
+                  onChange={(e) => updateWellSetpoint('flowRate', parseInt(e.target.value))}
+                  className="w-20 px-2 py-1 border rounded text-right"
+                  min="0"
+                  max="5000"
+                  step="100"
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                <span>High Flow Alarm:</span>
                 <input
                   type="number"
                   value={simulation.wellSetpoints.alarmHighFlow}
                   onChange={(e) => updateWellSetpoint('alarmHighFlow', parseInt(e.target.value))}
                   className="w-20 px-2 py-1 border rounded text-right"
+                  min="0"
+                  max="5000"
                 />
+              </div>
+              <div className="mt-2 p-2 bg-gray-100 rounded">
+                <div className="text-xs text-gray-600">
+                  Current: {simulation.wellRunning ? 'Running' : 'Stopped'} at {simulation.wellFlowRate} gpm
+                </div>
               </div>
             </div>
           </div>
           
           {/* Pump Pressure Setpoints */}
           <div className="mb-6">
-            <h3 className="font-semibold mb-3">Pump Pressure Setpoints (PSI)</h3>
+            <h3 className="font-semibold mb-3">Pump Pressure Control</h3>
             <div className="space-y-2 text-sm">
-              <div className="font-medium text-gray-700 mt-2">Lead Pump</div>
+              <div className="font-medium text-gray-700">Lead Pump</div>
               <div className="flex justify-between items-center">
                 <span>Start Pressure:</span>
                 <input
@@ -746,9 +810,34 @@ export default function WaterPlantDemo() {
                     </div>
                   )}
                   
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-gray-600 space-y-1">
                     <div>Flow: {pump.currentFlow.toFixed(0)} / {pump.flowRate} gpm</div>
-                    <div>Efficiency: {pump.efficiency}%</div>
+                    <div className="flex items-center gap-2">
+                      <span>Setpoint:</span>
+                      <input
+                        type="number"
+                        value={pump.flowRate}
+                        onChange={(e) => updatePumpFlowRate(pump.id, parseInt(e.target.value))}
+                        className="w-16 px-1 py-0.5 border rounded text-right text-xs"
+                        min="0"
+                        max={pump.maxFlowRate}
+                        step="100"
+                      />
+                      <span className="text-xs text-gray-500">gpm</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span>Efficiency:</span>
+                      <input
+                        type="number"
+                        value={pump.efficiency}
+                        onChange={(e) => updatePumpEfficiency(pump.id, parseInt(e.target.value))}
+                        className="w-16 px-1 py-0.5 border rounded text-right text-xs"
+                        min="0"
+                        max="100"
+                        step="5"
+                      />
+                      <span className="text-xs text-gray-500">%</span>
+                    </div>
                     <div>Pressure: {pump.pressure} psi</div>
                   </div>
                 </div>
@@ -770,7 +859,7 @@ export default function WaterPlantDemo() {
                     <div className="flex items-center gap-2">
                       <span>Compressor:</span>
                       <span className={`font-medium ${ht.compressorRunning ? 'text-green-600' : 'text-gray-600'}`}>
-                        {ht.compressorRunning ? 'Running' : 'Off'}
+                        {ht.compressorRunning ? 'Running' : 'Stopped'}
                       </span>
                     </div>
                   </div>
@@ -781,12 +870,17 @@ export default function WaterPlantDemo() {
           
           {/* Active Alarms */}
           {simulation.activeAlarms.length > 0 && (
-            <div className="mb-6 p-4 bg-red-50 rounded-lg">
-              <h3 className="font-semibold mb-2 text-red-700">Active Alarms</h3>
-              <div className="space-y-1 text-sm">
-                {simulation.activeAlarms.slice(-5).reverse().map(alarm => (
-                  <div key={alarm.id} className="text-red-600">
-                    <span className="font-medium">{alarm.source}:</span> {alarm.message}
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <FaExclamationTriangle className="text-red-600" />
+                Active Alarms
+              </h3>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {simulation.activeAlarms.map(alarm => (
+                  <div key={alarm.id} className="text-sm p-2 bg-red-50 rounded border border-red-200">
+                    <div className="font-medium">{alarm.source}</div>
+                    <div className="text-red-600">{alarm.message}</div>
+                    <div className="text-xs text-gray-500">{alarm.timestamp.toLocaleTimeString()}</div>
                   </div>
                 ))}
               </div>
@@ -795,24 +889,24 @@ export default function WaterPlantDemo() {
         </div>
       )}
       
-      {/* Toggle Control Panel Button */}
+      {/* Toggle Controls Button */}
       <button
         onClick={() => setShowControls(!showControls)}
-        className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-white border border-gray-300 rounded-r-lg px-2 py-4 shadow-lg hover:bg-gray-50 z-10"
+        className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-white border border-gray-300 rounded-r-md px-2 py-4 shadow-md hover:bg-gray-50 z-10"
       >
         {showControls ? '◀' : '▶'}
       </button>
       
       {/* Main Display */}
       <div className="flex-1 relative">
-        <Stage width={window.innerWidth - (showControls ? 384 : 0)} height={window.innerHeight - 60}>
+        <Stage width={stageSize.width} height={stageSize.height}>
           <Layer>
             {/* Background */}
             <Rect
               x={0}
               y={0}
-              width={window.innerWidth - (showControls ? 384 : 0)}
-              height={window.innerHeight - 60}
+              width={stageSize.width}
+              height={stageSize.height}
               fill="#f8fafc"
             />
             
@@ -876,6 +970,15 @@ export default function WaterPlantDemo() {
                 fontSize={12}
                 align="center"
                 fill="#64748b"
+              />
+              <Text
+                x={0}
+                y={290}
+                width={200}
+                text={`Start: ${simulation.wellSetpoints.startLevel} ft | Stop: ${simulation.wellSetpoints.stopLevel} ft`}
+                fontSize={10}
+                align="center"
+                fill="#94a3b8"
               />
             </Group>
             
@@ -961,24 +1064,25 @@ export default function WaterPlantDemo() {
                 />
                 {pump.pumpNumber === simulation.currentLeadPump && (
                   <Rect
-                    x={-30}
-                    y={-40}
+                    x={30}
+                    y={-45}
                     width={40}
-                    height={20}
+                    height={16}
                     fill="#16a34a"
                     cornerRadius={3}
                   />
                 )}
                 {pump.pumpNumber === simulation.currentLeadPump && (
                   <Text
-                    x={-30}
-                    y={-36}
+                    x={30}
+                    y={-45}
                     width={40}
+                    height={16}
                     text="LEAD"
                     fontSize={10}
+                    fill="white"
                     align="center"
-                    fill="#ffffff"
-                    fontStyle="bold"
+                    verticalAlign="middle"
                   />
                 )}
                 <Text
@@ -995,21 +1099,14 @@ export default function WaterPlantDemo() {
                   y={100}
                   width={120}
                   text={`${pump.pressure} psi`}
-                  fontSize={12}
+                  fontSize={11}
                   align="center"
                   fill="#64748b"
                 />
                 
-                {/* Inlet pipe */}
+                {/* Pipe from pump to main */}
                 <Line
-                  points={[40, 80, 40, 120, -100 + index * 150, 120]}
-                  stroke="#6b7280"
-                  strokeWidth={4}
-                />
-                
-                {/* Outlet pipe */}
-                <Line
-                  points={[40, 0, 40, -50]}
+                  points={[40, 80, 40, 120, 0, 120, 0, -50, -100 + index * 150, -50]}
                   stroke={pump.running ? '#16a34a' : '#6b7280'}
                   strokeWidth={4}
                 />
@@ -1031,107 +1128,113 @@ export default function WaterPlantDemo() {
             />
             
             {/* Hydrotanks */}
-            {simulation.hydrotanks.map((ht, index) => (
-              <Group key={ht.id} x={900 + index * 180} y={320}>
-                {/* Tank body */}
-                <Rect
-                  x={0}
-                  y={0}
-                  width={120}
-                  height={180}
-                  fill="#ffffff"
-                  stroke="#0284c7"
-                  strokeWidth={3}
-                  cornerRadius={10}
-                />
-                
-                {/* Water level */}
-                <Rect
-                  x={3}
-                  y={180 - (180 * ht.waterLevelPercent / 100) - 3}
-                  width={114}
-                  height={180 * ht.waterLevelPercent / 100}
-                  fill="#3b82f6"
-                  opacity={0.3}
-                  cornerRadius={8}
-                />
-                
-                {/* Air blanket indicator */}
-                <Rect
-                  x={3}
-                  y={3}
-                  width={114}
-                  height={180 * ht.airBlanketPercent / 100 - 6}
-                  fill="#e0f2fe"
-                  opacity={0.5}
-                  cornerRadius={8}
-                />
-                
-                {/* Compressor */}
-                <Circle
-                  x={60}
-                  y={-30}
-                  radius={15}
-                  fill={ht.compressorRunning ? '#10b981' : '#e5e7eb'}
-                  stroke="#374151"
-                  strokeWidth={2}
-                />
-                <Text
-                  x={60 - 5}
-                  y={-35}
-                  text="C"
-                  fontSize={14}
-                  fontStyle="bold"
-                  fill="#374151"
-                />
-                
-                {/* Air line */}
-                <Line
-                  points={[60, -15, 60, 0]}
-                  stroke="#374151"
-                  strokeWidth={3}
-                />
-                
-                {/* Labels */}
-                <Text
-                  x={0}
-                  y={-55}
-                  width={120}
-                  text={ht.name}
-                  fontSize={14}
-                  align="center"
-                  fontStyle="bold"
-                  fill="#0284c7"
-                />
-                
-                <Text
-                  x={0}
-                  y={190}
-                  width={120}
-                  text={`Air: ${ht.airBlanketPercent.toFixed(0)}%`}
-                  fontSize={11}
-                  align="center"
-                  fill="#374151"
-                />
-                
-                <Text
-                  x={0}
-                  y={205}
-                  width={120}
-                  text={`${ht.pressure} psi`}
-                  fontSize={11}
-                  align="center"
-                  fill="#374151"
-                />
-                
-                {/* Connection pipe */}
-                <Line
-                  points={[60, 180, 60, 220, -50 + index * 180, 220, -50 + index * 180, 300]}
-                  stroke="#0284c7"
-                  strokeWidth={4}
-                />
-              </Group>
-            ))}
+            {simulation.hydrotanks.map((ht, index) => {
+              // Ensure percentages are valid
+              const waterHeight = Math.max(0, Math.min(174, (174 * ht.waterLevelPercent / 100)))
+              const airHeight = Math.max(0, Math.min(174, (174 * ht.airBlanketPercent / 100)))
+              
+              return (
+                <Group key={ht.id} x={900 + index * 180} y={320}>
+                  {/* Tank body */}
+                  <Rect
+                    x={0}
+                    y={0}
+                    width={120}
+                    height={180}
+                    fill="#ffffff"
+                    stroke="#0284c7"
+                    strokeWidth={3}
+                    cornerRadius={10}
+                  />
+                  
+                  {/* Water level */}
+                  <Rect
+                    x={3}
+                    y={180 - waterHeight - 3}
+                    width={114}
+                    height={waterHeight}
+                    fill="#3b82f6"
+                    opacity={0.3}
+                    cornerRadius={8}
+                  />
+                  
+                  {/* Air blanket indicator */}
+                  <Rect
+                    x={3}
+                    y={3}
+                    width={114}
+                    height={airHeight - 6}
+                    fill="#e0f2fe"
+                    opacity={0.5}
+                    cornerRadius={8}
+                  />
+                  
+                  {/* Compressor */}
+                  <Circle
+                    x={60}
+                    y={-30}
+                    radius={15}
+                    fill={ht.compressorRunning ? '#10b981' : '#e5e7eb'}
+                    stroke="#374151"
+                    strokeWidth={2}
+                  />
+                  <Text
+                    x={60 - 5}
+                    y={-35}
+                    text="C"
+                    fontSize={14}
+                    fontStyle="bold"
+                    fill="#374151"
+                  />
+                  
+                  {/* Air line */}
+                  <Line
+                    points={[60, -15, 60, 0]}
+                    stroke="#374151"
+                    strokeWidth={3}
+                  />
+                  
+                  {/* Labels */}
+                  <Text
+                    x={0}
+                    y={-55}
+                    width={120}
+                    text={ht.name}
+                    fontSize={14}
+                    align="center"
+                    fontStyle="bold"
+                    fill="#0284c7"
+                  />
+                  
+                  <Text
+                    x={0}
+                    y={190}
+                    width={120}
+                    text={`Air: ${ht.airBlanketPercent.toFixed(0)}%`}
+                    fontSize={11}
+                    align="center"
+                    fill="#374151"
+                  />
+                  
+                  <Text
+                    x={0}
+                    y={205}
+                    width={120}
+                    text={`${ht.pressure} psi`}
+                    fontSize={11}
+                    align="center"
+                    fill="#374151"
+                  />
+                  
+                  {/* Connection pipe */}
+                  <Line
+                    points={[60, 180, 60, 220, -50 + index * 180, 220, -50 + index * 180, 300]}
+                    stroke="#0284c7"
+                    strokeWidth={4}
+                  />
+                </Group>
+              )
+            })}
             
             {/* To distribution */}
             <Line
@@ -1152,44 +1255,60 @@ export default function WaterPlantDemo() {
                   max: 100,
                   value: simulation.systemPressure,
                   units: 'psi',
-                  showScale: true,
-                  majorTicks: 5,
+                  showTitle: true,
+                  title: 'System Pressure',
+                  alarmLow: simulation.pumpSetpoints.alarmLowPressure,
+                  alarmHigh: simulation.pumpSetpoints.alarmHighPressure,
                 }}
                 bindings={[]}
                 style={{
-                  fill: '#ffffff',
-                  stroke: '#0284c7',
-                  strokeWidth: 3,
+                  backgroundColor: '#ffffff',
+                  borderColor: '#0284c7',
+                  borderWidth: 2,
                 }}
-              />
-              <Text
-                x={0}
-                y={155}
-                width={150}
-                text="System Pressure"
-                fontSize={14}
-                align="center"
-                fill="#0284c7"
               />
             </Group>
             
-            {/* Demand indicator */}
+            {/* Demand Indicator */}
             <Group x={950} y={50}>
-              <Text
+              <Rect
                 x={0}
                 y={0}
-                text="Current Demand"
-                fontSize={16}
+                width={150}
+                height={80}
+                fill="#ffffff"
+                stroke="#0284c7"
+                strokeWidth={2}
+                cornerRadius={5}
+              />
+              <Text
+                x={0}
+                y={10}
+                width={150}
+                text="System Demand"
+                fontSize={14}
                 fontStyle="bold"
+                align="center"
                 fill="#0284c7"
               />
               <Text
                 x={0}
-                y={25}
-                text={`${simulation.demand.toLocaleString()} gpm`}
+                y={35}
+                width={150}
+                text={`${simulation.demand.toLocaleString()}`}
                 fontSize={24}
                 fontStyle="bold"
-                fill="#0284c7"
+                align="center"
+                fill="#1e293b"
+              />
+              <Text
+                x={0}
+                y={60}
+                width={150}
+                text="gpm"
+                fontSize={12}
+                align="center"
+                fill="#64748b"
               />
             </Group>
           </Layer>
