@@ -2,6 +2,22 @@
 
 PETRA (Programmable Engine for Telemetry, Runtime, and Automation) is a high-performance, Rust-based automation compute engine that revolutionizes industrial automation through modern concurrent architectures. Built on state-of-the-art lock-free data structures, PETRA delivers **0.15 microseconds/block** execution, scales to **25+ million concurrent signals** with minimal overhead, and achieves **1.0 millisecond** writes for 10,000 I/O operations. Below, we explore why PETRA represents a fundamental leap forward in automation technology.
 
+## Why Choose PETRA?
+
+PETRA represents a generational leap in automation technology:
+
+### Technical Superiority
+- **Architecture**: Lock-free, sharded, concurrent design
+- **Performance**: Microsecond latencies, millions of signals
+- **Reliability**: Memory-safe, crash-proof operation
+- **Flexibility**: Dynamic, cloud-native architecture
+
+### Practical Benefits
+- **Lower TCO**: Commodity hardware, no license limits
+- **Higher Reliability**: No memory corruption crashes
+- **Better Performance**: Full CPU utilization
+- **Easier Integration**: Modern APIs and protocols
+- **Future Ready**: Built for tomorrow's requirements
 ## What Makes PETRA Different
 
 Unlike traditional PLCs with fixed memory layouts and global lock architectures, PETRA leverages:
@@ -162,22 +178,6 @@ Latest benchmarks demonstrate linear scaling:
 - **Distributed Systems** - designed for horizontal scaling
 - **Industry 4.0** - ready for next-generation automation
 
-## Why Choose PETRA?
-
-PETRA represents a generational leap in automation technology:
-
-### Technical Superiority
-- **Architecture**: Lock-free, sharded, concurrent design
-- **Performance**: Microsecond latencies, millions of signals
-- **Reliability**: Memory-safe, crash-proof operation
-- **Flexibility**: Dynamic, cloud-native architecture
-
-### Practical Benefits
-- **Lower TCO**: Commodity hardware, no license limits
-- **Higher Reliability**: No memory corruption crashes
-- **Better Performance**: Full CPU utilization
-- **Easier Integration**: Modern APIs and protocols
-- **Future Ready**: Built for tomorrow's requirements
 
 ### The Bottom Line
 
