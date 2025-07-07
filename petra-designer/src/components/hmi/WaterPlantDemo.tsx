@@ -54,11 +54,14 @@ interface SimulationState {
     efficiency: number // %
     pressure: number // psi
     currentFlow: number // actual flow (0 when stopped)
-    role: 'lead' | 'lag1' | 'lag2'
+    pumpNumber: number // 1, 2, 3 for rotation sequence
     inAlarm: boolean
     alarmMessage?: string
     startDelay?: number // seconds until start (for staging)
   }>
+  
+  // Lead pump tracking for round-robin
+  currentLeadPump: number // 1, 2, or 3
   
   // Hydrotank parameters
   hydrotanks: Array<{
@@ -117,38 +120,39 @@ export default function WaterPlantDemo() {
     boosterPumps: [
       { 
         id: 'bp1', 
-        name: 'Lead Pump', 
+        name: 'Pump 1', 
         flowRate: 1500,
         currentFlow: 0,
         running: false, 
         efficiency: 85, 
         pressure: 60,
-        role: 'lead',
+        pumpNumber: 1,
         inAlarm: false
       },
       { 
         id: 'bp2', 
-        name: 'Lag Pump 1', 
+        name: 'Pump 2', 
         flowRate: 1500,
         currentFlow: 0,
         running: false, 
         efficiency: 85, 
         pressure: 60,
-        role: 'lag1',
+        pumpNumber: 2,
         inAlarm: false
       },
       { 
         id: 'bp3', 
-        name: 'Lag Pump 2', 
+        name: 'Pump 3', 
         flowRate: 2000,
         currentFlow: 0,
         running: false, 
         efficiency: 90, 
         pressure: 65,
-        role: 'lag2',
+        pumpNumber: 3,
         inAlarm: false
       },
     ],
+    currentLeadPump: 1, // Start with pump 1 as lead
     hydrotanks: [
       {
         id: 'ht1',
@@ -242,50 +246,89 @@ export default function WaterPlantDemo() {
         // Calculate tank level in feet
         const currentLevelFeet = (prev.tankLevelPercent / 100) * prev.tankHeight
         
-        // Automatic well control based on tank level in feet
+        // Well pump control based solely on tank level
         let wellRunning = prev.wellRunning
-        if (currentLevelFeet <= prev.wellSetpoints.startLevel) {
+        if (currentLevelFeet <= prev.wellSetpoints.startLevel && !wellRunning) {
           wellRunning = true
-        } else if (currentLevelFeet >= prev.wellSetpoints.stopLevel) {
+        } else if (currentLevelFeet >= prev.wellSetpoints.stopLevel && wellRunning) {
           wellRunning = false
         }
         
-        // Lead/Lag pump control based on pressure setpoints
-        const leadPump = prev.boosterPumps.find(p => p.role === 'lead')
-        const lagPumps = prev.boosterPumps.filter(p => p.role.startsWith('lag')).sort((a, b) => a.role.localeCompare(b.role))
+        // Round-robin lead/lag pump control
+        let currentLeadPump = prev.currentLeadPump
+        const leadPump = prev.boosterPumps.find(p => p.pumpNumber === currentLeadPump)
+        const runningPumps = prev.boosterPumps.filter(p => p.running)
         
-        let updatedPumps = prev.boosterPumps.map(pump => {
-          let running = pump.running
-          let currentFlow = pump.currentFlow
-          let startDelay = pump.startDelay
+        let updatedPumps = [...prev.boosterPumps]
+        
+        // Check if we need to rotate lead pump
+        if (leadPump?.running && prev.systemPressure >= prev.pumpSetpoints.leadStopPressure) {
+          // Stop current lead and rotate to next
+          updatedPumps = updatedPumps.map(pump => {
+            if (pump.pumpNumber === currentLeadPump) {
+              return { ...pump, running: false, currentFlow: 0, startDelay: undefined }
+            }
+            return pump
+          })
           
-          // Handle start delays for staging
+          // Increment lead pump for next cycle
+          currentLeadPump = (currentLeadPump % 3) + 1
+        }
+        
+        // Lead pump start logic
+        const newLeadPump = updatedPumps.find(p => p.pumpNumber === currentLeadPump)
+        if (!newLeadPump?.running && prev.systemPressure < prev.pumpSetpoints.leadStartPressure) {
+          updatedPumps = updatedPumps.map(pump => {
+            if (pump.pumpNumber === currentLeadPump) {
+              return { ...pump, running: true }
+            }
+            return pump
+          })
+        }
+        
+        // Lag pump control
+        const currentlyRunning = updatedPumps.filter(p => p.running)
+        
+        // Start lag pumps if pressure is low and lead is running
+        if (prev.systemPressure < prev.pumpSetpoints.lagStartPressure && currentlyRunning.length > 0) {
+          // Find next pump to start (not already running)
+          const availablePumps = updatedPumps.filter(p => !p.running && !p.startDelay)
+          if (availablePumps.length > 0) {
+            const nextPump = availablePumps[0]
+            updatedPumps = updatedPumps.map(pump => {
+              if (pump.id === nextPump.id) {
+                // Add staging delay
+                return { ...pump, startDelay: 5 } // 5 second delay
+              }
+              return pump
+            })
+          }
+        }
+        
+        // Stop lag pumps if pressure is high (stop non-lead pumps first)
+        if (prev.systemPressure > prev.pumpSetpoints.lagStopPressure) {
+          const nonLeadRunning = updatedPumps.filter(p => p.running && p.pumpNumber !== currentLeadPump)
+          if (nonLeadRunning.length > 0) {
+            // Stop the last started lag pump
+            const pumpToStop = nonLeadRunning[nonLeadRunning.length - 1]
+            updatedPumps = updatedPumps.map(pump => {
+              if (pump.id === pumpToStop.id) {
+                return { ...pump, running: false, currentFlow: 0, startDelay: undefined }
+              }
+              return pump
+            })
+          }
+        }
+        
+        // Handle staging delays
+        updatedPumps = updatedPumps.map(pump => {
+          let { running, currentFlow, startDelay } = pump
+          
           if (startDelay && startDelay > 0) {
             startDelay = Math.max(0, startDelay - timeStep)
             if (startDelay === 0) {
               running = true
-            }
-          } else {
-            if (pump.role === 'lead') {
-              // Lead pump control based on user setpoints
-              if (!running && prev.systemPressure < prev.pumpSetpoints.leadStartPressure) {
-                running = true
-              } else if (running && prev.systemPressure > prev.pumpSetpoints.leadStopPressure) {
-                running = false
-              }
-            } else {
-              // Lag pump control based on user setpoints
-              // Only start if lead is running
-              if (!running && leadPump?.running && prev.systemPressure < prev.pumpSetpoints.lagStartPressure) {
-                // Stage lag pumps with delay
-                if (!startDelay) {
-                  const lagIndex = parseInt(pump.role.replace('lag', ''))
-                  startDelay = lagIndex * 5 // 5 second delay between lag pumps
-                }
-              } else if (running && prev.systemPressure > prev.pumpSetpoints.lagStopPressure) {
-                running = false
-                startDelay = undefined
-              }
+              startDelay = undefined
             }
           }
           
@@ -406,6 +449,7 @@ export default function WaterPlantDemo() {
           tankLevelFeet: newLevelFeet,
           systemPressure: Math.round(newPressure),
           activeAlarms: allAlarms,
+          currentLeadPump,
         }
       })
     }, 100)
@@ -662,6 +706,18 @@ export default function WaterPlantDemo() {
             </div>
           </div>
           
+          {/* Current Lead Pump Indicator */}
+          <div className="mb-6 p-4 bg-green-50 rounded-lg">
+            <h3 className="font-semibold mb-2">Lead Pump Rotation</h3>
+            <div className="text-sm">
+              <span>Current Lead: </span>
+              <span className="font-bold text-green-700">Pump {simulation.currentLeadPump}</span>
+            </div>
+            <div className="text-xs text-gray-600 mt-1">
+              Lead pump rotates when stop pressure is reached
+            </div>
+          </div>
+          
           {/* Booster Pump Status */}
           <div className="mb-6">
             <h3 className="font-semibold mb-3">Booster Pump Status</h3>
@@ -670,11 +726,18 @@ export default function WaterPlantDemo() {
                 <div 
                   key={pump.id} 
                   className={`p-3 border rounded-lg ${
-                    pump.inAlarm ? 'border-red-500 bg-red-50' : 'border-gray-200'
+                    pump.inAlarm ? 'border-red-500 bg-red-50' : 
+                    pump.pumpNumber === simulation.currentLeadPump ? 'border-green-500 bg-green-50' :
+                    'border-gray-200'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">{pump.name}</span>
+                    <span className="font-medium">
+                      {pump.name} 
+                      {pump.pumpNumber === simulation.currentLeadPump && 
+                        <span className="ml-2 text-xs bg-green-600 text-white px-2 py-0.5 rounded">LEAD</span>
+                      }
+                    </span>
                     <button
                       onClick={() => togglePump(pump.id)}
                       className={`px-3 py-1 rounded text-sm ${
@@ -925,6 +988,28 @@ export default function WaterPlantDemo() {
                   fontStyle="bold"
                   fill={pump.running ? '#16a34a' : '#6b7280'}
                 />
+                {pump.pumpNumber === simulation.currentLeadPump && (
+                  <Rect
+                    x={-30}
+                    y={-40}
+                    width={40}
+                    height={20}
+                    fill="#16a34a"
+                    cornerRadius={3}
+                  />
+                )}
+                {pump.pumpNumber === simulation.currentLeadPump && (
+                  <Text
+                    x={-30}
+                    y={-36}
+                    width={40}
+                    text="LEAD"
+                    fontSize={10}
+                    align="center"
+                    fill="#ffffff"
+                    fontStyle="bold"
+                  />
+                )}
                 <Text
                   x={-20}
                   y={85}
