@@ -1,3 +1,5 @@
+// src/components/hmi/components/ButtonComponent.tsx
+
 import { Group, Rect, Text } from 'react-konva'
 import type { ButtonProperties, Interaction } from '@/types/hmi'
 
