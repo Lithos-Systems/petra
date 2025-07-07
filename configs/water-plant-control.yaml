@@ -440,6 +440,63 @@ signals:
     initial: false
     description: "System high pressure alarm"
 
+  # CONSTANT SIGNALS FOR SELECT BLOCKS
+  - name: "constants.zero"
+    type: "float"
+    initial: 0.0
+    description: "Constant zero value for flow calculations"
+    
+  - name: "constants.hundred"
+    type: "float"
+    initial: 100.0
+    description: "Constant hundred value for efficiency calculations"
+    
+  - name: "constants.one"
+    type: "float"
+    initial: 1.0
+    description: "Constant one value for calculations"
+    
+  - name: "constants.two"
+    type: "float"
+    initial: 2.0
+    description: "Constant two value for pump rotation"
+    
+  - name: "constants.three"
+    type: "float"
+    initial: 3.0
+    description: "Constant three value for pump rotation"
+    
+  - name: "constants.four"
+    type: "float"
+    initial: 4.0
+    description: "Constant four value for tank level percentage calculation"
+    
+  - name: "constants.five"
+    type: "float"
+    initial: 5.0
+    description: "Constant five feet for tank low alarm"
+    
+  - name: "constants.twenty_two_five"
+    type: "float"
+    initial: 22.5
+    description: "Constant 22.5 feet for tank high alarm"
+    
+  - name: "constants.forty"
+    type: "float"
+    initial: 40.0
+    description: "Constant 40 psi for pressure low alarm"
+    
+  - name: "constants.eighty"
+    type: "float"
+    initial: 80.0
+    description: "Constant 80 psi for pressure high alarm"
+    
+  # INTERMEDIATE CALCULATION SIGNALS
+  - name: "pump_12_total"
+    type: "float"
+    initial: 0.0
+    description: "Combined flow from pumps 1 and 2"
+
 # ============================================================================
 # LOGIC BLOCKS
 # ============================================================================
@@ -477,7 +534,7 @@ blocks:
     inputs:
       condition: "well.running"
       true_value: "well.setpoint_flow"
-      false_value: "0.0"
+      false_value: "constants.zero"
     outputs:
       out: "well.flow_rate"
       
@@ -528,7 +585,7 @@ blocks:
     type: "EQ"
     inputs:
       in1: "lead.rotation_counter"
-      in2: "1.0"
+      in2: "constants.one"
     outputs:
       out: "pump1.is_lead"
       
@@ -536,7 +593,7 @@ blocks:
     type: "EQ"
     inputs:
       in1: "lead.rotation_counter"
-      in2: "2.0"
+      in2: "constants.two"
     outputs:
       out: "pump2.is_lead"
       
@@ -544,7 +601,7 @@ blocks:
     type: "EQ"
     inputs:
       in1: "lead.rotation_counter"
-      in2: "3.0"
+      in2: "constants.three"
     outputs:
       out: "pump3.is_lead"
       
@@ -705,7 +762,7 @@ blocks:
     inputs:
       condition: "pump1.running"
       true_value: "pump1.setpoint_flow"
-      false_value: "0.0"
+      false_value: "constants.zero"
     outputs:
       out: "pump1.flow_rate"
       
@@ -714,7 +771,7 @@ blocks:
     inputs:
       condition: "pump2.running"
       true_value: "pump2.setpoint_flow"
-      false_value: "0.0"
+      false_value: "constants.zero"
     outputs:
       out: "pump2.flow_rate"
       
@@ -723,7 +780,7 @@ blocks:
     inputs:
       condition: "pump3.running"
       true_value: "pump3.setpoint_flow"
-      false_value: "0.0"
+      false_value: "constants.zero"
     outputs:
       out: "pump3.flow_rate"
       
@@ -853,7 +910,7 @@ blocks:
     type: "LT"
     inputs:
       in1: "tank.level_feet"
-      in2: "5.0"  # 5 feet low alarm
+      in2: "constants.five"  # 5 feet low alarm
     outputs:
       out: "alarm.tank_low"
       
@@ -861,7 +918,7 @@ blocks:
     type: "GT"
     inputs:
       in1: "tank.level_feet"
-      in2: "22.5"  # 22.5 feet high alarm (90%)
+      in2: "constants.twenty_two_five"  # 22.5 feet high alarm (90%)
     outputs:
       out: "alarm.tank_high"
       
@@ -870,7 +927,7 @@ blocks:
     type: "LT"
     inputs:
       in1: "system.pressure"
-      in2: "40.0"  # 40 psi low alarm
+      in2: "constants.forty"  # 40 psi low alarm
     outputs:
       out: "alarm.pressure_low"
       
@@ -878,7 +935,7 @@ blocks:
     type: "GT"
     inputs:
       in1: "system.pressure"
-      in2: "80.0"  # 80 psi high alarm
+      in2: "constants.eighty"  # 80 psi high alarm
     outputs:
       out: "alarm.pressure_high"
       
@@ -891,7 +948,7 @@ blocks:
     type: "MUL"
     inputs:
       in1: "tank.level_feet"
-      in2: "4.0"  # 25 feet = 100%, so multiply by 4
+      in2: "constants.four"  # 25 feet = 100%, so multiply by 4
     outputs:
       out: "tank.level_percent"
 
