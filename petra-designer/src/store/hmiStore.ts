@@ -1,3 +1,5 @@
+// src/store/hmiStore.ts
+
 import { create } from 'zustand'
 import type { HMIComponent, HMIDisplay } from '@/types/hmi'
 
