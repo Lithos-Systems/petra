@@ -1,3 +1,5 @@
+// src/components/hmi/components/TrendComponent.tsx
+
 import { Group, Rect, Line, Text } from 'react-konva'
 import type { TrendProperties } from '@/types/hmi'
 
