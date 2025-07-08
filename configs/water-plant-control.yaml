@@ -848,7 +848,34 @@ blocks:
       in_max: 25.0    # 25 feet tank height
       out_min: 0.0
       out_max: 100.0  # Percentage
+# ============================================================================
+# MQTT CONFIGURATION (Optional)
+# ============================================================================
 
+mqtt:
+  host: "localhost"
+  port: 1883
+  client_id: "petra-water-plant"
+  username: null  # Optional: MQTT username
+  password: null  # Optional: MQTT password
+  keepalive_secs: 60
+  timeout_ms: 5000
+  use_tls: false
+  qos: 1
+  retain: false
+  subscribe_topics:
+    - "petra/water_plant/setpoints/+"
+  publish_topic_base: "petra/water_plant"
+  auto_reconnect: true
+  max_reconnect_attempts: 0  # 0 = unlimited
+  reconnect_delay_secs: 5
+
+# Note: The previous configuration used subscriptions/publications with detailed mappings.
+# The current PETRA implementation uses a simpler structure where:
+# - subscribe_topics: List of MQTT topics to subscribe to
+# - publish_topic_base: Base topic for publishing signals
+# 
+# Signal mapping is handled internally by the MQTT module based on topic patterns.
 # ============================================================================
 # PROTOCOL CONFIGURATIONS (Optional - requires protocol features)
 # ============================================================================
