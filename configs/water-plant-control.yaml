@@ -360,25 +360,25 @@ signals:
     initial: 100.0
     description: "Constant hundred value for efficiency calculations"
     
-  - name: "constants.five"
+  - name: "setpoints.low_gst_alarm"
     type: "float"
     initial: 5.0
     description: "Constant five feet for tank low alarm"
     
-  - name: "constants.twenty_two_five"
+  - name: "setpoints.high_gst_alarm"
     type: "float"
     initial: 22.5
     description: "Constant 22.5 feet for tank high alarm"
     
-  - name: "constants.forty"
+  - name: "setpoints.low_pressure_alarm"
     type: "float"
-    initial: 40.0
+    initial: 45.0
     description: "Constant 40 psi for pressure low alarm"
     
-  - name: "constants.eighty"
+  - name: "setpoints.high_pressure_alarm"
     type: "float"
-    initial: 80.0
-    description: "Constant 80 psi for pressure high alarm"
+    initial: 70.0
+    description: "Constant 70 psi for pressure high alarm"
     
   # INTERMEDIATE CALCULATION SIGNALS
   - name: "pump_12_total"
@@ -842,7 +842,7 @@ blocks:
     type: "LT"
     inputs:
       in1: "tank.level_feet"
-      in2: "constants.five"
+      in2: "setpoints.low_gst_alarm"
     outputs:
       out: "alarm.tank_low"
       
@@ -850,7 +850,7 @@ blocks:
     type: "GT"
     inputs:
       in1: "tank.level_feet"
-      in2: "constants.twenty_two_five"
+      in2: "setpoints.high_gst_alarm"
     outputs:
       out: "alarm.tank_high"
       
@@ -859,7 +859,7 @@ blocks:
     type: "LT"
     inputs:
       in1: "system.pressure"
-      in2: "constants.forty"
+      in2: "setpoints.low_pressure_alarm"
     outputs:
       out: "alarm.pressure_low"
       
@@ -867,7 +867,7 @@ blocks:
     type: "GT"
     inputs:
       in1: "system.pressure"
-      in2: "constants.eighty"
+      in2: "setpoints.high_pressure_alarm"
     outputs:
       out: "alarm.pressure_high"
       
