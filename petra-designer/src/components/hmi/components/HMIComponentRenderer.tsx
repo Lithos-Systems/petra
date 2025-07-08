@@ -98,9 +98,7 @@ export function HMIComponentRenderer({
           <TankComponent
             {...commonProps}
             properties={component.properties as TankProperties}
-            bindings={component.bindings}
             style={component.style}
-            onUpdate={onUpdate}
           />
         )
 
@@ -109,7 +107,6 @@ export function HMIComponentRenderer({
           <PumpComponent
             {...commonProps}
             properties={component.properties as PumpProperties}
-            bindings={component.bindings}
             style={component.style}
           />
         )
@@ -119,7 +116,6 @@ export function HMIComponentRenderer({
           <ValveComponent
             {...commonProps}
             properties={component.properties as ValveProperties}
-            bindings={component.bindings}
             style={component.style}
           />
         )
@@ -129,7 +125,6 @@ export function HMIComponentRenderer({
           <GaugeComponent
             {...commonProps}
             properties={component.properties as GaugeProperties}
-            bindings={component.bindings}
             style={component.style}
           />
         )
@@ -139,7 +134,6 @@ export function HMIComponentRenderer({
           <TrendComponent
             {...commonProps}
             properties={component.properties as TrendProperties}
-            bindings={component.bindings}
             style={component.style}
           />
         )
@@ -149,7 +143,6 @@ export function HMIComponentRenderer({
           <ButtonComponent
             {...commonProps}
             properties={component.properties as ButtonProperties}
-            bindings={component.bindings}
             style={component.style}
             interactions={component.interactions}
           />
@@ -167,7 +160,6 @@ export function HMIComponentRenderer({
               efficiency: number
               showTemperatures: boolean
             }}
-            bindings={component.bindings}
             style={component.style}
           />
         )
@@ -179,10 +171,9 @@ export function HMIComponentRenderer({
             properties={component.properties as {
               running: boolean
               speed: number
-              direction: string
+              direction: 'forward' | 'reverse'
               material: boolean
             }}
-            bindings={component.bindings}
             style={component.style}
           />
         )
@@ -195,10 +186,9 @@ export function HMIComponentRenderer({
               running: boolean
               speed: number
               level: number
-              agitatorType: string
-              temperature: number
+              agitatorType: 'anchor' | 'paddle' | 'turbine'
+              temperature?: number
             }}
-            bindings={component.bindings}
             style={component.style}
           />
         )
