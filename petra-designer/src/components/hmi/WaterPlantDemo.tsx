@@ -20,6 +20,17 @@ export default function WaterPlantPetraDemo() {
   const { connected, signals: petraSignals, setSignalValue } = usePetra()
   const isConnected = connected
   
+  // Debug logging
+  useEffect(() => {
+    console.log('PETRA Connection Status:', connected)
+    console.log('PETRA Signals Map size:', petraSignals.size)
+    console.log('Sample signals:', {
+      tankLevel: petraSignals.get('tank.level_feet'),
+      pressure: petraSignals.get('system.pressure'),
+      pump1Running: petraSignals.get('pump1.running')
+    })
+  }, [connected, petraSignals])
+  
   const [simulation, setSimulation] = useState<SimulationState>({
     running: true,
     timeMultiplier: 10,
@@ -33,69 +44,69 @@ export default function WaterPlantPetraDemo() {
   // PETRA signal values (read from signal bus)
   const signals = {
     // Tank
-    tankLevelFeet: petraSignals.get('tank.level_feet') ?? 12.5,
-    tankLevelPercent: petraSignals.get('tank.level_percent') ?? 50,
+    tankLevelFeet: Number(petraSignals.get('tank.level_feet') ?? 12.5),
+    tankLevelPercent: Number(petraSignals.get('tank.level_percent') ?? 50),
 
     // Well pump
-    wellRunning: petraSignals.get('well.running') ?? false,
-    wellFlowRate: petraSignals.get('well.flow_rate') ?? 0,
-    wellStartLevel: petraSignals.get('well.start_level') ?? 8,
-    wellStopLevel: petraSignals.get('well.stop_level') ?? 20,
-    wellSetpointFlow: petraSignals.get('well.setpoint_flow') ?? 2000,
+    wellRunning: Boolean(petraSignals.get('well.running') ?? false),
+    wellFlowRate: Number(petraSignals.get('well.flow_rate') ?? 0),
+    wellStartLevel: Number(petraSignals.get('well.start_level') ?? 8),
+    wellStopLevel: Number(petraSignals.get('well.stop_level') ?? 20),
+    wellSetpointFlow: Number(petraSignals.get('well.setpoint_flow') ?? 2000),
 
     // System
-    systemPressure: petraSignals.get('system.pressure') ?? 60,
-    systemDemand: petraSignals.get('system.demand') ?? 2500,
+    systemPressure: Number(petraSignals.get('system.pressure') ?? 60),
+    systemDemand: Number(petraSignals.get('system.demand') ?? 2500),
 
     // Pumps
-    pump1Running: petraSignals.get('pump1.running') ?? false,
-    pump1FlowRate: petraSignals.get('pump1.flow_rate') ?? 0,
-    pump1SetpointFlow: petraSignals.get('pump1.setpoint_flow') ?? 1500,
-    pump1Efficiency: petraSignals.get('pump1.efficiency') ?? 85,
-    pump1IsLead: petraSignals.get('pump1.is_lead') ?? false,
+    pump1Running: Boolean(petraSignals.get('pump1.running') ?? false),
+    pump1FlowRate: Number(petraSignals.get('pump1.flow_rate') ?? 0),
+    pump1SetpointFlow: Number(petraSignals.get('pump1.setpoint_flow') ?? 1500),
+    pump1Efficiency: Number(petraSignals.get('pump1.efficiency') ?? 85),
+    pump1IsLead: Boolean(petraSignals.get('pump1.is_lead') ?? false),
 
-    pump2Running: petraSignals.get('pump2.running') ?? false,
-    pump2FlowRate: petraSignals.get('pump2.flow_rate') ?? 0,
-    pump2SetpointFlow: petraSignals.get('pump2.setpoint_flow') ?? 1500,
-    pump2Efficiency: petraSignals.get('pump2.efficiency') ?? 85,
-    pump2IsLead: petraSignals.get('pump2.is_lead') ?? false,
+    pump2Running: Boolean(petraSignals.get('pump2.running') ?? false),
+    pump2FlowRate: Number(petraSignals.get('pump2.flow_rate') ?? 0),
+    pump2SetpointFlow: Number(petraSignals.get('pump2.setpoint_flow') ?? 1500),
+    pump2Efficiency: Number(petraSignals.get('pump2.efficiency') ?? 85),
+    pump2IsLead: Boolean(petraSignals.get('pump2.is_lead') ?? false),
 
-    pump3Running: petraSignals.get('pump3.running') ?? false,
-    pump3FlowRate: petraSignals.get('pump3.flow_rate') ?? 0,
-    pump3SetpointFlow: petraSignals.get('pump3.setpoint_flow') ?? 2000,
-    pump3Efficiency: petraSignals.get('pump3.efficiency') ?? 90,
-    pump3IsLead: petraSignals.get('pump3.is_lead') ?? false,
+    pump3Running: Boolean(petraSignals.get('pump3.running') ?? false),
+    pump3FlowRate: Number(petraSignals.get('pump3.flow_rate') ?? 0),
+    pump3SetpointFlow: Number(petraSignals.get('pump3.setpoint_flow') ?? 2000),
+    pump3Efficiency: Number(petraSignals.get('pump3.efficiency') ?? 90),
+    pump3IsLead: Boolean(petraSignals.get('pump3.is_lead') ?? false),
 
     // Pressure setpoints
-    leadStartPressure: petraSignals.get('pressure.lead_start') ?? 55,
-    leadStopPressure: petraSignals.get('pressure.lead_stop') ?? 65,
-    lagStartPressure: petraSignals.get('pressure.lag_start') ?? 50,
-    lagStopPressure: petraSignals.get('pressure.lag_stop') ?? 70,
+    leadStartPressure: Number(petraSignals.get('pressure.lead_start') ?? 55),
+    leadStopPressure: Number(petraSignals.get('pressure.lead_stop') ?? 65),
+    lagStartPressure: Number(petraSignals.get('pressure.lag_start') ?? 50),
+    lagStopPressure: Number(petraSignals.get('pressure.lag_stop') ?? 70),
 
     // Hydrotanks
-    hydrotank1WaterLevel: petraSignals.get('hydrotank1.water_level') ?? 50,
-    hydrotank1AirBlanket: petraSignals.get('hydrotank1.air_blanket') ?? 50,
-    compressor1Running: petraSignals.get('compressor1.running') ?? false,
+    hydrotank1WaterLevel: Number(petraSignals.get('hydrotank1.water_level') ?? 50),
+    hydrotank1AirBlanket: Number(petraSignals.get('hydrotank1.air_blanket') ?? 50),
+    compressor1Running: Boolean(petraSignals.get('compressor1.running') ?? false),
 
-    hydrotank2WaterLevel: petraSignals.get('hydrotank2.water_level') ?? 50,
-    hydrotank2AirBlanket: petraSignals.get('hydrotank2.air_blanket') ?? 50,
-    compressor2Running: petraSignals.get('compressor2.running') ?? false,
+    hydrotank2WaterLevel: Number(petraSignals.get('hydrotank2.water_level') ?? 50),
+    hydrotank2AirBlanket: Number(petraSignals.get('hydrotank2.air_blanket') ?? 50),
+    compressor2Running: Boolean(petraSignals.get('compressor2.running') ?? false),
 
     // Hydrotank setpoints
-    hydrotankAirBlanketMin: petraSignals.get('hydrotank.air_blanket_min') ?? 45,
-    hydrotankAirBlanketMax: petraSignals.get('hydrotank.air_blanket_max') ?? 55,
+    hydrotankAirBlanketMin: Number(petraSignals.get('hydrotank.air_blanket_min') ?? 45),
+    hydrotankAirBlanketMax: Number(petraSignals.get('hydrotank.air_blanket_max') ?? 55),
 
     // Alarms
-    alarmTankLow: petraSignals.get('alarm.tank_low') ?? false,
-    alarmTankHigh: petraSignals.get('alarm.tank_high') ?? false,
-    alarmPressureLow: petraSignals.get('alarm.pressure_low') ?? false,
-    alarmPressureHigh: petraSignals.get('alarm.pressure_high') ?? false,
+    alarmTankLow: Boolean(petraSignals.get('alarm.tank_low') ?? false),
+    alarmTankHigh: Boolean(petraSignals.get('alarm.tank_high') ?? false),
+    alarmPressureLow: Boolean(petraSignals.get('alarm.pressure_low') ?? false),
+    alarmPressureHigh: Boolean(petraSignals.get('alarm.pressure_high') ?? false),
 
     // Lead pump rotation
-    currentLeadPump: Math.round(petraSignals.get('lead.rotation_counter') ?? 1),
+    currentLeadPump: Math.round(Number(petraSignals.get('lead.rotation_counter') ?? 1)),
     
     // Total pump flow
-    totalPumpFlow: petraSignals.get('pumps.total_flow') ?? 0,
+    totalPumpFlow: Number(petraSignals.get('pumps.total_flow') ?? 0),
   }
   
   // Update stage size on window resize
@@ -128,11 +139,11 @@ export default function WaterPlantPetraDemo() {
       try {
         const timeStep = 1 / 60 * simulation.timeMultiplier
         
-        // Read current values
-        const tankLevel = Number(petraSignals.get('tank.level_feet') ?? 12.5)
-        const wellFlow = Number(petraSignals.get('well.flow_rate') ?? 0)
-        const totalPumpFlow = Number(petraSignals.get('pumps.total_flow') ?? 0)
-        const systemDemand = Number(petraSignals.get('system.demand') ?? 2500)
+        // Read current values (handle wrapped format)
+        const tankLevel = Number(getSignalValue('tank.level_feet', 12.5))
+        const wellFlow = Number(getSignalValue('well.flow_rate', 0))
+        const totalPumpFlow = Number(getSignalValue('pumps.total_flow', 0))
+        const systemDemand = Number(getSignalValue('system.demand', 2500))
         
         // Calculate net flow to tank
         const netFlow = wellFlow - totalPumpFlow
@@ -147,7 +158,7 @@ export default function WaterPlantPetraDemo() {
         setSignalValue('tank.level_percent', (newLevel / 25) * 100)
         
         // Calculate system pressure based on pump flow vs demand
-        const currentPressure = Number(petraSignals.get('system.pressure') ?? 60)
+        const currentPressure = Number(getSignalValue('system.pressure', 60))
         let targetPressure = 0
         
         if (totalPumpFlow > 0) {
@@ -178,13 +189,13 @@ export default function WaterPlantPetraDemo() {
         const htFlowShare = netSystemFlow * timeStep / 2 // Split between two tanks
         
         // Hydrotank 1
-        const ht1WaterLevel = Number(petraSignals.get('hydrotank1.water_level') ?? 50)
+        const ht1WaterLevel = Number(getSignalValue('hydrotank1.water_level', 50))
         const ht1NewLevel = Math.max(0, Math.min(100, ht1WaterLevel + htFlowShare / 50)) // 50 gpm = 1% per minute
         setSignalValue('hydrotank1.water_level', ht1NewLevel)
         setSignalValue('hydrotank1.air_blanket', 100 - ht1NewLevel)
         
         // Hydrotank 2
-        const ht2WaterLevel = Number(petraSignals.get('hydrotank2.water_level') ?? 50)
+        const ht2WaterLevel = Number(getSignalValue('hydrotank2.water_level', 50))
         const ht2NewLevel = Math.max(0, Math.min(100, ht2WaterLevel + htFlowShare / 50))
         setSignalValue('hydrotank2.water_level', ht2NewLevel)
         setSignalValue('hydrotank2.air_blanket', 100 - ht2NewLevel)
@@ -202,10 +213,21 @@ export default function WaterPlantPetraDemo() {
   
   // Write signal to PETRA
   const writeSignal = (signal: string, value: any) => {
-    if (!isConnected) return
+    if (!isConnected) {
+      console.warn('Cannot write signal - not connected to PETRA')
+      return
+    }
+    
+    console.log(`Writing signal ${signal} = ${value}`)
     
     try {
       setSignalValue(signal, value)
+      
+      // Force a re-read to verify the write
+      setTimeout(() => {
+        const newValue = petraSignals.get(signal)
+        console.log(`Verified ${signal} = ${newValue}`)
+      }, 100)
     } catch (error) {
       console.error(`Error writing signal ${signal}:`, error)
     }
@@ -214,12 +236,12 @@ export default function WaterPlantPetraDemo() {
   // Control handlers
   const togglePump = (pumpNum: number) => {
     const signal = `pump${pumpNum}.running`
-    const currentValue = Boolean(petraSignals.get(signal)) || false
+    const currentValue = Boolean(getSignalValue(signal, false))
     writeSignal(signal, !currentValue)
   }
   
   const toggleWellPump = () => {
-    const currentValue = Boolean(petraSignals.get('well.running')) || false
+    const currentValue = Boolean(getSignalValue('well.running', false))
     writeSignal('well.running', !currentValue)
   }
   
@@ -253,6 +275,25 @@ export default function WaterPlantPetraDemo() {
                 Last update: {simulation.lastUpdate.toLocaleTimeString()}
               </div>
             )}
+            {/* Debug Test Button */}
+            <button
+              onClick={() => {
+                console.log('Testing signal write...');
+                console.log('Current petraSignals:', petraSignals);
+                const currentValue = getSignalValue('pump1.running', false);
+                console.log('Current pump1.running value:', currentValue);
+                const testValue = !currentValue;
+                writeSignal('pump1.running', testValue);
+                setTimeout(() => {
+                  console.log('Signals after write:', petraSignals);
+                  const newValue = getSignalValue('pump1.running', false);
+                  console.log('New pump1.running value:', newValue);
+                }, 500);
+              }}
+              className="mt-2 px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+            >
+              Test Toggle Pump 1
+            </button>
           </div>
           
           {/* Simulation Control */}
