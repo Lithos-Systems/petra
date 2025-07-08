@@ -3,6 +3,41 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 
+export interface Value {
+  type: 'Bool' | 'Integer' | 'Float'
+  value: boolean | number
+}
+
+/**
+ * Convert a backend value (which may be a plain primitive) into an adjacently
+ * tagged enum representation.
+ */
+const toBackendValue = (value: any): Value => {
+  if (typeof value === 'boolean') {
+    return { type: 'Bool', value }
+  }
+  if (Number.isInteger(value)) {
+    return { type: 'Integer', value }
+  }
+  if (typeof value === 'number') {
+    return { type: 'Float', value }
+  }
+  // Assume value is already in the correct shape
+  return value as Value
+}
+
+/**
+ * Convert a value received from the backend to a plain primitive. The backend
+ * may send either adjacently tagged values or plain primitives depending on the
+ * version. This helper normalises the format for the rest of the frontend.
+ */
+const fromBackendValue = (value: any): any => {
+  if (value && typeof value === 'object' && 'type' in value && 'value' in value) {
+    return (value as Value).value
+  }
+  return value
+}
+
 export interface SignalUpdate {
   type: 'signal_update'
   signal: string
@@ -176,7 +211,7 @@ export function usePetraConnection({
           switch (message.type) {
             case 'signal_update':
               const update = message.data as SignalUpdate
-              setSignals(prev => new Map(prev).set(update.signal, update.value))
+              setSignals(prev => new Map(prev).set(update.signal, fromBackendValue(update.value)))
               
               if (update.quality) {
                 setQuality(prev => new Map(prev).set(update.signal, update.quality!))
@@ -185,7 +220,7 @@ export function usePetraConnection({
               
             case 'mqtt_update':
               const mqttUpdate = message.data as MQTTUpdate
-              setMqttData(prev => new Map(prev).set(mqttUpdate.topic, mqttUpdate.payload))
+              setMqttData(prev => new Map(prev).set(mqttUpdate.topic, fromBackendValue(mqttUpdate.payload)))
               
               // Also update signals if MQTT topic maps to a signal
               if (mqttUpdate.topic.startsWith('petra/signals/')) {
@@ -199,7 +234,7 @@ export function usePetraConnection({
               setSignals(prev => {
                 const newMap = new Map(prev)
                 updates.forEach(update => {
-                  newMap.set(update.signal, update.value)
+                  newMap.set(update.signal, fromBackendValue(update.value))
                   if (update.quality) {
                     setQuality(prev => new Map(prev).set(update.signal, update.quality!))
                   }
@@ -354,7 +389,7 @@ export function usePetraConnection({
       wsRef.current.send(JSON.stringify({
         type: 'set_signal',
         signal: signalName,
-        value: value
+        value: toBackendValue(value)
       }))
     } else {
       toast.error('Not connected to PETRA')
@@ -368,7 +403,7 @@ export function usePetraConnection({
           type: 'batch_set',
           updates: Object.entries(updates).map(([signal, value]) => ({
             signal,
-            value,
+            value: toBackendValue(value),
             timestamp: Date.now()
           }))
         })
