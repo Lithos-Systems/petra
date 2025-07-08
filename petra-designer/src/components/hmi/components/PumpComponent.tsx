@@ -1,6 +1,5 @@
 // src/components/hmi/components/PumpComponent.tsx
 
-import { useRef } from 'react'
 import { Group, Circle, Line, Text, Path, Rect } from 'react-konva'
 import type { PumpProperties } from '@/types/hmi'
 

@@ -1,140 +1,7 @@
-const renderAnimationsTab = () => {
-    const addAnimation = () => {
-      const newAnimation: Animation = {
-        id: Date.now().toString(),
-        property: 'rotation',
-        trigger: {
-          type: 'signal',
-          signal: '',
-          condition: 'equals',
-          value: true
-        },
-        animation: {
-          from: 0,
-          to: 360,
-          duration: 2000,
-          easing: 'linear',
-          repeat: true
-        }
-      }
-      onUpdate({
-        animations: [...component.animations, newAnimation]
-      })
-    }
-
-    const updateAnimation = (index: number, updates: Partial<Animation>) => {
-      const newAnimations = [...component.animations]
-      newAnimations[index] = { ...newAnimations[index], ...updates }
-      onUpdate({ animations: newAnimations })
-    }
-
-    const removeAnimation = (index: number) => {
-      onUpdate({
-        animations: component.animations.filter((_, i) => i !== index)
-      })
-    }
-
-    return (
-      <div className="space-y-3">
-        <div className="flex justify-between items-center mb-2">
-          <h4 className="text-sm font-medium text-gray-700">Animations</h4>
-          <button
-            onClick={addAnimation}
-            className="text-petra-600 hover:text-petra-700 p-1"
-          >
-            <FaPlus className="w-4 h-4" />
-          </button>
-        </div>
-
-        {component.animations.map((animation, index) => (
-          <div key={animation.id} className="p-3 bg-gray-50 rounded-md space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Animation {index + 1}</span>
-              <button
-                onClick={() => removeAnimation(index)}
-                className="text-red-500 hover:text-red-600 p-1"
-              >
-                <FaTimes className="w-3 h-3" />
-              </button>
-            </div>
-
-            <select
-              value={animation.property}
-              onChange={(e) => updateAnimation(index, { 
-                ...animation,
-                property: e.target.value 
-              })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-            >
-              <option value="rotation">Rotation</option>
-              <option value="opacity">Opacity</option>
-              <option value="scale">Scale</option>
-              <option value="x">X Position</option>
-              <option value="y">Y Position</option>
-            </select>
-
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="From"
-                value={animation.animation.from}
-                onChange={(e) => updateAnimation(index, {
-                  ...animation,
-                  animation: { ...animation.animation, from: parseFloat(e.target.value) }
-                })}
-                className="px-2 py-1 text-sm border border-gray-300 rounded"
-              />
-              <input
-                type="number"
-                placeholder="To"
-                value={animation.animation.to}
-                onChange={(e) => updateAnimation(index, {
-                  ...animation,
-                  animation: { ...animation.animation, to: parseFloat(e.target.value) }
-                })}
-                className="px-2 py-1 text-sm border border-gray-300 rounded"
-              />
-            </div>
-
-            <input
-              type="number"
-              placeholder="Duration (ms)"
-              value={animation.animation.duration}
-              onChange={(e) => updateAnimation(index, {
-                ...animation,
-                animation: { ...animation.animation, duration: parseInt(e.target.value) }
-              })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-            />
-
-            <label className="flex items-center text-sm">
-              <input
-                type="checkbox"
-                checked={animation.animation.repeat || false}
-                onChange={(e) => updateAnimation(index, {
-                  ...animation,
-                  animation: { ...animation.animation, repeat: e.target.checked }
-                })}
-                className="mr-2"
-              />
-              Repeat
-            </label>
-          </div>
-        ))}
-
-        {component.animations.length === 0 && (
-          <p className="text-sm text-gray-500 text-center py-4">
-            No animations configured. Click + to add one.
-          </p>
-        )}
-      </div>
-    )
-  }// src/components/hmi/HMIPropertiesPanel.tsx
-
 import { useState } from 'react'
 import { FaTrash, FaLock, FaUnlock, FaEye, FaEyeSlash, FaPlus, FaTimes } from 'react-icons/fa'
 import { SketchPicker, ColorResult } from 'react-color'
-import type { HMIComponent, SignalBinding, Animation, Interaction } from '@/types/hmi'
+import type { HMIComponent, SignalBinding, Animation } from '@/types/hmi'
 import { useFlowStore } from '@/store/flowStore'
 
 interface HMIPropertiesPanelProps {
@@ -150,40 +17,58 @@ export default function HMIPropertiesPanel({
 }: HMIPropertiesPanelProps) {
   const [activeTab, setActiveTab] = useState<'properties' | 'bindings' | 'animations' | 'style'>('properties')
   const [showColorPicker, setShowColorPicker] = useState<string | null>(null)
-  
+
   // Get available signals from the logic designer
   const { nodes } = useFlowStore()
-  const signals = nodes
-    .filter(n => n.type === 'signal')
-    .map(n => n.data.label || n.id)
+  const signals = nodes.filter(n => n.type === 'signal').map(n => n.data.label || n.id)
+
+  // Animation helpers
+  const addAnimation = () => {
+    const newAnimation: Animation = {
+      id: Date.now().toString(),
+      property: 'rotation',
+      trigger: {
+        type: 'signal',
+        signal: '',
+        condition: 'equals',
+        value: true
+      },
+      animation: {
+        from: 0,
+        to: 360,
+        duration: 2000,
+        easing: 'linear',
+        repeat: true
+      }
+    }
+    onUpdate({ animations: [...component.animations, newAnimation] })
+  }
+
+  const updateAnimation = (index: number, updates: Partial<Animation>) => {
+    const newAnimations = [...component.animations]
+    newAnimations[index] = { ...newAnimations[index], ...updates }
+    onUpdate({ animations: newAnimations })
+  }
+
+  const removeAnimation = (index: number) => {
+    onUpdate({ animations: component.animations.filter((_, i) => i !== index) })
+  }
 
   const handlePropertyChange = (key: string, value: any) => {
     onUpdate({
-      properties: {
-        ...component.properties,
-        [key]: value,
-      },
+      properties: { ...component.properties, [key]: value },
     })
   }
 
   const handleStyleChange = (key: string, value: any) => {
     onUpdate({
-      style: {
-        ...component.style,
-        [key]: value,
-      },
+      style: { ...component.style, [key]: value },
     })
   }
 
   const addBinding = () => {
-    const newBinding: SignalBinding = {
-      property: 'value',
-      signal: '',
-      transform: '',
-    }
-    onUpdate({
-      bindings: [...component.bindings, newBinding],
-    })
+    const newBinding: SignalBinding = { property: 'value', signal: '', transform: '' }
+    onUpdate({ bindings: [...component.bindings, newBinding] })
   }
 
   const updateBinding = (index: number, updates: Partial<SignalBinding>) => {
@@ -193,21 +78,83 @@ export default function HMIPropertiesPanel({
   }
 
   const removeBinding = (index: number) => {
-    onUpdate({
-      bindings: component.bindings.filter((_, i) => i !== index),
-    })
+    onUpdate({ bindings: component.bindings.filter((_, i) => i !== index) })
   }
+
+  const renderAnimationsTab = () => (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center mb-2">
+        <h4 className="text-sm font-medium text-gray-700">Animations</h4>
+        <button onClick={addAnimation} className="text-petra-600 hover:text-petra-700 p-1">
+          <FaPlus className="w-4 h-4" />
+        </button>
+      </div>
+      {component.animations.map((animation, index) => (
+        <div key={animation.id} className="p-3 bg-gray-50 rounded-md space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-medium">Animation {index + 1}</span>
+            <button onClick={() => removeAnimation(index)} className="text-red-500 hover:text-red-600 p-1">
+              <FaTimes className="w-3 h-3" />
+            </button>
+          </div>
+          <select
+            value={animation.property}
+            onChange={(e) => updateAnimation(index, { ...animation, property: e.target.value })}
+            className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+          >
+            <option value="rotation">Rotation</option>
+            <option value="opacity">Opacity</option>
+            <option value="scale">Scale</option>
+            <option value="x">X Position</option>
+            <option value="y">Y Position</option>
+          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="number"
+              placeholder="From"
+              value={animation.animation.from}
+              onChange={(e) => updateAnimation(index, { ...animation, animation: { ...animation.animation, from: parseFloat(e.target.value) } })}
+              className="px-2 py-1 text-sm border border-gray-300 rounded"
+            />
+            <input
+              type="number"
+              placeholder="To"
+              value={animation.animation.to}
+              onChange={(e) => updateAnimation(index, { ...animation, animation: { ...animation.animation, to: parseFloat(e.target.value) } })}
+              className="px-2 py-1 text-sm border border-gray-300 rounded"
+            />
+          </div>
+          <input
+            type="number"
+            placeholder="Duration (ms)"
+            value={animation.animation.duration}
+            onChange={(e) => updateAnimation(index, { ...animation, animation: { ...animation.animation, duration: parseInt(e.target.value) } })}
+            className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+          />
+          <label className="flex items-center text-sm">
+            <input
+              type="checkbox"
+              checked={animation.animation.repeat || false}
+              onChange={(e) => updateAnimation(index, { ...animation, animation: { ...animation.animation, repeat: e.target.checked } })}
+              className="mr-2"
+            />
+            Repeat
+          </label>
+        </div>
+      ))}
+      {component.animations.length === 0 && (
+        <p className="text-sm text-gray-500 text-center py-4">No animations configured. Click + to add one.</p>
+      )}
+    </div>
+  )
 
   const renderPropertiesTab = () => {
     const propertyFields = getPropertyFields(component.type)
-    
     return (
       <div className="space-y-3">
         {propertyFields.map((field) => (
           <div key={field.key}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {field.label}
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
             {field.type === 'number' ? (
               <input
                 type="number"
@@ -235,9 +182,7 @@ export default function HMIPropertiesPanel({
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
               >
                 {field.options?.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+                  <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             ) : (
@@ -258,26 +203,18 @@ export default function HMIPropertiesPanel({
     <div className="space-y-3">
       <div className="flex justify-between items-center mb-2">
         <h4 className="text-sm font-medium text-gray-700">Signal Bindings</h4>
-        <button
-          onClick={addBinding}
-          className="text-petra-600 hover:text-petra-700 p-1"
-        >
+        <button onClick={addBinding} className="text-petra-600 hover:text-petra-700 p-1">
           <FaPlus className="w-4 h-4" />
         </button>
       </div>
-
       {component.bindings.map((binding, index) => (
         <div key={index} className="p-3 bg-gray-50 rounded-md space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium">Binding {index + 1}</span>
-            <button
-              onClick={() => removeBinding(index)}
-              className="text-red-500 hover:text-red-600 p-1"
-            >
+            <button onClick={() => removeBinding(index)} className="text-red-500 hover:text-red-600 p-1">
               <FaTimes className="w-3 h-3" />
             </button>
           </div>
-
           <select
             value={binding.property}
             onChange={(e) => updateBinding(index, { property: e.target.value })}
@@ -288,7 +225,6 @@ export default function HMIPropertiesPanel({
               <option key={prop} value={prop}>{prop}</option>
             ))}
           </select>
-
           <select
             value={binding.signal}
             onChange={(e) => updateBinding(index, { signal: e.target.value })}
@@ -296,10 +232,9 @@ export default function HMIPropertiesPanel({
           >
             <option value="">Select signal...</option>
             {signals.map((signal) => (
-              <option key={signal} value={signal}>{signal}</option>
+              <option key={signal as string} value={signal as string}>{signal as string}</option>
             ))}
           </select>
-
           <input
             type="text"
             placeholder="Transform (optional JS expression)"
@@ -309,11 +244,8 @@ export default function HMIPropertiesPanel({
           />
         </div>
       ))}
-
       {component.bindings.length === 0 && (
-        <p className="text-sm text-gray-500 text-center py-4">
-          No bindings configured. Click + to add one.
-        </p>
+        <p className="text-sm text-gray-500 text-center py-4">No bindings configured. Click + to add one.</p>
       )}
     </div>
   )
@@ -322,67 +254,47 @@ export default function HMIPropertiesPanel({
     <div className="space-y-3">
       {/* Fill Color */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Fill Color
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Fill Color</label>
         <div className="relative">
           <button
             onClick={() => setShowColorPicker(showColorPicker === 'fill' ? null : 'fill')}
             className="w-full px-3 py-2 border border-gray-300 rounded-md flex items-center justify-between"
           >
             <div className="flex items-center gap-2">
-              <div
-                className="w-6 h-6 rounded border border-gray-300"
-                style={{ backgroundColor: component.style.fill || '#cccccc' }}
-              />
+              <div className="w-6 h-6 rounded border border-gray-300" style={{ backgroundColor: component.style.fill || '#cccccc' }} />
               <span className="text-sm">{component.style.fill || '#cccccc'}</span>
             </div>
           </button>
           {showColorPicker === 'fill' && (
             <div className="absolute z-10 mt-1">
-              <SketchPicker
-                color={component.style.fill || '#cccccc'}
-                onChange={(color: ColorResult) => handleStyleChange('fill', color.hex)}
-              />
+              <SketchPicker color={component.style.fill || '#cccccc'} onChange={(color: ColorResult) => handleStyleChange('fill', color.hex)} />
             </div>
           )}
         </div>
       </div>
-
       {/* Stroke Color */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Stroke Color
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Stroke Color</label>
         <div className="relative">
           <button
             onClick={() => setShowColorPicker(showColorPicker === 'stroke' ? null : 'stroke')}
             className="w-full px-3 py-2 border border-gray-300 rounded-md flex items-center justify-between"
           >
             <div className="flex items-center gap-2">
-              <div
-                className="w-6 h-6 rounded border border-gray-300"
-                style={{ backgroundColor: component.style.stroke || '#333333' }}
-              />
+              <div className="w-6 h-6 rounded border border-gray-300" style={{ backgroundColor: component.style.stroke || '#333333' }} />
               <span className="text-sm">{component.style.stroke || '#333333'}</span>
             </div>
           </button>
           {showColorPicker === 'stroke' && (
             <div className="absolute z-10 mt-1">
-              <SketchPicker
-                color={component.style.stroke || '#333333'}
-                onChange={(color: ColorResult) => handleStyleChange('stroke', color.hex)}
-              />
+              <SketchPicker color={component.style.stroke || '#333333'} onChange={(color: ColorResult) => handleStyleChange('stroke', color.hex)} />
             </div>
           )}
         </div>
       </div>
-
       {/* Stroke Width */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Stroke Width
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Stroke Width</label>
         <input
           type="number"
           value={component.style.strokeWidth || 1}
@@ -392,12 +304,9 @@ export default function HMIPropertiesPanel({
           max={10}
         />
       </div>
-
       {/* Opacity */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Opacity
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Opacity</label>
         <input
           type="range"
           value={(component.style.opacity || 1) * 100}
@@ -417,55 +326,33 @@ export default function HMIPropertiesPanel({
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-lg font-semibold text-gray-800">Properties</h3>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => onUpdate({ locked: !component.locked })}
-              className="p-2 text-gray-600 hover:text-gray-800"
-              title={component.locked ? 'Unlock' : 'Lock'}
-            >
+            <button onClick={() => onUpdate({ locked: !component.locked })} className="p-2 text-gray-600 hover:text-gray-800" title={component.locked ? 'Unlock' : 'Lock'}>
               {component.locked ? <FaLock className="w-4 h-4" /> : <FaUnlock className="w-4 h-4" />}
             </button>
-            <button
-              onClick={() => onUpdate({ visible: !component.visible })}
-              className="p-2 text-gray-600 hover:text-gray-800"
-              title={component.visible ? 'Hide' : 'Show'}
-            >
-              {component.visible !== false ? <FaEye className="w-4 h-4" /> : <FaEyeSlash className="w-4 h-4" />}
+            <button onClick={() => onUpdate({ visible: !component.visible })} className="p-2 text-gray-600 hover:text-gray-800" title={component.visible ? 'Hide' : 'Show'}>
+              {component.visible ? <FaEyeSlash className="w-4 h-4" /> : <FaEye className="w-4 h-4" />}
             </button>
-            <button
-              onClick={onDelete}
-              className="p-2 text-red-500 hover:text-red-600"
-              title="Delete"
-            >
+            <button onClick={onDelete} className="p-2 text-red-600 hover:text-red-800" title="Delete">
               <FaTrash className="w-4 h-4" />
             </button>
           </div>
         </div>
-
-        <div className="text-sm text-gray-600">
-          <div>Type: <span className="font-medium">{component.type}</span></div>
-          <div>ID: <span className="font-mono text-xs">{component.id}</span></div>
+        <div className="flex space-x-2">
+          <button className={`px-3 py-1 rounded-md text-sm ${activeTab === 'properties' ? 'bg-petra-600 text-white' : 'bg-gray-200 text-gray-700'}`} onClick={() => setActiveTab('properties')}>
+            Properties
+          </button>
+          <button className={`px-3 py-1 rounded-md text-sm ${activeTab === 'bindings' ? 'bg-petra-600 text-white' : 'bg-gray-200 text-gray-700'}`} onClick={() => setActiveTab('bindings')}>
+            Bindings
+          </button>
+          <button className={`px-3 py-1 rounded-md text-sm ${activeTab === 'animations' ? 'bg-petra-600 text-white' : 'bg-gray-200 text-gray-700'}`} onClick={() => setActiveTab('animations')}>
+            Animations
+          </button>
+          <button className={`px-3 py-1 rounded-md text-sm ${activeTab === 'style' ? 'bg-petra-600 text-white' : 'bg-gray-200 text-gray-700'}`} onClick={() => setActiveTab('style')}>
+            Style
+          </button>
         </div>
       </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200">
-        {(['properties', 'bindings', 'animations', 'style'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-              activeTab === tab
-                ? 'text-petra-600 border-b-2 border-petra-600'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {activeTab === 'properties' && renderPropertiesTab()}
         {activeTab === 'bindings' && renderBindingsTab()}
         {activeTab === 'animations' && renderAnimationsTab()}
@@ -475,70 +362,6 @@ export default function HMIPropertiesPanel({
   )
 }
 
-// Helper functions
-function getPropertyFields(type: string): Array<{
-  key: string
-  label: string
-  type: 'text' | 'number' | 'boolean' | 'select'
-  options?: Array<{ value: string; label: string }>
-  min?: number
-  max?: number
-  step?: number
-}> {
-  const fields: Record<string, any> = {
-    tank: [
-      { key: 'maxLevel', label: 'Max Level', type: 'number', min: 0 },
-      { key: 'currentLevel', label: 'Current Level', type: 'number', min: 0 },
-      { key: 'alarmHigh', label: 'High Alarm', type: 'number', min: 0 },
-      { key: 'alarmLow', label: 'Low Alarm', type: 'number', min: 0 },
-      { key: 'showLabel', label: 'Show Label', type: 'boolean' },
-      { key: 'units', label: 'Units', type: 'text' },
-      { key: 'showWaveAnimation', label: 'Wave Animation', type: 'boolean' },
-    ],
-    pump: [
-      { key: 'running', label: 'Running', type: 'boolean' },
-      { key: 'fault', label: 'Fault', type: 'boolean' },
-      { key: 'speed', label: 'Speed (%)', type: 'number', min: 0, max: 100 },
-      { key: 'showStatus', label: 'Show Status', type: 'boolean' },
-      { key: 'runAnimation', label: 'Run Animation', type: 'boolean' },
-    ],
-    valve: [
-      { key: 'open', label: 'Open', type: 'boolean' },
-      { key: 'position', label: 'Position (%)', type: 'number', min: 0, max: 100 },
-      { 
-        key: 'valveType', 
-        label: 'Valve Type', 
-        type: 'select',
-        options: [
-          { value: 'gate', label: 'Gate Valve' },
-          { value: 'ball', label: 'Ball Valve' },
-          { value: 'butterfly', label: 'Butterfly Valve' },
-          { value: 'control', label: 'Control Valve' },
-        ]
-      },
-      { key: 'showPosition', label: 'Show Position', type: 'boolean' },
-    ],
-    gauge: [
-      { key: 'min', label: 'Minimum', type: 'number' },
-      { key: 'max', label: 'Maximum', type: 'number' },
-      { key: 'value', label: 'Value', type: 'number' },
-      { key: 'units', label: 'Units', type: 'text' },
-      { key: 'showScale', label: 'Show Scale', type: 'boolean' },
-      { key: 'majorTicks', label: 'Major Ticks', type: 'number', min: 2, max: 10 },
-    ],
-    button: [
-      { key: 'text', label: 'Text', type: 'text' },
-      {
-        key: 'action',
-        label: 'Action Type',
-        type: 'select',
-        options: [
-          { value: 'momentary', label: 'Momentary' },
-          { value: 'toggle', label: 'Toggle' },
-          { value: 'set', label: 'Set Value' },
-        ]
-      },
-      { key: 'confirmRequired', label: 'Require Confirmation', type: 'boolean' },
     ],
     text: [
       { key: 'text', label: 'Text', type: 'text' },

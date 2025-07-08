@@ -1,6 +1,6 @@
 // src/components/hmi/components/HMIComponentRenderer.tsx
 
-import { Group, Rect, Circle, Text, RegularPolygon, Transformer } from 'react-konva'
+import { Group, Rect, Circle, Text, Transformer } from 'react-konva'
 import { useEffect, useRef } from 'react'
 import type {
   HMIComponent,
@@ -159,7 +159,14 @@ export function HMIComponentRenderer({
         return (
           <HeatExchangerComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as {
+              hotInletTemp: number
+              hotOutletTemp: number
+              coldInletTemp: number
+              coldOutletTemp: number
+              efficiency: number
+              showTemperatures: boolean
+            }}
             bindings={component.bindings}
             style={component.style}
           />
@@ -169,7 +176,12 @@ export function HMIComponentRenderer({
         return (
           <ConveyorComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as {
+              running: boolean
+              speed: number
+              direction: string
+              material: boolean
+            }}
             bindings={component.bindings}
             style={component.style}
           />
@@ -179,7 +191,13 @@ export function HMIComponentRenderer({
         return (
           <MixerComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as {
+              running: boolean
+              speed: number
+              level: number
+              agitatorType: string
+              temperature: number
+            }}
             bindings={component.bindings}
             style={component.style}
           />

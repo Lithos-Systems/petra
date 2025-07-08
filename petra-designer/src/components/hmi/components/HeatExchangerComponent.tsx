@@ -1,6 +1,6 @@
 // src/components/hmi/components/HeatExchangerComponent.tsx
 
-import { Group, Rect, Line, Circle, Text } from 'react-konva'
+import { Group, Rect, Line, Text } from 'react-konva'
 
 interface HeatExchangerProps {
   x: number

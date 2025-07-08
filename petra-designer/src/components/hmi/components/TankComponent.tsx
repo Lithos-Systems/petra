@@ -111,7 +111,7 @@ export default function TankComponent({
     }
   }, [properties.showWaveAnimation])
   
-  const wavePoints = []
+  const wavePoints: number[] = []
   const waveAmplitude = Math.min(5, (animatedLevel / 100) * 8)
   const waveFrequency = 0.02
   for (let i = 0; i <= width; i += 2) {

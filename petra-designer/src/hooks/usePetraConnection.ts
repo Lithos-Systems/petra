@@ -44,10 +44,10 @@ export function usePetraConnection({
   reconnectInterval = 5000,
   maxReconnectAttempts = 10,
   enableMQTT = false,
-  enableHistory = false,
-  onConnect,
-  onDisconnect,
-  onError,
+  _enableHistory = false,
+  _onConnect,
+  _onDisconnect,
+  _onError,
 }: PetraConnectionOptions = {}) {
 
   const [connected, setConnected] = useState(false)
@@ -84,7 +84,7 @@ export function usePetraConnection({
         }, 30000) // Ping every 30 seconds
         
         // Re-subscribe to all signals
-        if (subscribedSignalsRef.current.size > 0) {
+        if (wsRef.current && subscribedSignalsRef.current.size > 0) {
           wsRef.current.send(JSON.stringify({
             type: 'subscribe_signals',
             signals: Array.from(subscribedSignalsRef.current)
@@ -92,7 +92,7 @@ export function usePetraConnection({
         }
         
         // Re-subscribe to all MQTT topics
-        if (enableMQTT && subscribedTopicsRef.current.size > 0) {
+        if (wsRef.current && enableMQTT && subscribedTopicsRef.current.size > 0) {
           wsRef.current.send(JSON.stringify({
             type: 'subscribe_mqtt',
             topics: Array.from(subscribedTopicsRef.current)
