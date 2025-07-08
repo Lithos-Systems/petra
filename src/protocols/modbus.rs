@@ -5,6 +5,7 @@
 use crate::{Result, Value};
 use async_trait::async_trait;
 use std::collections::HashMap;
+use tracing::info;
 
 pub struct ModbusDriver {
     // Implementation details
@@ -39,4 +40,11 @@ impl crate::protocols::ProtocolDriver for ModbusDriver {
     fn protocol_name(&self) -> &'static str {
         "modbus"
     }
+}
+
+/// Test connectivity to a Modbus device.
+/// This is a lightweight stub used by the command-line interface.
+pub async fn test_connection(_address: &str, _unit_id: u8, _register: u16) -> Result<()> {
+    info!("Modbus test_connection stub called");
+    Ok(())
 }
