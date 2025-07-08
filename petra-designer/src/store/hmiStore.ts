@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import type { HMIComponent, HMIDisplay } from '@/types/hmi'
 
-interface HMIStore {
+interface HMIState {
   // Current display
   currentDisplay: HMIDisplay | null
   
@@ -21,7 +21,9 @@ interface HMIStore {
   // History for undo/redo
   history: Array<{ components: HMIComponent[] }>
   historyIndex: number
-  
+}
+
+interface HMIActions {
   // Actions
   addComponent: (component: HMIComponent) => void
   updateComponent: (id: string, updates: Partial<HMIComponent>) => void
@@ -53,7 +55,27 @@ interface HMIStore {
   distributeComponents: (ids: string[], direction: 'horizontal' | 'vertical') => void
 }
 
+type HMIStore = HMIState & HMIActions
+
+// Helper function to save to history
+const saveToHistory = (get: () => HMIStore, set: (state: Partial<HMIStore>) => void) => {
+  const state = get()
+  const newHistory = state.history.slice(0, state.historyIndex + 1)
+  newHistory.push({ components: [...state.components] })
+  
+  // Limit history to 50 items
+  if (newHistory.length > 50) {
+    newHistory.shift()
+  }
+  
+  set({
+    history: newHistory,
+    historyIndex: newHistory.length - 1,
+  })
+}
+
 export const useHMIStore = create<HMIStore>((set, get) => ({
+  // State
   currentDisplay: null,
   components: [],
   selectedComponentId: null,
@@ -63,29 +85,13 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
   history: [{ components: [] }],
   historyIndex: 0,
 
-  // Helper to save to history
-  saveToHistory: () => {
-    const state = get()
-    const newHistory = state.history.slice(0, state.historyIndex + 1)
-    newHistory.push({ components: [...state.components] })
-    
-    // Limit history to 50 items
-    if (newHistory.length > 50) {
-      newHistory.shift()
-    }
-    
-    set({
-      history: newHistory,
-      historyIndex: newHistory.length - 1,
-    })
-  },
-
+  // Actions
   addComponent: (component) => {
     set((state) => ({
       components: [...state.components, component],
       selectedComponentId: component.id,
     }))
-    get().saveToHistory()
+    saveToHistory(get, set)
   },
 
   updateComponent: (id, updates) => {
@@ -94,7 +100,7 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
         c.id === id ? { ...c, ...updates } : c
       ),
     }))
-    get().saveToHistory()
+    saveToHistory(get, set)
   },
 
   deleteComponent: (id) => {
@@ -102,7 +108,7 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
       components: state.components.filter((c) => c.id !== id),
       selectedComponentId: state.selectedComponentId === id ? null : state.selectedComponentId,
     }))
-    get().saveToHistory()
+    saveToHistory(get, set)
   },
 
   undo: () => {
@@ -154,6 +160,8 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
       currentDisplay: display,
       components: [],
       selectedComponentId: null,
+      history: [{ components: [] }],
+      historyIndex: 0,
     })
   },
 
@@ -162,6 +170,8 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
       currentDisplay: display,
       components: display.components || [],
       selectedComponentId: null,
+      history: [{ components: display.components || [] }],
+      historyIndex: 0,
     })
   },
 
@@ -202,16 +212,22 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
       },
     }
     
-    state.addComponent(newComponent)
+    set((state) => ({
+      components: [...state.components, newComponent],
+      selectedComponentId: newComponent.id,
+    }))
+    saveToHistory(get, set)
   },
 
   groupComponents: (ids) => {
     // Implementation for grouping components
     // This would create a new group component containing the selected components
+    console.log('Grouping components:', ids)
   },
 
   ungroupComponent: (id) => {
     // Implementation for ungrouping
+    console.log('Ungrouping component:', id)
   },
 
   alignComponents: (ids, alignment) => {
@@ -219,7 +235,7 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
     const components = state.components.filter((c) => ids.includes(c.id))
     if (components.length < 2) return
 
-    let updates: { id: string; position: { x: number; y: number } }[] = []
+    let updates: Array<{ id: string; position: { x: number; y: number } }> = []
 
     switch (alignment) {
       case 'left':
@@ -266,9 +282,13 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
         break
     }
 
-    updates.forEach(({ id, position }) => {
-      state.updateComponent(id, { position })
-    })
+    set((state) => ({
+      components: state.components.map((c) => {
+        const update = updates.find((u) => u.id === c.id)
+        return update ? { ...c, position: update.position } : c
+      }),
+    }))
+    saveToHistory(get, set)
   },
 
   distributeComponents: (ids, direction) => {
@@ -283,13 +303,20 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
       const totalWidth = last.position.x - first.position.x
       const spacing = totalWidth / (sorted.length - 1)
 
-      sorted.forEach((c, i) => {
-        if (i > 0 && i < sorted.length - 1) {
-          state.updateComponent(c.id, {
-            position: { ...c.position, x: first.position.x + spacing * i },
-          })
-        }
-      })
+      const updates = sorted.map((c, i) => ({
+        id: c.id,
+        position: {
+          ...c.position,
+          x: first.position.x + spacing * i,
+        },
+      }))
+
+      set((state) => ({
+        components: state.components.map((c) => {
+          const update = updates.find((u) => u.id === c.id)
+          return update ? { ...c, position: update.position } : c
+        }),
+      }))
     } else {
       const sorted = [...components].sort((a, b) => a.position.y - b.position.y)
       const first = sorted[0]
@@ -297,13 +324,21 @@ export const useHMIStore = create<HMIStore>((set, get) => ({
       const totalHeight = last.position.y - first.position.y
       const spacing = totalHeight / (sorted.length - 1)
 
-      sorted.forEach((c, i) => {
-        if (i > 0 && i < sorted.length - 1) {
-          state.updateComponent(c.id, {
-            position: { ...c.position, y: first.position.y + spacing * i },
-          })
-        }
-      })
+      const updates = sorted.map((c, i) => ({
+        id: c.id,
+        position: {
+          ...c.position,
+          y: first.position.y + spacing * i,
+        },
+      }))
+
+      set((state) => ({
+        components: state.components.map((c) => {
+          const update = updates.find((u) => u.id === c.id)
+          return update ? { ...c, position: update.position } : c
+        }),
+      }))
     }
+    saveToHistory(get, set)
   },
 }))
