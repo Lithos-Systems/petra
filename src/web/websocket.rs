@@ -2,7 +2,7 @@ use axum::extract::ws::{Message, WebSocket};
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use crate::{PlcError, Value};
+use crate::Value;
 use super::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]

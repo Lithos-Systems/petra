@@ -372,7 +372,7 @@ mqtt-bridge = ["mqtt"]      # MQTT bridging support
 # === MONITORING LEVELS ===
 basic-monitoring = []                                    # Minimal monitoring
 standard-monitoring = ["basic-monitoring"]              # Standard performance tracking
-enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer"]  # Advanced monitoring with detailed stats
+enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer", "prometheus"]  # Advanced monitoring with detailed stats
 
 # === METRICS INTEGRATION ===
 metrics = ["prometheus", "metrics-exporter-prometheus", "axum", "web"]

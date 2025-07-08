@@ -1003,14 +1003,14 @@ macro_rules! validation_error {
 #[cfg(feature = "web")]
 impl axum::response::IntoResponse for PlcError {
     fn into_response(self) -> axum::response::Response {
-        use axum::{Json, http::StatusCode, response::IntoResponse as _};
+        use axum::{Json, http::StatusCode};
         let status = match self {
             PlcError::SignalNotFound(_) => StatusCode::NOT_FOUND,
             PlcError::Validation(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let body = Json(serde_json::json!({ "error": self.to_string() }));
-        (status, body).into_response()
+        axum::response::IntoResponse::into_response((status, body))
     }
 }
 
