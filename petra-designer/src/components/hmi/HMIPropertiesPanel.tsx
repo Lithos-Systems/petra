@@ -362,6 +362,70 @@ export default function HMIPropertiesPanel({
   )
 }
 
+// Helper functions
+function getPropertyFields(type: string): Array<{
+  key: string
+  label: string
+  type: 'text' | 'number' | 'boolean' | 'select'
+  options?: Array<{ value: string; label: string }>
+  min?: number
+  max?: number
+  step?: number
+}> {
+  const fields: Record<string, any> = {
+    tank: [
+      { key: 'maxLevel', label: 'Max Level', type: 'number', min: 0 },
+      { key: 'currentLevel', label: 'Current Level', type: 'number', min: 0 },
+      { key: 'alarmHigh', label: 'High Alarm', type: 'number', min: 0 },
+      { key: 'alarmLow', label: 'Low Alarm', type: 'number', min: 0 },
+      { key: 'showLabel', label: 'Show Label', type: 'boolean' },
+      { key: 'units', label: 'Units', type: 'text' },
+      { key: 'showWaveAnimation', label: 'Wave Animation', type: 'boolean' },
+    ],
+    pump: [
+      { key: 'running', label: 'Running', type: 'boolean' },
+      { key: 'fault', label: 'Fault', type: 'boolean' },
+      { key: 'speed', label: 'Speed (%)', type: 'number', min: 0, max: 100 },
+      { key: 'showStatus', label: 'Show Status', type: 'boolean' },
+      { key: 'runAnimation', label: 'Run Animation', type: 'boolean' },
+    ],
+    valve: [
+      { key: 'open', label: 'Open', type: 'boolean' },
+      { key: 'position', label: 'Position (%)', type: 'number', min: 0, max: 100 },
+      {
+        key: 'valveType',
+        label: 'Valve Type',
+        type: 'select',
+        options: [
+          { value: 'gate', label: 'Gate Valve' },
+          { value: 'ball', label: 'Ball Valve' },
+          { value: 'butterfly', label: 'Butterfly Valve' },
+          { value: 'control', label: 'Control Valve' },
+        ],
+      },
+      { key: 'showPosition', label: 'Show Position', type: 'boolean' },
+    ],
+    gauge: [
+      { key: 'min', label: 'Minimum', type: 'number' },
+      { key: 'max', label: 'Maximum', type: 'number' },
+      { key: 'value', label: 'Value', type: 'number' },
+      { key: 'units', label: 'Units', type: 'text' },
+      { key: 'showScale', label: 'Show Scale', type: 'boolean' },
+      { key: 'majorTicks', label: 'Major Ticks', type: 'number', min: 2, max: 10 },
+    ],
+    button: [
+      { key: 'text', label: 'Text', type: 'text' },
+      {
+        key: 'action',
+        label: 'Action Type',
+        type: 'select',
+        options: [
+          { value: 'momentary', label: 'Momentary' },
+          { value: 'toggle', label: 'Toggle' },
+          { value: 'set', label: 'Set Value' },
+        ],
+      },
+      { key: 'confirmRequired', label: 'Require Confirmation', type: 'boolean' },
     ],
     text: [
       { key: 'text', label: 'Text', type: 'text' },
