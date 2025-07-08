@@ -57,6 +57,8 @@ use petra::{
 use petra::build_info;
 use std::path::PathBuf;
 use std::process;
+#[cfg(feature = "web")]
+use std::sync::Arc;
 use tokio::signal;
 use tracing::{info, error, debug, warn, Level};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -920,7 +922,7 @@ async fn run_engine(
     info!("Configuration loaded successfully");
     
     // Create engine
-    let mut engine = Engine::new(config)?;
+    let mut engine = Engine::new(config.clone())?;
     
     // Configure optional features
     #[cfg(feature = "enhanced-monitoring")]
@@ -945,6 +947,32 @@ async fn run_engine(
     if let Some(affinity) = cpu_affinity {
         info!("Setting CPU affinity: {:?}", affinity);
         set_cpu_affinity(&affinity)?;
+    }
+
+    // Start the web server if configured
+    #[cfg(feature = "web")]
+    {
+        if let Some(web_config) = &config.web {
+            let web_bus = engine.signal_bus().clone();
+            let web_config_clone = config.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = crate::web::create_server(
+                    Arc::new(web_bus.clone()),
+                    web_config_clone,
+                )
+                .await
+                {
+                    error!("Web server error: {}", e);
+                }
+            });
+
+            info!(
+                "Web server started on {}:{}",
+                web_config.bind_address,
+                web_config.port
+            );
+        }
     }
     
     // Start the engine
