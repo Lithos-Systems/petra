@@ -19,19 +19,12 @@ function adjustColor(color: string, factor: number): string {
 }
 
 interface TankComponentProps {
-  id: string
   x: number
   y: number
   width: number
   height: number
   properties: TankProperties
-  bindings: Array<{
-    property: string
-    signal: string
-    transform?: string
-  }>
   style: any
-  onUpdate?: (updates: any) => void
   isSelected?: boolean
   draggable?: boolean
   onDragEnd?: (e: any) => void
@@ -39,21 +32,18 @@ interface TankComponentProps {
 }
 
 export default function TankComponent({
-  id,
   x,
   y,
   width,
   height,
   properties,
-  bindings,
   style,
-  onUpdate,
   isSelected,
   draggable = true,
   onDragEnd,
   onClick,
 }: TankComponentProps) {
-  const [currentLevel, setCurrentLevel] = useState(properties.currentLevel || 50)
+  const [currentLevel] = useState(properties.currentLevel || 50)
   const [animatedLevel, setAnimatedLevel] = useState(currentLevel)
   const animationRef = useRef<any>()
 
@@ -331,7 +321,7 @@ export default function TankComponent({
 }
 
 // Hook for real-time signal updates (to be implemented)
-export function useTankSignals(bindings: any[]) {
+export function useTankSignals(_bindings: any[]) {
   // This will connect to PETRA's signal bus via WebSocket
   // For now, return mock data
   return {

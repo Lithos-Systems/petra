@@ -2,7 +2,15 @@
 
 import { Group, Rect, Circle, Text, RegularPolygon, Transformer } from 'react-konva'
 import { useEffect, useRef } from 'react'
-import type { HMIComponent } from '@/types/hmi'
+import type {
+  HMIComponent,
+  TankProperties,
+  PumpProperties,
+  ValveProperties,
+  GaugeProperties,
+  TrendProperties,
+  ButtonProperties
+} from '@/types/hmi'
 import TankComponent from './TankComponent'
 import PumpComponent from './PumpComponent'
 import ValveComponent from './ValveComponent'
@@ -45,7 +53,7 @@ export function HMIComponentRenderer({
     })
   }
 
-  const handleTransformEnd = (e: any) => {
+  const handleTransformEnd = () => {
     const node = shapeRef.current
     const scaleX = node.scaleX()
     const scaleY = node.scaleY()
@@ -89,7 +97,7 @@ export function HMIComponentRenderer({
         return (
           <TankComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as TankProperties}
             bindings={component.bindings}
             style={component.style}
             onUpdate={onUpdate}
@@ -100,7 +108,7 @@ export function HMIComponentRenderer({
         return (
           <PumpComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as PumpProperties}
             bindings={component.bindings}
             style={component.style}
           />
@@ -110,7 +118,7 @@ export function HMIComponentRenderer({
         return (
           <ValveComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as ValveProperties}
             bindings={component.bindings}
             style={component.style}
           />
@@ -120,7 +128,7 @@ export function HMIComponentRenderer({
         return (
           <GaugeComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as GaugeProperties}
             bindings={component.bindings}
             style={component.style}
           />
@@ -130,7 +138,7 @@ export function HMIComponentRenderer({
         return (
           <TrendComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as TrendProperties}
             bindings={component.bindings}
             style={component.style}
           />
@@ -140,7 +148,7 @@ export function HMIComponentRenderer({
         return (
           <ButtonComponent
             {...commonProps}
-            properties={component.properties}
+            properties={component.properties as ButtonProperties}
             bindings={component.bindings}
             style={component.style}
             interactions={component.interactions}

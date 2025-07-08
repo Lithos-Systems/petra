@@ -1,6 +1,6 @@
 // src/components/hmi/components/ValveComponent.tsx
 
-import { Group, Rect, Line, Path, Text } from 'react-konva'
+import { Group, Rect, Path, Text } from 'react-konva'
 import type { ValveProperties } from '@/types/hmi'
 
 interface ValveComponentProps {

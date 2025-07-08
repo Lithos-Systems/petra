@@ -4,8 +4,7 @@ import { useState } from 'react'
 import { 
   FaSave, 
   FaFileExport, 
-  FaPlay, 
-  FaStop,
+  FaPlay,
   FaUndo,
   FaRedo,
   FaSearchPlus,
@@ -16,9 +15,7 @@ import {
   FaAlignLeft,
   FaAlignCenter,
   FaAlignRight,
-  FaCopy,
-  FaPaste,
-  FaLayerGroup
+  FaCopy
 } from 'react-icons/fa'
 import { useHMIStore } from '@/store/hmiStore'
 import toast from 'react-hot-toast'
@@ -45,7 +42,6 @@ export default function HMIToolbar({
     toggleGrid,
     toggleSnapToGrid,
     saveDisplay,
-    components,
     selectedComponentId,
     alignComponents,
     duplicateComponent,

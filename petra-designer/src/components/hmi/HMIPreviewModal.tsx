@@ -17,7 +17,7 @@ export default function HMIPreviewModal({ isOpen, onClose }: HMIPreviewModalProp
   const { components: storeComponents, currentDisplay } = useHMIStore()
   const [components, setComponents] = useState<HMIComponent[]>([])
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const { signals, connected, subscribeSignal, unsubscribeSignal } = usePetra()
+  const { signals, connected } = usePetra()
   
   // Copy components for preview (no editing)
   useEffect(() => {
@@ -72,11 +72,12 @@ export default function HMIPreviewModal({ isOpen, onClose }: HMIPreviewModalProp
   }
 
   const displaySize = currentDisplay?.size || { width: 1920, height: 1080 }
-  const scale = isFullscreen ? 1 : Math.min(
-    (window.innerWidth - 100) / displaySize.width,
-    (window.innerHeight - 200) / displaySize.height,
-    1
-  )
+  const scale = isFullscreen ?
+    Math.min(
+      (window.innerWidth - 100) / displaySize.width,
+      (window.innerHeight - 200) / displaySize.height,
+      1
+    ) : 1
 
   return (
     <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center">

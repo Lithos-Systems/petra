@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useMQTTTopic, usePetraSignal } from '@/hooks/usePetraConnection'
-import { FaWifi, FaWifiSlash } from 'react-icons/fa'
+import { FaWifi } from 'react-icons/fa'
 
 export default function MQTTTestDisplay() {
   const [testTopic, setTestTopic] = useState('sensors/temperature/tank1')

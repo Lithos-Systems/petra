@@ -1,6 +1,6 @@
 // src/components/hmi/components/GaugeComponent.tsx
 
-import { Group, Circle, Line, Text, Arc } from 'react-konva'
+import { Group, Circle, Line, Text } from 'react-konva'
 import type { GaugeProperties } from '@/types/hmi'
 
 interface GaugeComponentProps {
