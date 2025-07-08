@@ -37,6 +37,7 @@ use crate::{
     config::BlockConfig,
     error::{PlcError, Result},
     signal::SignalBus,
+    Value,
 };
 use std::collections::HashMap;
 
