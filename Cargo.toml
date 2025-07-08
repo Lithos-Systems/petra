@@ -136,10 +136,11 @@ cranelift-jit = { version = "0.100", optional = true }
 # HTTP client/server and web framework dependencies
 # Used by web interface, health endpoints, and REST APIs
 reqwest = { version = "0.12", features = ["json"], optional = true }
-axum = { version = "0.6", optional = true }
+axum = { version = "0.6", features = ["ws"], optional = true }
 tower = { version = "0.5", optional = true }
 tower-http = { version = "0.4", features = ["cors"], optional = true }
 prometheus = { version = "0.13", optional = true }
+metrics-exporter-prometheus = { version = "0.13", optional = true }
 hyper = { version = "1.4", optional = true }        # HTTP implementation
 sysinfo = { version = "0.32", optional = true }     # System information for health
 
@@ -373,7 +374,7 @@ standard-monitoring = ["basic-monitoring"]              # Standard performance t
 enhanced-monitoring = ["standard-monitoring", "dep:ringbuffer"]  # Advanced monitoring with detailed stats
 
 # === METRICS INTEGRATION ===
-metrics = ["prometheus"]
+metrics = ["prometheus", "metrics-exporter-prometheus"]
 
 # ================================================================================
 # PROTOCOL FEATURES
@@ -487,7 +488,7 @@ full-alarms = ["basic-alarms", "twilio"]              # All notification methods
 # HTTP server and web interface capabilities
 
 # === WEB FRAMEWORK ===
-web = ["axum", "tower-http", "tokio/net"]
+web = ["axum", "tower-http", "tokio/net", "dep:reqwest"]
 
 # === HEALTH MONITORING ===
 health = ["dep:axum", "dep:tower", "dep:tower-http", "dep:sysinfo"]  # Health check endpoints

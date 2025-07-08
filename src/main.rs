@@ -1520,12 +1520,10 @@ async fn handle_protocol_command(cmd: ProtocolCommands) -> Result<()> {
 async fn start_metrics_server(port: u16, bind: String, runtime_metrics: bool) -> Result<()> {
     info!("Starting metrics server on {}:{}", bind, port);
     
-    let mut server = MetricsServer::new(&bind, port)?;
-    
+    let mut server = MetricsServer::new_with_addr(&bind, port)?;
     if runtime_metrics {
         server.enable_runtime_metrics();
     }
-    
     server.start().await?;
     
     // Wait for shutdown signal
