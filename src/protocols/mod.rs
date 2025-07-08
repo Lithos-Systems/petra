@@ -588,9 +588,10 @@ impl ProtocolManager {
             );
             
             // Add protocol name
+            #[cfg(feature = "extended-types")]
             diag.insert(
-                "protocol".to_string(), 
-                Value::String(driver.protocol_name().to_string())
+                "protocol".to_string(),
+                Value::String(driver.protocol_name().to_string()),
             );
             
             #[cfg(feature = "enhanced-monitoring")]
@@ -606,7 +607,13 @@ impl ProtocolManager {
                     diag.insert("error_count".to_string(), Value::Integer(*error_count as i64));
                 }
                 if let Some(last_error) = metrics.last_error.get(name) {
-                    diag.insert("last_error".to_string(), Value::String(last_error.clone()));
+                    #[cfg(feature = "extended-types")]
+                    {
+                        diag.insert(
+                            "last_error".to_string(),
+                            Value::String(last_error.clone()),
+                        );
+                    }
                 }
             }
             
@@ -635,7 +642,11 @@ impl ProtocolManager {
         if let Some(driver) = drivers.get(protocol) {
             let mut diag = driver.diagnostics();
             diag.insert("connected".to_string(), Value::Bool(driver.is_connected()));
-            diag.insert("protocol".to_string(), Value::String(driver.protocol_name().to_string()));
+            #[cfg(feature = "extended-types")]
+            diag.insert(
+                "protocol".to_string(),
+                Value::String(driver.protocol_name().to_string()),
+            );
             Ok(diag)
         } else {
             Err(crate::error::PlcError::NotFound(
@@ -825,7 +836,11 @@ mod tests {
         // Get diagnostics
         let diag = manager.protocol_diagnostics("mock").await.unwrap();
         assert_eq!(diag.get("connected"), Some(&Value::Bool(true)));
-        assert_eq!(diag.get("protocol"), Some(&Value::String("mock".to_string())));
+        #[cfg(feature = "extended-types")]
+        assert_eq!(
+            diag.get("protocol"),
+            Some(&Value::String("mock".to_string()))
+        );
         assert_eq!(diag.get("test_mode"), Some(&Value::Bool(true)));
         
         // Get all diagnostics
