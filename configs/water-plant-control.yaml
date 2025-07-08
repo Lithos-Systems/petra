@@ -8,7 +8,7 @@ version: "1.0"
 
 web:
   bind_address: "0.0.0.0"
-  port: 8081
+  port: 8080
   websocket_enabled: true
   cors_origins:
     - "http://localhost:5173"  # PETRA Designer
@@ -31,7 +31,7 @@ metrics:
 # Health API
 health:
   enabled: true
-  port: 8080
+  port: 8089
   endpoint: "/health"
 # ============================================================================
 # SYSTEM PARAMETERS
