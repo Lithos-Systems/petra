@@ -1,5 +1,5 @@
-# PETRA Water Plant Control Configuration
-# This configuration demonstrates industrial pump control using logic blocks
+# PETRA Water Plant Control Configuration with Web Server
+# This configuration includes web server settings for PETRA Designer
 
 version: "1.0"
 
@@ -13,7 +13,21 @@ error_recovery: true
 max_consecutive_errors: 10
 
 # ============================================================================
-# SIGNAL DEFINITIONS
+# WEB SERVER CONFIGURATION
+# ============================================================================
+
+web:
+  bind_address: "0.0.0.0"
+  port: 8080
+  websocket_enabled: true
+  cors_origins:
+    - "http://localhost:5173"  # PETRA Designer
+    - "http://localhost:3000"  # Alternative port
+    - "http://127.0.0.1:5173"
+    - "http://127.0.0.1:3000"
+
+# ============================================================================
+# SIGNAL DEFINITIONS (same as original)
 # ============================================================================
 
 signals:
@@ -224,6 +238,16 @@ signals:
     initial: 50.0
     description: "Hydrotank 2 air blanket percentage"
     
+  - name: "hydrotank1.water_level"
+    type: "float"
+    initial: 50.0
+    description: "Hydrotank 1 water level percentage"
+    
+  - name: "hydrotank2.water_level"
+    type: "float"
+    initial: 50.0
+    description: "Hydrotank 2 water level percentage"
+    
   - name: "compressor1.running"
     type: "bool"
     initial: false
@@ -384,12 +408,12 @@ signals:
   - name: "pump1.start_request"
     type: "bool"
     initial: false
-    description: "Pump 1 start request"
+    description: "Pump 1 combined start request"
     
   - name: "pump1.start_delayed"
     type: "bool"
     initial: false
-    description: "Pump 1 start after delay"
+    description: "Pump 1 start after timer delay"
     
   - name: "pump2.lead_start_request"
     type: "bool"
@@ -404,12 +428,12 @@ signals:
   - name: "pump2.start_request"
     type: "bool"
     initial: false
-    description: "Pump 2 start request"
+    description: "Pump 2 combined start request"
     
   - name: "pump2.start_delayed"
     type: "bool"
     initial: false
-    description: "Pump 2 start after delay"
+    description: "Pump 2 start after timer delay"
     
   - name: "pump3.lead_start_request"
     type: "bool"
@@ -424,15 +448,15 @@ signals:
   - name: "pump3.start_request"
     type: "bool"
     initial: false
-    description: "Pump 3 start request"
+    description: "Pump 3 combined start request"
     
   - name: "pump3.start_delayed"
     type: "bool"
     initial: false
-    description: "Pump 3 start after delay"
+    description: "Pump 3 start after timer delay"
 
 # ============================================================================
-# LOGIC BLOCKS
+# BLOCK DEFINITIONS (same as original)
 # ============================================================================
 
 blocks:
@@ -440,7 +464,7 @@ blocks:
   # WELL PUMP CONTROL
   # --------------------------------------------------------------------------
   
-  # Check if tank level is below start setpoint
+  # Check if tank level is low enough to start well pump
   - name: "well_start_condition"
     type: "LT"
     inputs:
@@ -449,7 +473,7 @@ blocks:
     outputs:
       out: "well.start_request"
       
-  # Check if tank level is above stop setpoint
+  # Check if tank level is high enough to stop well pump
   - name: "well_stop_condition"
     type: "GT"
     inputs:
@@ -458,22 +482,21 @@ blocks:
     outputs:
       out: "well.stop_request"
       
-  # Convert well running state to selector index
+  # Select well flow rate based on running status
   - name: "well_selector_calc"
-    type: "ADD"  # Using ADD as a simple converter (bool to int)
+    type: "ADD"
     inputs:
       in1: "well.running"
       in2: "constants.zero"
     outputs:
       out: "well.selector"
       
-  # Calculate well flow when running using SELECT with integer selector
   - name: "well_flow_calc"
     type: "SELECT"
     inputs:
       selector: "well.selector"
-      in0: "constants.zero"        # When selector=0 (not running)
-      in1: "well.setpoint_flow"    # When selector=1 (running)
+      in0: "constants.zero"
+      in1: "well.setpoint_flow"
     outputs:
       out: "well.flow_rate"
       
@@ -516,10 +539,10 @@ blocks:
       out: "pressure.high_for_lag"
       
   # --------------------------------------------------------------------------
-  # PUMP START LOGIC
+  # PUMP CONTROL LOGIC
   # --------------------------------------------------------------------------
   
-  # Pump 1 start conditions
+  # Pump 1 control logic
   - name: "pump1_lead_start"
     type: "AND"
     inputs:
@@ -532,7 +555,7 @@ blocks:
     type: "AND"
     inputs:
       in1: "pressure.low_for_lag"
-      in2: "pumps.any_running"
+      in2: "pumps.lead_running"
     outputs:
       out: "pump1.lag_start_request"
       
@@ -551,9 +574,9 @@ blocks:
     outputs:
       out: "pump1.start_delayed"
     params:
-      preset_ms: 5000
+      delay_ms: 5000
       
-  # Similar logic for Pump 2
+  # Pump 2 control logic
   - name: "pump2_lead_start"
     type: "AND"
     inputs:
@@ -566,7 +589,7 @@ blocks:
     type: "AND"
     inputs:
       in1: "pressure.low_for_lag"
-      in2: "pumps.any_running"
+      in2: "pumps.lead_running"
     outputs:
       out: "pump2.lag_start_request"
       
@@ -585,9 +608,9 @@ blocks:
     outputs:
       out: "pump2.start_delayed"
     params:
-      preset_ms: 5000
+      delay_ms: 5000
       
-  # Similar logic for Pump 3
+  # Pump 3 control logic
   - name: "pump3_lead_start"
     type: "AND"
     inputs:
@@ -600,7 +623,7 @@ blocks:
     type: "AND"
     inputs:
       in1: "pressure.low_for_lag"
-      in2: "pumps.any_running"
+      in2: "pumps.lead_running"
     outputs:
       out: "pump3.lag_start_request"
       
@@ -619,13 +642,13 @@ blocks:
     outputs:
       out: "pump3.start_delayed"
     params:
-      preset_ms: 5000
+      delay_ms: 5000
       
   # --------------------------------------------------------------------------
-  # PUMP FLOW CALCULATIONS
+  # FLOW CALCULATIONS
   # --------------------------------------------------------------------------
   
-  # Convert pump running states to selector indices
+  # Select pump flow rates based on running status
   - name: "pump1_selector_calc"
     type: "ADD"
     inputs:
@@ -649,8 +672,7 @@ blocks:
       in2: "constants.zero"
     outputs:
       out: "pump3.selector"
-  
-  # Calculate flow for each pump when running
+      
   - name: "pump1_flow_calc"
     type: "SELECT"
     inputs:
@@ -848,6 +870,7 @@ blocks:
       in_max: 25.0    # 25 feet tank height
       out_min: 0.0
       out_max: 100.0  # Percentage
+
 # ============================================================================
 # MQTT CONFIGURATION (Optional)
 # ============================================================================
@@ -869,41 +892,3 @@ mqtt:
   auto_reconnect: true
   max_reconnect_attempts: 0  # 0 = unlimited
   reconnect_delay_secs: 5
-
-# Note: The previous configuration used subscriptions/publications with detailed mappings.
-# The current PETRA implementation uses a simpler structure where:
-# - subscribe_topics: List of MQTT topics to subscribe to
-# - publish_topic_base: Base topic for publishing signals
-# 
-# Signal mapping is handled internally by the MQTT module based on topic patterns.
-# ============================================================================
-# PROTOCOL CONFIGURATIONS (Optional - requires protocol features)
-# ============================================================================
-
-# Example Modbus configuration (requires modbus-support feature)
-# protocols:
-#   - name: "tank_sensors"
-#     type: "modbus"
-#     config:
-#       host: "192.168.1.10"
-#       port: 502
-#       unit_id: 1
-#     tags:
-#       - address: 40001
-#         signal: "tank.level_feet"
-#         scale: 0.1
-
-# ============================================================================
-# ALARM CONFIGURATIONS (Optional - requires alarms feature)
-# ============================================================================
-
-# alarms:
-#   - name: "low_tank_alarm"
-#     signal: "alarm.tank_low"
-#     priority: "high"
-#     message: "Tank level critically low: {tank.level_feet} feet"
-#     actions:
-#       - type: "email"
-#         to: ["operator@waterplant.com"]
-#       - type: "sms"
-#         to: ["+1234567890"]
