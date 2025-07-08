@@ -2,16 +2,6 @@
 # This configuration includes web server settings for PETRA Designer
 
 version: "1.0"
-
-# ============================================================================
-# SYSTEM PARAMETERS
-# ============================================================================
-
-scan_time_ms: 100  # 100ms scan cycle for responsive control
-max_scan_jitter_ms: 10  # Maximum allowed jitter (10% of scan time)
-error_recovery: true
-max_consecutive_errors: 10
-
 # ============================================================================
 # WEB SERVER CONFIGURATION
 # ============================================================================
@@ -25,6 +15,14 @@ web:
     - "http://localhost:3000"  # Alternative port
     - "http://127.0.0.1:5173"
     - "http://127.0.0.1:3000"
+# ============================================================================
+# SYSTEM PARAMETERS
+# ============================================================================
+
+scan_time_ms: 100  # 100ms scan cycle for responsive control
+max_scan_jitter_ms: 10  # Maximum allowed jitter (10% of scan time)
+error_recovery: true
+max_consecutive_errors: 10
 
 # ============================================================================
 # SIGNAL DEFINITIONS (same as original)
