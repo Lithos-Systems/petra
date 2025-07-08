@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { toast } from 'react-hot-toast'
 
-interface SignalUpdate {
+export interface SignalUpdate {
   type: 'signal_update'
   signal: string
   value: any
@@ -12,18 +12,50 @@ interface SignalUpdate {
   source?: 'mqtt' | 'internal' | 's7' | 'modbus'
 }
 
-interface MQTTUpdate {
+export interface MQTTUpdate {
   type: 'mqtt_update'
   topic: string
   payload: any
   timestamp: number
 }
 
-interface PetraMessage {
-  type: 'signal_update' | 'mqtt_update' | 'batch_update' | 'error' | 'connected'
+export interface PetraMessage {
+  type:
+    | 'signal_update'
+    | 'mqtt_update'
+    | 'batch_update'
+    | 'error'
+    | 'connected'
+    | 'alarm'
+    | 'history_data'
+    | 'system_status'
+    | 'block_status'
+    | 'protocol_status'
+    | 'config_change'
+    | 'pong'
   data?: any
   updates?: SignalUpdate[]
   error?: string
+  timestamp?: number
+}
+
+export interface AlarmUpdate {
+  type: 'alarm'
+  alarm_id: string
+  signal: string
+  severity: 'critical' | 'warning' | 'info'
+  message: string
+  timestamp: number
+  acknowledged: boolean
+}
+
+export interface HistoryData {
+  signal: string
+  data: Array<{
+    timestamp: number
+    value: any
+    quality?: string
+  }>
 }
 
 interface PetraConnectionOptions {
@@ -51,9 +83,18 @@ export function usePetraConnection({
 }: PetraConnectionOptions = {}) {
 
   const [connected, setConnected] = useState(false)
+  const [connectionState, setConnectionState] = useState<
+    'disconnected' | 'connecting' | 'connected' | 'error'
+  >('disconnected')
+  const [lastError, setLastError] = useState<string | null>(null)
   const [signals, setSignals] = useState<Map<string, any>>(new Map())
   const [quality, setQuality] = useState<Map<string, string>>(new Map())
   const [mqttData, setMqttData] = useState<Map<string, any>>(new Map())
+  const [performance, setPerformance] = useState({
+    latency: 0,
+    messageRate: 0,
+    queueSize: 0
+  })
   
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectCountRef = useRef(0)
@@ -61,6 +102,31 @@ export function usePetraConnection({
   const subscribedSignalsRef = useRef<Set<string>>(new Set())
   const subscribedTopicsRef = useRef<Set<string>>(new Set())
   const pingIntervalRef = useRef<number>()
+  const messageRateRef = useRef<number[]>([])
+
+  const handleConnectionError = useCallback((error: any) => {
+    console.error('Connection error:', error)
+    if (error.code === 'ECONNREFUSED') {
+      setLastError('Cannot connect to PETRA server. Is it running?')
+    } else if (error.code === 'ETIMEDOUT') {
+      setLastError('Connection timeout. Check network settings.')
+    } else {
+      setLastError(error.message || 'Unknown connection error')
+    }
+    setConnectionState('error')
+  }, [])
+
+  const getConnectionDiagnostics = useCallback(() => {
+    return {
+      state: connectionState,
+      connected,
+      url,
+      lastError,
+      reconnectAttempts: reconnectCountRef.current,
+      subscribedSignals: subscribedSignalsRef.current.size,
+      subscribedTopics: subscribedTopicsRef.current.size
+    }
+  }, [connectionState, connected, url, lastError])
 
   const connect = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
@@ -69,10 +135,12 @@ export function usePetraConnection({
     
     try {
       wsRef.current = new WebSocket(url)
+      setConnectionState('connecting')
       
       wsRef.current.onopen = () => {
         console.log('Connected to PETRA')
         setConnected(true)
+        setConnectionState('connected')
         reconnectCountRef.current = 0
         toast.success('Connected to PETRA')
         
@@ -102,6 +170,7 @@ export function usePetraConnection({
 
       wsRef.current.onmessage = (event) => {
         try {
+          messageRateRef.current.push(Date.now())
           const message: PetraMessage = JSON.parse(event.data)
           
           switch (message.type) {
@@ -138,6 +207,38 @@ export function usePetraConnection({
                 return newMap
               })
               break
+
+            case 'alarm':
+              // handle alarm update
+              break
+
+            case 'history_data':
+              // handle history data
+              break
+
+            case 'system_status':
+              // handle system status
+              break
+
+            case 'block_status':
+              // handle block status
+              break
+
+            case 'protocol_status':
+              // handle protocol status
+              break
+
+            case 'config_change':
+              // config changed
+              break
+
+            case 'pong':
+              const start = message.timestamp ?? Date.now()
+              setPerformance(prev => ({
+                ...prev,
+                latency: Date.now() - start
+              }))
+              break
               
             case 'error':
               console.error('PETRA error:', message.error)
@@ -150,11 +251,12 @@ export function usePetraConnection({
       }
 
       wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error)
+        handleConnectionError(error)
       }
 
       wsRef.current.onclose = () => {
         setConnected(false)
+        setConnectionState('disconnected')
         wsRef.current = null
         
         // Clear ping interval
@@ -173,12 +275,14 @@ export function usePetraConnection({
             connect()
           }, reconnectInterval)
         } else {
+          setLastError('Failed to connect to PETRA. Please check the connection.')
+          setConnectionState('error')
           toast.error('Failed to connect to PETRA. Please check the connection.')
         }
       }
     } catch (error) {
       console.error('Failed to create WebSocket:', error)
-      toast.error('Failed to connect to PETRA')
+      handleConnectionError(error)
     }
   }, [url, reconnectInterval, maxReconnectAttempts, enableMQTT])
 
@@ -257,6 +361,43 @@ export function usePetraConnection({
     }
   }, [])
 
+  const batchSetSignals = useCallback((updates: Record<string, any>) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'batch_set',
+          updates: Object.entries(updates).map(([signal, value]) => ({
+            signal,
+            value,
+            timestamp: Date.now()
+          }))
+        })
+      )
+    }
+  }, [])
+
+  const getSignalMetadata = useCallback((signal: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'get_metadata',
+          signal
+        })
+      )
+    }
+  }, [])
+
+  const subscribeSignalGroup = useCallback((group: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'subscribe_group',
+          group
+        })
+      )
+    }
+  }, [])
+
   const publishMQTT = useCallback((topic: string, payload: any) => {
     if (!enableMQTT) return
     
@@ -271,6 +412,27 @@ export function usePetraConnection({
     }
   }, [enableMQTT])
 
+  const measureLatency = useCallback(() => {
+    const start = Date.now()
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'ping',
+          timestamp: start
+        })
+      )
+    }
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const rate = messageRateRef.current.length
+      setPerformance(prev => ({ ...prev, messageRate: rate }))
+      messageRateRef.current = []
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
   // Auto-connect on mount
   useEffect(() => {
     connect()
@@ -282,20 +444,28 @@ export function usePetraConnection({
 
   return {
     connected,
+    connectionState,
+    lastError,
     signals,
     quality,
     mqttData,
+    performance,
     // Signal operations
     subscribeSignal,
     unsubscribeSignal,
     setSignalValue,
+    batchSetSignals,
+    getSignalMetadata,
+    subscribeSignalGroup,
     // MQTT operations
     subscribeMQTT,
     unsubscribeMQTT,
     publishMQTT,
     // Connection management
     reconnect: connect,
-    disconnect
+    disconnect,
+    getConnectionDiagnostics,
+    measureLatency
   }
 }
 

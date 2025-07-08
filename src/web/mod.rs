@@ -1,5 +1,6 @@
 #[cfg(feature = "health")]
 pub mod health;
+pub mod websocket;
 
 #[cfg(feature = "web")]
 use axum::{routing::get, Router, serve};

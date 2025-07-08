@@ -195,3 +195,34 @@ export interface HMIExportOptions {
     endpoint?: string
   }
 }
+
+// ---------------------------------------------------------------------------
+// Enhanced component bindings with expressions and validation
+// ---------------------------------------------------------------------------
+
+export interface EnhancedBinding extends SignalBinding {
+  /** Optional JavaScript expression for computed bindings */
+  expression?: string
+  /** Input validation rules */
+  validation?: {
+    min?: number
+    max?: number
+    pattern?: string
+  }
+  /** Throttle updates (ms) */
+  throttle?: number
+  /** Conditional visibility expression */
+  visibilityCondition?: string
+}
+
+// ---------------------------------------------------------------------------
+// Component template definitions
+// ---------------------------------------------------------------------------
+
+export interface ComponentTemplate {
+  name: string
+  description: string
+  thumbnail?: string
+  component: Partial<HMIComponent>
+  defaultBindings?: SignalBinding[]
+}
