@@ -59,6 +59,8 @@ use std::path::PathBuf;
 use std::process;
 #[cfg(feature = "web")]
 use std::sync::Arc;
+#[cfg(feature = "web")]
+use petra::web;
 use tokio::signal;
 use tracing::{info, error, debug, warn, Level};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -957,7 +959,7 @@ async fn run_engine(
             let web_config_clone = config.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = crate::web::create_server(
+                if let Err(e) = web::create_server(
                     Arc::new(web_bus.clone()),
                     web_config_clone,
                 )
@@ -974,7 +976,6 @@ async fn run_engine(
             );
         }
     }
-    
     // Start the engine
     info!("Starting PETRA engine with {}ms scan time", scan_time);
     let shutdown_signal = setup_shutdown_handler();
@@ -1699,3 +1700,53 @@ async fn handle_storage_command(cmd: StorageCommands) -> Result<()> {
     }
     Ok(())
 }
+
+
+/// Handle running the engine with basic options
+async fn handle_run(config_file: PathBuf) -> Result<()> {
+    info!("Loading configuration from: {}", config_file.display());
+
+    let config = Config::from_file(&config_file)
+        .map_err(|e| PlcError::Config(format!("Failed to load config: {}", e)))?;
+    let mut engine = Engine::new(config.clone())?;
+
+    // Start the web server if configured
+    #[cfg(feature = "web")]
+    {
+        if let Some(web_config) = &config.web {
+            let web_bus = engine.signal_bus().clone();
+            let web_config_clone = config.clone();
+
+                tokio::spawn(async move {
+                    if let Err(e) = web::create_server(
+                        Arc::new(web_bus.clone()),
+                        web_config_clone,
+                    )
+                    .await
+                    {
+                        error!("Web server error: {}", e);
+                    }
+                });
+
+                info!(
+                    "Web server started on {}:{}",
+                    web_config.bind_address,
+                    web_config.port
+                );
+        }
+    }
+
+    let shutdown_signal = setup_shutdown_handler();
+    tokio::pin!(shutdown_signal);
+    tokio::select! {
+        res = engine.run() => { res?; }
+        _ = &mut shutdown_signal => {
+            info!("Shutdown signal received, stopping engine...");
+            engine.stop().await;
+        }
+    }
+    info!("Engine stopped successfully");
+
+    Ok(())
+}
+
