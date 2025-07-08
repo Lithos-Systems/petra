@@ -18,6 +18,12 @@ use rumqttc::{TlsConfiguration, Transport};
 #[cfg(feature = "mqtt-tls")]
 use std::fs::File;
 
+#[cfg(feature = "metrics")]
+use std::sync::Arc;
+
+#[cfg(feature = "metrics")]
+use tokio::sync::RwLock;
+
 // ============================================================================
 // CONFIGURATION STRUCTURES
 // ============================================================================
