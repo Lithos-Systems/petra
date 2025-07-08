@@ -71,7 +71,7 @@ use rpassword;
 use petra::MetricsServer;
 
 #[cfg(feature = "health")]
-use petra::health::HealthMonitor;
+use petra::health::{HealthMonitor, HealthConfig};
 
 #[cfg(feature = "realtime")]
 use petra::realtime::RealtimeScheduler;
@@ -1539,16 +1539,18 @@ async fn start_metrics_server(port: u16, bind: String, runtime_metrics: bool) ->
 #[cfg(feature = "health")]
 async fn start_health_server(port: u16, bind: String, check_interval: u64) -> Result<()> {
     info!("Starting health server on {}:{}", bind, port);
-    
-    let mut monitor = HealthMonitor::new(&bind, port, Duration::from_secs(check_interval))?;
+
+    let addr: std::net::SocketAddr = format!("{}:{}", bind, port)
+        .parse()
+        .map_err(|e| PlcError::Config(format!("Invalid bind address: {}", e)))?;
+
+    let mut config = HealthConfig::default();
+    config.bind_address = addr;
+    config.check_interval_seconds = check_interval as u32;
+
+    let monitor = HealthMonitor::new(config);
     monitor.start().await?;
-    
-    // Wait for shutdown signal
-    setup_shutdown_handler().await;
-    
-    info!("Shutting down health server");
-    monitor.stop().await?;
-    
+
     Ok(())
 }
 
