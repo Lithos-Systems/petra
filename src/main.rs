@@ -59,6 +59,8 @@ use std::path::PathBuf;
 use std::process;
 #[cfg(feature = "web")]
 use std::sync::Arc;
+#[cfg(feature = "web")]
+use petra::web;
 use tokio::signal;
 use tracing::{info, error, debug, warn, Level};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -957,7 +959,7 @@ async fn run_engine(
             let web_config_clone = config.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = crate::web::create_server(
+                if let Err(e) = web::create_server(
                     Arc::new(web_bus.clone()),
                     web_config_clone,
                 )
