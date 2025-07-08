@@ -29,6 +29,18 @@ export default function WaterPlantPetraDemo() {
       pressure: petraSignals.get('system.pressure'),
       pump1Running: petraSignals.get('pump1.running')
     })
+    
+    // Log first few signals to see format
+    if (petraSignals.size > 0) {
+      console.log('First 5 signals:');
+      let count = 0;
+      petraSignals.forEach((value, key) => {
+        if (count < 5) {
+          console.log(`  ${key}:`, value);
+          count++;
+        }
+      });
+    }
   }, [connected, petraSignals])
   
   const [simulation, setSimulation] = useState<SimulationState>({
@@ -122,14 +134,21 @@ export default function WaterPlantPetraDemo() {
     return () => window.removeEventListener('resize', updateSize)
   }, [showControls])
   
-  // Update connection status
+  // Manually fetch signals if connected but map is empty
   useEffect(() => {
-    setSimulation(prev => ({
-      ...prev,
-      petraConnected: isConnected,
-      lastUpdate: isConnected ? new Date() : prev.lastUpdate
-    }))
-  }, [isConnected])
+    if (isConnected && petraSignals.size === 0) {
+      console.log('Connected but no signals, attempting manual fetch...');
+      
+      // Try to fetch signals via HTTP API
+      fetch('http://localhost:8080/api/signals')
+        .then(res => res.json())
+        .then(data => {
+          console.log('Fetched signals from API:', data);
+          // Note: This won't update petraSignals map, but shows what format we should expect
+        })
+        .catch(err => console.error('Failed to fetch signals:', err));
+    }
+  }, [isConnected, petraSignals.size]);
   
   // Simulation physics (updates PETRA signals)
   useEffect(() => {
@@ -212,36 +231,26 @@ export default function WaterPlantPetraDemo() {
   }, [simulation.running, simulation.timeMultiplier, isConnected, petraSignals, setSignalValue])
   
   // Write signal to PETRA
- const writeSignal = (signal: string, value: any) => {
-  if (!isConnected) {
-    console.warn('Cannot write signal - not connected to PETRA')
-    return
-  }
-  
-  console.log(`Writing signal ${signal} = ${value}`)
-  
-  try {
-    // Determine the type based on the value
-    let wrappedValue;
-    if (typeof value === 'boolean') {
-      wrappedValue = { type: 'Bool', value: value };
-    } else if (typeof value === 'number') {
-      if (Number.isInteger(value)) {
-        wrappedValue = { type: 'Integer', value: value };
-      } else {
-        wrappedValue = { type: 'Float', value: value };
-      }
-    } else {
-      wrappedValue = { type: 'String', value: String(value) };
+  const writeSignal = (signal: string, value: any) => {
+    if (!isConnected) {
+      console.warn('Cannot write signal - not connected to PETRA')
+      return
     }
     
-    setSignalValue(signal, wrappedValue);
+    console.log(`Writing signal ${signal} = ${value}`)
     
-    // Rest of the function...
-  } catch (error) {
-    console.error(`Error writing signal ${signal}:`, error)
+    try {
+      setSignalValue(signal, value)
+      
+      // Force a re-read to verify the write
+      setTimeout(() => {
+        const newValue = petraSignals.get(signal)
+        console.log(`Verified ${signal} = ${newValue}`)
+      }, 100)
+    } catch (error) {
+      console.error(`Error writing signal ${signal}:`, error)
+    }
   }
-}
   
   // Control handlers
   const togglePump = (pumpNum: number) => {
