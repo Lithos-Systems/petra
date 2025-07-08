@@ -916,6 +916,15 @@ impl SignalBus {
     pub fn signal_names(&self) -> Vec<String> {
         self.signals.iter().map(|entry| entry.key().clone()).collect()
     }
+
+    /// Get a map of all signal values
+    pub fn get_all_signals(&self) -> Result<HashMap<String, Value>> {
+        let mut result = HashMap::new();
+        for entry in self.signals.iter() {
+            result.insert(entry.key().clone(), entry.value().value.clone());
+        }
+        Ok(result)
+    }
     
     /// Get signal names matching a pattern
     /// 
