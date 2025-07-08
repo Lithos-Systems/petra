@@ -509,7 +509,18 @@ impl HealthMonitor {
                 format!("Failed to start health server: {}", e),
             ))
         })?;
-        axum::serve(listener, router)
+        let std_listener = listener.into_std().map_err(|e| {
+            PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to start health server: {}", e),
+            ))
+        })?;
+        axum::Server::from_tcp(std_listener)
+            .map_err(|e| PlcError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to start health server: {}", e),
+            )))?
+            .serve(router.into_make_service())
             .await
             .map_err(|e| PlcError::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
