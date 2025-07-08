@@ -212,26 +212,36 @@ export default function WaterPlantPetraDemo() {
   }, [simulation.running, simulation.timeMultiplier, isConnected, petraSignals, setSignalValue])
   
   // Write signal to PETRA
-  const writeSignal = (signal: string, value: any) => {
-    if (!isConnected) {
-      console.warn('Cannot write signal - not connected to PETRA')
-      return
-    }
-    
-    console.log(`Writing signal ${signal} = ${value}`)
-    
-    try {
-      setSignalValue(signal, value)
-      
-      // Force a re-read to verify the write
-      setTimeout(() => {
-        const newValue = petraSignals.get(signal)
-        console.log(`Verified ${signal} = ${newValue}`)
-      }, 100)
-    } catch (error) {
-      console.error(`Error writing signal ${signal}:`, error)
-    }
+ const writeSignal = (signal: string, value: any) => {
+  if (!isConnected) {
+    console.warn('Cannot write signal - not connected to PETRA')
+    return
   }
+  
+  console.log(`Writing signal ${signal} = ${value}`)
+  
+  try {
+    // Determine the type based on the value
+    let wrappedValue;
+    if (typeof value === 'boolean') {
+      wrappedValue = { type: 'Bool', value: value };
+    } else if (typeof value === 'number') {
+      if (Number.isInteger(value)) {
+        wrappedValue = { type: 'Integer', value: value };
+      } else {
+        wrappedValue = { type: 'Float', value: value };
+      }
+    } else {
+      wrappedValue = { type: 'String', value: String(value) };
+    }
+    
+    setSignalValue(signal, wrappedValue);
+    
+    // Rest of the function...
+  } catch (error) {
+    console.error(`Error writing signal ${signal}:`, error)
+  }
+}
   
   // Control handlers
   const togglePump = (pumpNum: number) => {
