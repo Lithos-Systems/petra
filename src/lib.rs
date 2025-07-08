@@ -120,51 +120,10 @@ pub mod blocks;
 // ============================================================================
 
 /// Industrial and IoT protocol implementations
-/// 
+///
 /// Protocol drivers for industrial automation and IoT communication.
 /// Each protocol is feature-gated for modular compilation.
-pub mod protocols {
-    //! Protocol driver framework and implementations
-    //! 
-    //! Provides a common interface for all protocol drivers with
-    //! async support, connection management, and error handling.
-
-    #[cfg(feature = "mqtt")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "mqtt")))]
-    /// MQTT protocol support for IoT and edge device communication
-    /// 
-    /// High-performance MQTT client with automatic reconnection,
-    /// QoS support, and integration with the signal bus.
-    pub mod mqtt;
-
-    #[cfg(feature = "s7-support")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "s7-support")))]
-    /// Siemens S7 PLC communication driver
-    /// 
-    /// Native S7 protocol implementation for direct communication
-    /// with Siemens PLCs supporting read/write operations.
-    pub mod s7;
-
-    #[cfg(feature = "modbus-support")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "modbus-support")))]
-    /// Modbus TCP/RTU protocol driver
-    /// 
-    /// Standards-compliant Modbus implementation supporting both
-    /// TCP and RTU variants with automatic device discovery.
-    pub mod modbus;
-
-    #[cfg(feature = "opcua-support")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "opcua-support")))]
-    /// OPC-UA server implementation
-    ///
-    /// Full OPC-UA server with subscription support, security,
-    /// and standards-compliant information modeling.
-    pub mod opcua;
-
-    /// Zero-copy protocol utilities and traits
-    #[cfg(feature = "zero-copy-protocols")]
-    pub mod zero_copy;
-}
+pub mod protocols;
 
 #[cfg(feature = "mqtt")]
 pub mod mqtt {
