@@ -606,12 +606,12 @@ impl ProtocolManager {
                 if let Some(error_count) = metrics.error_count.get(name) {
                     diag.insert("error_count".to_string(), Value::Integer(*error_count as i64));
                 }
-                if let Some(last_error) = metrics.last_error.get(name) {
+                if let Some(_last_error) = metrics.last_error.get(name) {
                     #[cfg(feature = "extended-types")]
                     {
                         diag.insert(
                             "last_error".to_string(),
-                            Value::String(last_error.clone()),
+                            Value::String(_last_error.clone()),
                         );
                     }
                 }

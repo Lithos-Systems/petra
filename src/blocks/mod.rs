@@ -37,12 +37,14 @@ use crate::{
     config::BlockConfig,
     error::{PlcError, Result},
     signal::SignalBus,
-    Value,
 };
+
+#[cfg(feature = "enhanced-monitoring")]
+use crate::Value;
 use std::collections::HashMap;
 
 #[cfg(feature = "enhanced-monitoring")]
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;

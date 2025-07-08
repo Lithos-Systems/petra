@@ -3,7 +3,7 @@ use axum::{
     extract::{State, WebSocketUpgrade},
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
+    Router,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;

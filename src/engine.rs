@@ -509,6 +509,12 @@ impl Engine {
         // Calculate EMA alpha based on scan time
         let ema_alpha = 2.0 / (10.0 + 1.0); // 10-period EMA
         
+        #[cfg(feature = "enhanced-monitoring")]
+        let registry = crate::metrics::create_metrics_registry();
+        #[cfg(feature = "enhanced-monitoring")]
+        let metrics = Arc::new(EngineMetrics::new(&registry)
+            .map_err(|e| PlcError::Runtime(e.to_string()))?);
+
         let engine = Self {
             bus,
             blocks: Arc::new(Mutex::new(blocks)),
@@ -529,7 +535,7 @@ impl Engine {
             last_scan_start: Arc::new(RwLock::new(Instant::now())),
             ema_alpha,
             #[cfg(feature = "enhanced-monitoring")]
-            metrics: Arc::new(EngineMetrics::new()),
+            metrics,
             watchdog_handle: None,
             last_watchdog_ping: Arc::new(RwLock::new(Instant::now())),
             #[cfg(feature = "parallel-execution")]
