@@ -133,7 +133,7 @@ const renderAnimationsTab = () => {
 
 import { useState } from 'react'
 import { FaTrash, FaLock, FaUnlock, FaEye, FaEyeSlash, FaPlus, FaTimes } from 'react-icons/fa'
-import { SketchPicker } from 'react-color'
+import { SketchPicker, ColorResult } from 'react-color'
 import type { HMIComponent, SignalBinding, Animation, Interaction } from '@/types/hmi'
 import { useFlowStore } from '@/store/flowStore'
 
@@ -342,7 +342,7 @@ export default function HMIPropertiesPanel({
             <div className="absolute z-10 mt-1">
               <SketchPicker
                 color={component.style.fill || '#cccccc'}
-                onChange={(color) => handleStyleChange('fill', color.hex)}
+                onChange={(color: ColorResult) => handleStyleChange('fill', color.hex)}
               />
             </div>
           )}
@@ -371,7 +371,7 @@ export default function HMIPropertiesPanel({
             <div className="absolute z-10 mt-1">
               <SketchPicker
                 color={component.style.stroke || '#333333'}
-                onChange={(color) => handleStyleChange('stroke', color.hex)}
+                onChange={(color: ColorResult) => handleStyleChange('stroke', color.hex)}
               />
             </div>
           )}

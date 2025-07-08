@@ -1,6 +1,6 @@
 // src/contexts/PetraContext.tsx
 
-import React, { createContext, useContext, ReactNode } from 'react'
+import { createContext, useContext, ReactNode } from 'react'
 import { usePetraConnection } from '@/hooks/usePetraConnection'
 
 interface PetraContextType {

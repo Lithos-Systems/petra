@@ -15,6 +15,9 @@ export type HMIComponentType =
   | 'shape'
   | 'image'
   | 'group'
+  | 'heat-exchanger'
+  | 'conveyor'
+  | 'mixer'
 
 export interface HMIComponent {
   id: string

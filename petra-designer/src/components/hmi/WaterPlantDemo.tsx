@@ -1,12 +1,9 @@
 // src/components/hmi/WaterPlantPetraDemo.tsx
 
-import { useState, useEffect, useRef } from 'react'
-import { Stage, Layer, Group, Rect, Circle, Line, Text, Path } from 'react-konva'
-import { FaPlay, FaPause, FaCog, FaChartLine, FaExclamationTriangle, FaSync } from 'react-icons/fa'
+import { useState, useEffect } from 'react'
+import { Stage, Layer, Group, Rect, Text } from 'react-konva'
+import { FaPlay, FaPause, FaCog, FaExclamationTriangle, FaSync } from 'react-icons/fa'
 import TankComponent from './components/TankComponent'
-import PumpComponent from './components/PumpComponent'
-import ValveComponent from './components/ValveComponent'
-import GaugeComponent from './components/GaugeComponent'
 import { usePetra } from '../../contexts/PetraContext'
 
 interface SimulationState {
@@ -17,7 +14,8 @@ interface SimulationState {
 }
 
 export default function WaterPlantPetraDemo() {
-  const { signalBus, isConnected } = usePetra()
+  const { connected } = usePetra()
+  const isConnected = connected
   
   const [simulation, setSimulation] = useState<SimulationState>({
     running: true,

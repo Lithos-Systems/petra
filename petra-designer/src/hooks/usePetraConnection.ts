@@ -31,15 +31,24 @@ interface PetraConnectionOptions {
   reconnectInterval?: number
   maxReconnectAttempts?: number
   enableMQTT?: boolean
+  enableHistory?: boolean
+  onConnect?: () => void
+  onDisconnect?: () => void
+  onError?: (error: any) => void
 }
 
-export function usePetraConnection(options: PetraConnectionOptions = {}) {
-  const {
-    url = process.env.VITE_PETRA_WS_URL || 'ws://localhost:8080/ws',
-    reconnectInterval = 5000,
-    maxReconnectAttempts = 10,
-    enableMQTT = true
-  } = options
+export function usePetraConnection({
+  url = (typeof window !== 'undefined' && window.location.hostname === 'localhost')
+    ? 'ws://localhost:8080/ws'
+    : `wss://${window.location.host}/ws`,
+  reconnectInterval = 5000,
+  maxReconnectAttempts = 10,
+  enableMQTT = false,
+  enableHistory = false,
+  onConnect,
+  onDisconnect,
+  onError,
+}: PetraConnectionOptions = {}) {
 
   const [connected, setConnected] = useState(false)
   const [signals, setSignals] = useState<Map<string, any>>(new Map())
@@ -48,13 +57,13 @@ export function usePetraConnection(options: PetraConnectionOptions = {}) {
   
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectCountRef = useRef(0)
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const reconnectTimeoutRef = useRef<number>()
   const subscribedSignalsRef = useRef<Set<string>>(new Set())
   const subscribedTopicsRef = useRef<Set<string>>(new Set())
-  const pingIntervalRef = useRef<NodeJS.Timeout>()
+  const pingIntervalRef = useRef<number>()
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return
 
     console.log(`Connecting to PETRA at ${url}...`)
     
@@ -69,7 +78,7 @@ export function usePetraConnection(options: PetraConnectionOptions = {}) {
         
         // Start ping interval to keep connection alive
         pingIntervalRef.current = setInterval(() => {
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: 'ping' }))
           }
         }, 30000) // Ping every 30 seconds
@@ -193,7 +202,7 @@ export function usePetraConnection(options: PetraConnectionOptions = {}) {
   const subscribeSignal = useCallback((signalName: string) => {
     subscribedSignalsRef.current.add(signalName)
     
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'subscribe_signal',
         signal: signalName
@@ -204,7 +213,7 @@ export function usePetraConnection(options: PetraConnectionOptions = {}) {
   const unsubscribeSignal = useCallback((signalName: string) => {
     subscribedSignalsRef.current.delete(signalName)
     
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'unsubscribe_signal',
         signal: signalName
@@ -217,7 +226,7 @@ export function usePetraConnection(options: PetraConnectionOptions = {}) {
     
     subscribedTopicsRef.current.add(topic)
     
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'subscribe_mqtt',
         topic: topic
@@ -228,7 +237,7 @@ export function usePetraConnection(options: PetraConnectionOptions = {}) {
   const unsubscribeMQTT = useCallback((topic: string) => {
     subscribedTopicsRef.current.delete(topic)
     
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'unsubscribe_mqtt',
         topic: topic
@@ -237,7 +246,7 @@ export function usePetraConnection(options: PetraConnectionOptions = {}) {
   }, [])
 
   const setSignalValue = useCallback((signalName: string, value: any) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'set_signal',
         signal: signalName,
@@ -251,7 +260,7 @@ export function usePetraConnection(options: PetraConnectionOptions = {}) {
   const publishMQTT = useCallback((topic: string, payload: any) => {
     if (!enableMQTT) return
     
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'publish_mqtt',
         topic: topic,

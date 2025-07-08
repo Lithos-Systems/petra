@@ -70,7 +70,7 @@ export function useHMIKeyboardShortcuts() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault()
         // Future: implement multi-select
-        toast.info('Select all not yet implemented')
+        toast('Select all not yet implemented')
       }
 
       // Arrow keys: Move selected component

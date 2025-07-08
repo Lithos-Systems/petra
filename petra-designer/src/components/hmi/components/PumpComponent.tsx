@@ -1,21 +1,15 @@
 // src/components/hmi/components/PumpComponent.tsx
 
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { Group, Circle, Line, Text, Path, Rect } from 'react-konva'
 import type { PumpProperties } from '@/types/hmi'
 
 interface PumpComponentProps {
-  id: string
   x: number
   y: number
   width: number
   height: number
   properties: PumpProperties
-  bindings: Array<{
-    property: string
-    signal: string
-    transform?: string
-  }>
   style: any
   isSelected?: boolean
   draggable?: boolean
@@ -24,13 +18,11 @@ interface PumpComponentProps {
 }
 
 export default function PumpComponent({
-  id,
   x,
   y,
   width,
   height,
   properties,
-  bindings,
   style,
   isSelected,
   draggable = true,

@@ -11,8 +11,6 @@ import {
   FaFont,
   FaMousePointer,
   FaGripLines,
-  FaBolt,
-  FaExclamationTriangle,
   FaSlidersH,
   FaImage,
   FaWater,
