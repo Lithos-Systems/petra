@@ -5,6 +5,7 @@
 use crate::{Result, Value};
 use async_trait::async_trait;
 use std::collections::HashMap;
+use tracing::info;
 
 pub struct OpcUaDriver {
     // Implementation details
@@ -39,4 +40,11 @@ impl crate::protocols::ProtocolDriver for OpcUaDriver {
     fn protocol_name(&self) -> &'static str {
         "opcua"
     }
+}
+
+/// Test connectivity to an OPC UA endpoint.
+/// This is a lightweight stub used by the command-line interface.
+pub async fn test_connection(_endpoint: &str, _node_id: Option<&str>) -> Result<()> {
+    info!("OPC UA test_connection stub called");
+    Ok(())
 }

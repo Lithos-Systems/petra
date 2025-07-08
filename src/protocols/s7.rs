@@ -5,6 +5,7 @@
 use crate::{Result, Value};
 use async_trait::async_trait;
 use std::collections::HashMap;
+use tracing::info;
 
 pub struct S7Driver {
     // Implementation details
@@ -39,4 +40,11 @@ impl crate::protocols::ProtocolDriver for S7Driver {
     fn protocol_name(&self) -> &'static str {
         "s7"
     }
+}
+
+/// Test connectivity to an S7 PLC.
+/// This is a lightweight stub used by the command-line interface.
+pub async fn test_connection(_address: &str, _rack: u16, _slot: u16) -> Result<()> {
+    info!("S7 test_connection stub called");
+    Ok(())
 }
