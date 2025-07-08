@@ -44,10 +44,10 @@ export function usePetraConnection({
   reconnectInterval = 5000,
   maxReconnectAttempts = 10,
   enableMQTT = false,
-  _enableHistory = false,
-  _onConnect,
-  _onDisconnect,
-  _onError,
+  enableHistory: _enableHistory = false,
+  onConnect: _onConnect,
+  onDisconnect: _onDisconnect,
+  onError: _onError,
 }: PetraConnectionOptions = {}) {
 
   const [connected, setConnected] = useState(false)
