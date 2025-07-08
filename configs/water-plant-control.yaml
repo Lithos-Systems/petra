@@ -15,6 +15,24 @@ web:
     - "http://localhost:3000"  # Alternative port
     - "http://127.0.0.1:5173"
     - "http://127.0.0.1:3000"
+
+# Storage Configuration (if using history feature)
+storage:
+  type: parquet
+  path: /var/lib/petra/history
+  retention_days: 30
+  
+# Metrics
+metrics:
+  enabled: true
+  port: 9090
+  endpoint: "/metrics"
+
+# Health API
+health:
+  enabled: true
+  port: 8080
+  endpoint: "/health"
 # ============================================================================
 # SYSTEM PARAMETERS
 # ============================================================================

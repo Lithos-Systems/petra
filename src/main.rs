@@ -976,7 +976,6 @@ async fn run_engine(
             );
         }
     }
-    
     // Start the engine
     info!("Starting PETRA engine with {}ms scan time", scan_time);
     let shutdown_signal = setup_shutdown_handler();
