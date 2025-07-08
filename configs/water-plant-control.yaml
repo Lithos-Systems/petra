@@ -573,7 +573,7 @@ blocks:
       in: "pump1.start_request"
     outputs:
       out: "pump1.start_delayed"
-    parameters:
+    params:
       preset_ms: 5000
       
   # Pump 2 control logic
@@ -607,7 +607,7 @@ blocks:
       in: "pump2.start_request"
     outputs:
       out: "pump2.start_delayed"
-    parameters:
+    params:
       preset_ms: 5000
       
   # Pump 3 control logic
@@ -641,7 +641,7 @@ blocks:
       in: "pump3.start_request"
     outputs:
       out: "pump3.start_delayed"
-    parameters:
+    params:
       preset_ms: 5000
       
   # --------------------------------------------------------------------------
