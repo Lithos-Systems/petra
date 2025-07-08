@@ -54,6 +54,8 @@ use tracing::{debug, trace, warn};
 // Feature-gated imports for enhanced functionality
 #[cfg(feature = "enhanced-monitoring")]
 use std::collections::VecDeque;
+#[cfg(feature = "enhanced-monitoring")]
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "signal-validation")]
 use crate::validation::Validator;

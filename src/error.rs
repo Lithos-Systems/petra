@@ -207,8 +207,11 @@ pub enum PlcError {
     /// Automatically converts from `tokio_modbus::Error` and covers
     /// Modbus TCP/RTU communication failures.
     #[cfg(feature = "modbus-support")]
-    #[error("Modbus error")]
-    Modbus(#[from] tokio_modbus::Error),
+    #[error("Modbus error: {source}")]
+    Modbus {
+        #[source]
+        source: std::io::Error,
+    },
     
     /// OPC-UA protocol error
     /// 
@@ -542,7 +545,7 @@ impl PlcError {
             Self::S7(_) => ErrorCategory::Communication,
             
             #[cfg(feature = "modbus-support")]
-            Self::Modbus(_) => ErrorCategory::Communication,
+            Self::Modbus { .. } => ErrorCategory::Communication,
             
             #[cfg(feature = "opcua-support")]
             Self::OpcUa(_) => ErrorCategory::Communication,
@@ -628,7 +631,7 @@ impl PlcError {
             Self::S7(_) => 6002,
             
             #[cfg(feature = "modbus-support")]
-            Self::Modbus(_) => 6003,
+            Self::Modbus { .. } => 6003,
             
             #[cfg(feature = "opcua-support")]
             Self::OpcUa(_) => 6004,

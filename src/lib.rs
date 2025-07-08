@@ -263,7 +263,7 @@ pub mod validation {
 // MONITORING MODULES (Feature-Gated)
 // ============================================================================
 
-#[cfg(feature = "metrics")]
+#[cfg(any(feature = "metrics", feature = "enhanced-monitoring"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 /// Prometheus metrics server for observability
 /// 
