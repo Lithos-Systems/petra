@@ -17,7 +17,7 @@ export interface ProtocolStatus {
 export function useProtocols() {
   const [protocols] = useState<Map<string, ProtocolStatus>>(new Map())
 
-  const restartProtocol = (name: string) => {
+  const restartProtocol = (_name: string) => {
     // TODO: implement restart logic
   }
 

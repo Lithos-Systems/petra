@@ -19,7 +19,7 @@ export function useOfflineQueue() {
     ])
   }
 
-  const sendMessage = async (msg: any) => {
+  const sendMessage = async (_msg: any) => {
     // Placeholder for actual send logic
     return Promise.resolve()
   }

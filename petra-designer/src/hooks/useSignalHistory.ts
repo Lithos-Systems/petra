@@ -7,8 +7,8 @@ interface TimeRange {
   end: number
 }
 
-export function useSignalHistory(signal: string, timeRange: TimeRange) {
-  const [history, setHistory] = useState<HistoryData[]>([])
+export function useSignalHistory(_signal: string, _timeRange: TimeRange) {
+  const [history] = useState<HistoryData[]>([])
   const [loading, setLoading] = useState(false)
 
   const refresh = async () => {
