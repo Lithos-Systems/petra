@@ -2,7 +2,7 @@
 //!
 //! This module provides system metrics collection and reporting.
 
-use prometheus::{Counter, Gauge, Histogram, Registry};
+use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts, Registry};
 
 #[derive(Clone)]
 pub struct EngineMetrics {
@@ -14,9 +14,9 @@ pub struct EngineMetrics {
 }
 
 impl EngineMetrics {
-    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub fn new(registry: &Registry) -> std::result::Result<Self, prometheus::Error> {
         let scan_duration = Histogram::with_opts(
-            prometheus::HistogramOpts::new(
+            HistogramOpts::new(
                 "petra_scan_duration_seconds",
                 "Scan cycle duration in seconds",
             )
@@ -25,7 +25,7 @@ impl EngineMetrics {
         registry.register(Box::new(scan_duration.clone()))?;
 
         let block_executions = Counter::with_opts(
-            prometheus::CounterOpts::new(
+            Opts::new(
                 "petra_block_executions_total",
                 "Total number of block executions",
             ),
@@ -33,7 +33,7 @@ impl EngineMetrics {
         registry.register(Box::new(block_executions.clone()))?;
 
         let signal_updates = Counter::with_opts(
-            prometheus::CounterOpts::new(
+            Opts::new(
                 "petra_signal_updates_total",
                 "Total number of signal updates",
             ),
@@ -41,7 +41,7 @@ impl EngineMetrics {
         registry.register(Box::new(signal_updates.clone()))?;
 
         let active_signals = Gauge::with_opts(
-            prometheus::GaugeOpts::new(
+            Opts::new(
                 "petra_active_signals",
                 "Number of active signals",
             ),
@@ -49,7 +49,7 @@ impl EngineMetrics {
         registry.register(Box::new(active_signals.clone()))?;
 
         let errors = Counter::with_opts(
-            prometheus::CounterOpts::new("petra_errors_total", "Total number of errors"),
+            Opts::new("petra_errors_total", "Total number of errors"),
         )?;
         registry.register(Box::new(errors.clone()))?;
 

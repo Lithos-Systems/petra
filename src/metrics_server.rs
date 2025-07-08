@@ -42,6 +42,7 @@ use {
         response::IntoResponse,
         routing::get,
         Router,
+        Server,
     },
 };
 
@@ -96,11 +97,16 @@ impl MetricsServer {
 
             let listener = TcpListener::bind(&self.config.bind_address).await
                 .map_err(|e| PlcError::Config(format!("Failed to bind to {}: {}", self.config.bind_address, e)))?;
+            let std_listener = listener.into_std()
+                .map_err(|e| PlcError::WebServer(e.to_string()))?;
 
             info!("Metrics server listening on {} at {}", self.config.bind_address, metrics_path);
 
-            axum::serve(listener, app).await
-                .map_err(|e| PlcError::Web(e.to_string()))?;
+            Server::from_tcp(std_listener)
+                .map_err(|e| PlcError::WebServer(e.to_string()))?
+                .serve(app.into_make_service())
+                .await
+                .map_err(|e| PlcError::WebServer(e.to_string()))?;
 
             Ok(())
         }
@@ -119,6 +125,29 @@ impl MetricsServer {
             bind_address: self.config.bind_address.clone(),
             path: self.config.path.clone().unwrap_or_else(|| "/metrics".to_string()),
         }
+    }
+
+    /// Convenience constructor used by `main.rs`
+    #[allow(dead_code)]
+    pub fn new_with_addr(bind: &str, port: u16) -> Result<Self> {
+        let cfg = MetricsConfig {
+            bind_address: format!("{}:{}", bind, port),
+            ..MetricsConfig::default()
+        };
+        Self::new(cfg)
+    }
+
+    #[allow(dead_code)]
+    pub fn enable_runtime_metrics(&mut self) {}
+
+    #[allow(dead_code)]
+    pub async fn start(&self) -> Result<()> {
+        self.run().await
+    }
+
+    #[allow(dead_code)]
+    pub async fn stop(&self) -> Result<()> {
+        Ok(())
     }
 }
 

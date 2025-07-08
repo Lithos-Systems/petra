@@ -266,10 +266,14 @@ pub mod validation {
 #[cfg(any(feature = "metrics", feature = "enhanced-monitoring"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 /// Prometheus metrics server for observability
-/// 
+///
 /// Production-ready metrics endpoint with comprehensive system
 /// and application metrics for monitoring and alerting.
 pub mod metrics;
+
+#[cfg(feature = "metrics")]
+#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
+pub mod metrics_server;
 
 #[cfg(feature = "health")]
 #[cfg_attr(docsrs, doc(cfg(feature = "health")))]
@@ -351,6 +355,9 @@ pub use config::{Config, BlockConfig, SignalConfig, LintSeverity, LintResult};
 pub use engine::EngineConfig;
 pub use engine::Engine;
 pub use features::{Features, RuntimeFeatures};
+
+#[cfg(feature = "metrics")]
+pub use metrics_server::MetricsServer;
 
 // Re-export commonly used protocol modules for convenience
 #[cfg(feature = "modbus-support")]
