@@ -31,8 +31,8 @@ export function useDataExport() {
   }
 
   const generateReport = async (
-    type: 'summary' | 'alarm' | 'performance',
-    options: ReportOptions
+    _type: 'summary' | 'alarm' | 'performance',
+    _options: ReportOptions
   ) => {
     // Implementation placeholder
   }

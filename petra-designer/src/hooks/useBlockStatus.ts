@@ -10,7 +10,7 @@ interface BlockStatus {
 }
 
 export function useBlockStatus() {
-  const [blockStatus, setBlockStatus] = useState<Map<string, BlockStatus>>(new Map())
+  const [blockStatus] = useState<Map<string, BlockStatus>>(new Map())
   usePetraConnection() // ensure connection is active
 
   const getBlockHealth = (id: string) => blockStatus.get(id)

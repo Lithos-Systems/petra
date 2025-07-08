@@ -7,16 +7,14 @@ export function useComponentTemplates() {
       name: 'Motor Control',
       description: 'Standard motor with start/stop controls',
       component: {
-        type: 'group',
-        children: ['motor', 'button', 'indicator'] as any
+        type: 'group'
       }
     },
     {
       name: 'PID Loop',
       description: 'PID controller with setpoint and PV display',
       component: {
-        type: 'group',
-        children: ['gauge', 'trend', 'text'] as any
+        type: 'group'
       }
     }
   ]
