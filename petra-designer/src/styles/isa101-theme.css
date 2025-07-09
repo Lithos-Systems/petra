@@ -1,0 +1,353 @@
+/* File: petra-designer/src/styles/isa101-theme.css */
+/* ISA-101 Compliant HMI Theme and Styles */
+
+/* 
+ * ISA-101 Color Guidelines:
+ * - Use high contrast between foreground and background
+ * - Minimize use of color - gray backgrounds preferred
+ * - Reserve bright colors for abnormal situations
+ * - Use consistent color coding across all displays
+ */
+
+:root {
+  /* ISA-101 Standard Colors */
+  
+  /* Equipment and Process Lines */
+  --isa101-process-line: #000000;        /* Black - process lines */
+  --isa101-equipment-outline: #000000;   /* Black - equipment outlines */
+  --isa101-equipment-fill: #E6E6E6;      /* Light gray - equipment fill */
+  
+  /* Background Colors */
+  --isa101-background: #F0F0F0;          /* Light gray - main background */
+  --isa101-container-bg: #FFFFFF;        /* White - container backgrounds */
+  --isa101-input-bg: #FFFFFF;            /* White - input fields */
+  
+  /* Process State Colors */
+  --isa101-running: #00FF00;             /* Green - running/active/open */
+  --isa101-stopped: #808080;             /* Gray - stopped/inactive/closed */
+  --isa101-transitioning: #FFFF00;       /* Yellow - transitioning state */
+  
+  /* Alarm Priority Colors (per ISA-18.2) */
+  --isa101-alarm-critical: #FF0000;      /* Red - Critical/Safety alarms */
+  --isa101-alarm-high: #FF8C00;          /* Orange - High priority alarms */
+  --isa101-alarm-medium: #FFFF00;        /* Yellow - Medium priority alarms */
+  --isa101-alarm-low: #00FFFF;           /* Cyan - Low priority alarms */
+  --isa101-alarm-message: #C0C0C0;       /* Gray - Messages/Events */
+  
+  /* Text Colors */
+  --isa101-text-primary: #000000;        /* Black - primary text */
+  --isa101-text-secondary: #404040;      /* Dark gray - secondary text */
+  --isa101-text-alarm: #FFFFFF;          /* White - text on alarm backgrounds */
+  
+  /* Special Purpose Colors */
+  --isa101-setpoint: #0000FF;            /* Blue - setpoints */
+  --isa101-interlock: #FF8C00;           /* Orange - interlocks */
+  --isa101-manual-mode: #9370DB;         /* Purple - manual mode */
+  
+  /* Material/Product Colors (subdued) */
+  --isa101-liquid-water: #87CEEB;        /* Sky blue */
+  --isa101-liquid-chemical: #DDA0DD;      /* Plum */
+  --isa101-liquid-oil: #D2B48C;          /* Tan */
+  --isa101-gas: #E0E0E0;                 /* Light gray */
+  --isa101-steam: #F5F5F5;               /* White smoke */
+  
+  /* Focus/Selection */
+  --isa101-selection: #0080FF;           /* Blue - selection indicator */
+  --isa101-focus: #4169E1;               /* Royal blue - focus indicator */
+}
+
+/* Base Styles */
+.isa101-display {
+  background-color: var(--isa101-background);
+  color: var(--isa101-text-primary);
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+}
+
+/* Equipment Styles */
+.isa101-equipment {
+  fill: var(--isa101-equipment-fill);
+  stroke: var(--isa101-equipment-outline);
+  stroke-width: 2px;
+}
+
+.isa101-process-line {
+  stroke: var(--isa101-process-line);
+  stroke-width: 3px;
+  fill: none;
+}
+
+/* Text Styles */
+.isa101-tag {
+  font-size: 12px;
+  font-weight: bold;
+  fill: var(--isa101-text-primary);
+  text-anchor: middle;
+}
+
+.isa101-value {
+  font-size: 14px;
+  font-weight: bold;
+  fill: var(--isa101-text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.isa101-units {
+  font-size: 10px;
+  fill: var(--isa101-text-secondary);
+}
+
+.isa101-label {
+  font-size: 11px;
+  fill: var(--isa101-text-primary);
+}
+
+/* Alarm State Styles */
+.isa101-alarm-critical {
+  fill: var(--isa101-alarm-critical);
+  animation: isa101-blink 0.5s infinite;
+}
+
+.isa101-alarm-high {
+  fill: var(--isa101-alarm-high);
+  animation: isa101-blink 0.75s infinite;
+}
+
+.isa101-alarm-medium {
+  fill: var(--isa101-alarm-medium);
+  animation: isa101-blink 1s infinite;
+}
+
+.isa101-alarm-low {
+  fill: var(--isa101-alarm-low);
+}
+
+.isa101-alarm-acknowledged {
+  animation: none;
+}
+
+/* Status Indicators */
+.isa101-status-running {
+  fill: var(--isa101-running);
+}
+
+.isa101-status-stopped {
+  fill: var(--isa101-stopped);
+}
+
+.isa101-status-fault {
+  fill: var(--isa101-alarm-critical);
+}
+
+.isa101-status-transitioning {
+  fill: var(--isa101-transitioning);
+}
+
+/* Control Mode Indicators */
+.isa101-mode-manual {
+  fill: var(--isa101-manual-mode);
+  stroke: var(--isa101-equipment-outline);
+  stroke-width: 1px;
+}
+
+.isa101-mode-auto {
+  fill: var(--isa101-container-bg);
+  stroke: var(--isa101-equipment-outline);
+  stroke-width: 1px;
+}
+
+.isa101-mode-cascade {
+  fill: var(--isa101-setpoint);
+  stroke: var(--isa101-equipment-outline);
+  stroke-width: 1px;
+}
+
+/* Interlock Indicator */
+.isa101-interlock {
+  fill: var(--isa101-interlock);
+  stroke: var(--isa101-equipment-outline);
+  stroke-width: 1px;
+}
+
+/* Trend Display */
+.isa101-trend-line {
+  stroke: var(--isa101-text-primary);
+  stroke-width: 1px;
+  fill: none;
+}
+
+.isa101-trend-grid {
+  stroke: #CCCCCC;
+  stroke-width: 0.5px;
+  stroke-dasharray: 2,2;
+}
+
+.isa101-trend-setpoint {
+  stroke: var(--isa101-setpoint);
+  stroke-width: 2px;
+  stroke-dasharray: 5,5;
+}
+
+/* Input Controls */
+.isa101-button {
+  background-color: var(--isa101-container-bg);
+  border: 2px solid var(--isa101-equipment-outline);
+  color: var(--isa101-text-primary);
+  font-size: 12px;
+  font-weight: bold;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.isa101-button:hover {
+  background-color: var(--isa101-equipment-fill);
+}
+
+.isa101-button:active {
+  background-color: #CCCCCC;
+}
+
+.isa101-button-alarm {
+  background-color: var(--isa101-alarm-high);
+  color: var(--isa101-text-alarm);
+  animation: isa101-blink 1s infinite;
+}
+
+/* Navigation */
+.isa101-nav-button {
+  background-color: #4682B4;
+  border: 2px solid var(--isa101-equipment-outline);
+  color: var(--isa101-text-alarm);
+  font-size: 11px;
+  padding: 6px 16px;
+}
+
+/* Alarm Summary */
+.isa101-alarm-banner {
+  background-color: var(--isa101-container-bg);
+  border: 2px solid var(--isa101-equipment-outline);
+  padding: 4px;
+}
+
+.isa101-alarm-row-critical {
+  background-color: var(--isa101-alarm-critical);
+  color: var(--isa101-text-alarm);
+}
+
+.isa101-alarm-row-high {
+  background-color: var(--isa101-alarm-high);
+  color: var(--isa101-text-alarm);
+}
+
+.isa101-alarm-row-medium {
+  background-color: var(--isa101-alarm-medium);
+  color: var(--isa101-text-primary);
+}
+
+.isa101-alarm-row-low {
+  background-color: var(--isa101-alarm-low);
+  color: var(--isa101-text-primary);
+}
+
+/* Faceplates */
+.isa101-faceplate {
+  background-color: var(--isa101-container-bg);
+  border: 3px solid var(--isa101-equipment-outline);
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+}
+
+.isa101-faceplate-header {
+  background-color: #4682B4;
+  color: var(--isa101-text-alarm);
+  font-weight: bold;
+  padding: 4px;
+}
+
+.isa101-faceplate-value {
+  font-size: 18px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+}
+
+/* Animations */
+@keyframes isa101-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* High Performance HMI Guidelines */
+
+/* Reduce visual clutter */
+.isa101-hphmi * {
+  transition: none; /* No animations unless for alarms */
+}
+
+/* Clear visual hierarchy */
+.isa101-primary-value {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.isa101-secondary-value {
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.isa101-tertiary-value {
+  font-size: 10px;
+  color: var(--isa101-text-secondary);
+}
+
+/* Analog indicators */
+.isa101-analog-indicator {
+  background-color: var(--isa101-container-bg);
+  border: 1px solid var(--isa101-equipment-outline);
+}
+
+.isa101-analog-bar {
+  fill: #4169E1;
+}
+
+.isa101-analog-scale {
+  stroke: var(--isa101-equipment-outline);
+  stroke-width: 1px;
+}
+
+/* Layout grids for consistency */
+.isa101-grid-container {
+  display: grid;
+  gap: 4px;
+  background-color: var(--isa101-background);
+  padding: 4px;
+}
+
+/* Accessibility */
+.isa101-focus-visible {
+  outline: 3px solid var(--isa101-focus);
+  outline-offset: 2px;
+}
+
+/* Print styles */
+@media print {
+  .isa101-display {
+    background-color: white;
+  }
+  
+  .isa101-no-print {
+    display: none;
+  }
+}
+
+/* Dark mode override - NOT recommended by ISA-101 */
+/* Only use if specifically required */
+@media (prefers-color-scheme: dark) {
+  .isa101-dark-mode {
+    --isa101-background: #1A1A1A;
+    --isa101-container-bg: #2A2A2A;
+    --isa101-equipment-fill: #3A3A3A;
+    --isa101-text-primary: #FFFFFF;
+    --isa101-text-secondary: #B0B0B0;
+    --isa101-equipment-outline: #FFFFFF;
+    --isa101-process-line: #FFFFFF;
+  }
+}
