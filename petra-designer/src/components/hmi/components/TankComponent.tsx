@@ -23,8 +23,9 @@ interface TankComponentProps {
   y: number
   width: number
   height: number
-  properties: TankProperties
-  style: any
+  properties?: TankProperties
+  style?: any
+  bindings?: any[]
   isSelected?: boolean
   draggable?: boolean
   onDragEnd?: (e: any) => void
@@ -36,21 +37,39 @@ export default function TankComponent({
   y,
   width,
   height,
-  properties,
-  style,
+  properties = {
+    currentLevel: 50,
+    maxLevel: 100,
+    minLevel: 0,
+    alarmHigh: 90,
+    alarmLow: 10,
+    showLabel: true,
+    units: '%',
+    fillColor: '#3b82f6',
+    showWaveAnimation: false
+  },
+  style = {},
   isSelected,
   draggable = true,
   onDragEnd,
   onClick,
 }: TankComponentProps) {
-  const [currentLevel] = useState(properties.currentLevel || 50)
-  const [animatedLevel, setAnimatedLevel] = useState(currentLevel)
+  const [animatedLevel, setAnimatedLevel] = useState(properties.currentLevel || 50)
   const animationRef = useRef<any>()
+
+  // Calculate fill dimensions
+  const fillHeight = (height * 0.85) * (animatedLevel / 100)
+  const fillY = height * 0.85 - fillHeight
+
+  // Get liquid color
+  const getLiquidColor = () => {
+    return properties.fillColor || '#3b82f6'
+  }
 
   // Smooth level animation
   useEffect(() => {
     const startLevel = animatedLevel
-    const endLevel = currentLevel
+    const endLevel = properties.currentLevel || 50
     const duration = 1000 // 1 second animation
     const startTime = Date.now()
 
@@ -62,61 +81,42 @@ export default function TankComponent({
       const easeInOut = progress < 0.5
         ? 2 * progress * progress
         : 1 - Math.pow(-2 * progress + 2, 2) / 2
-
+      
       const newLevel = startLevel + (endLevel - startLevel) * easeInOut
       setAnimatedLevel(newLevel)
-
+      
       if (progress < 1) {
         animationRef.current = requestAnimationFrame(animate)
       }
     }
-
+    
     animationRef.current = requestAnimationFrame(animate)
-
+    
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current)
       }
     }
-  }, [currentLevel])
+  }, [properties.currentLevel])
 
-  // Calculate fill height
-  const fillHeight = (animatedLevel / properties.maxLevel) * height * 0.85
-  const fillY = y + height * 0.85 - fillHeight
-
-  // Determine liquid color based on alarms
-  const getLiquidColor = () => {
-    if (currentLevel >= properties.alarmHigh) return '#ff4444'
-    if (currentLevel <= properties.alarmLow) return '#ffaa44'
-    return properties.liquidColor || '#4488ff'
-  }
-
-  // Enhanced wave animation for liquid surface
+  // Wave animation points
   const [waveOffset, setWaveOffset] = useState(0)
-  const waveAnimationRef = useRef<any>()
   
   useEffect(() => {
-    if (properties.showWaveAnimation) {
-      const animate = () => {
-        setWaveOffset(prev => prev + 0.05)
-        waveAnimationRef.current = requestAnimationFrame(animate)
-      }
-      waveAnimationRef.current = requestAnimationFrame(animate)
-    }
+    if (!properties.showWaveAnimation) return
     
-    return () => {
-      if (waveAnimationRef.current) {
-        cancelAnimationFrame(waveAnimationRef.current)
-      }
-    }
+    const interval = setInterval(() => {
+      setWaveOffset(prev => (prev + 1) % 100)
+    }, 50)
+    
+    return () => clearInterval(interval)
   }, [properties.showWaveAnimation])
   
-  const wavePoints: number[] = []
-  const waveAmplitude = Math.min(5, (animatedLevel / 100) * 8)
-  const waveFrequency = 0.02
+  const wavePoints = []
+  const waveHeight = 5
   for (let i = 0; i <= width; i += 2) {
-    const waveY = Math.sin((i * waveFrequency) + waveOffset) * waveAmplitude
-    wavePoints.push(i, waveY)
+    const angle = (i / width) * Math.PI * 4 + (waveOffset / 10)
+    wavePoints.push(i, Math.sin(angle) * waveHeight)
   }
 
   return (
@@ -236,7 +236,7 @@ export default function TankComponent({
       })}
 
       {/* Alarm indicators */}
-      {currentLevel >= properties.alarmHigh && (
+      {animatedLevel >= properties.alarmHigh && (
         <Group>
           <Rect
             x={5}
@@ -257,11 +257,11 @@ export default function TankComponent({
         </Group>
       )}
 
-      {currentLevel <= properties.alarmLow && (
+      {animatedLevel <= properties.alarmLow && (
         <Group>
           <Rect
             x={5}
-            y={5}
+            y={30}
             width={30}
             height={20}
             fill="#ff8800"
@@ -269,7 +269,7 @@ export default function TankComponent({
           />
           <Text
             x={8}
-            y={9}
+            y={34}
             text="LO"
             fontSize={12}
             fill="#ffffff"
@@ -285,21 +285,23 @@ export default function TankComponent({
             x={0}
             y={0}
             width={width}
-            text={`${currentLevel.toFixed(1)}${properties.units}`}
+            text={`${animatedLevel.toFixed(1)}${properties.units}`}
             fontSize={14}
             fill="#333333"
             align="center"
             fontStyle="bold"
           />
-          <Text
-            x={0}
-            y={16}
-            width={width}
-            text="Level"
-            fontSize={11}
-            fill="#666666"
-            align="center"
-          />
+          {properties.label && (
+            <Text
+              x={0}
+              y={16}
+              width={width}
+              text={properties.label}
+              fontSize={11}
+              fill="#666666"
+              align="center"
+            />
+          )}
         </Group>
       )}
 
@@ -318,15 +320,4 @@ export default function TankComponent({
       />
     </Group>
   )
-}
-
-// Hook for real-time signal updates (to be implemented)
-export function useTankSignals(_bindings: any[]) {
-  // This will connect to PETRA's signal bus via WebSocket
-  // For now, return mock data
-  return {
-    level: 65,
-    temperature: 72,
-    pressure: 45,
-  }
 }
