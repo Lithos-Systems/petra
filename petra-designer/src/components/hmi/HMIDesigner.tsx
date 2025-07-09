@@ -270,6 +270,7 @@ export default function HMIDesigner() {
       {showMQTTTest && <MQTTTestDisplay />}
     </div>
   )
+}
 
 // Helper functions
 function getDefaultSize(type: string) {
