@@ -1,405 +1,910 @@
-// src/components/hmi/HMIDesigner.tsx
+// @ts-nocheck
+import { useState, useEffect, useRef } from 'react'
+import { Stage, Layer, Rect, Line } from 'react-konva'
+import { 
+  FaBars, FaTimes, FaIndustry, FaChartLine, FaFont, FaShapes,
+  FaPalette, FaEye, FaEyeSlash, FaLock, FaUnlock, FaTrash,
+  FaCog, FaSave, FaFolder, FaPlay, FaPause, FaExclamationTriangle
+} from 'react-icons/fa'
+import ISA101TankComponent from './ISA101TankComponent'
+import ISA101PumpComponent from './ISA101PumpComponent'
+import ISA101ValveComponent from './ISA101ValveComponent'
 
-import { useState, useCallback, useRef } from 'react'
-import { Stage, Layer } from 'react-konva'
-import { KonvaEventObject } from 'konva/lib/Node'
-import HMISidebar from './HMISidebar'
-import HMIPropertiesPanel from './HMIPropertiesPanel'
-import HMIToolbar from './HMIToolbar'
-import { useHMIStore } from '@/store/hmiStore'
-import { HMIComponentRenderer } from './components/HMIComponentRenderer'
-import ResizablePanel from './ResizablePanel'
-import ISA101ComponentRenderer from './components/ISA101ComponentRenderer'
-import ISA101Dashboard from './ISA101Dashboard'
-import { nanoid } from 'nanoid'
-import type { HMIComponent } from '@/types/hmi'
-import GridOverlay from './GridOverlay'
+// ISA-101 Standard Colors
+const ISA101Colors = {
+  background: '#F0F0F0',
+  toolbarBg: '#E6E6E6',
+  toolbarBorder: '#C0C0C0',
+  buttonBg: '#FFFFFF',
+  buttonHover: '#D6D6D6',
+  buttonActive: '#B0B0B0',
+  text: '#000000',
+  textSecondary: '#666666',
+  accent: '#0080FF',
+  gridLine: '#D0D0D0',
+  categoryHeader: '#D0D0D0',
+}
 
-import { useHMIKeyboardShortcuts } from '@/hooks/useHMIKeyboardShortcuts'
+// Component categories following ISA-101 organization
+const componentCategories = [
+  {
+    name: 'Process Equipment',
+    icon: <FaIndustry />,
+    components: [
+      { 
+        type: 'tank', 
+        label: 'Tank',
+        defaultProps: {
+          tagName: 'TK-101',
+          currentLevel: 50,
+          levelUnits: '%',
+          maxLevel: 100,
+          minLevel: 0,
+          alarmHigh: 80,
+          alarmLow: 20,
+          showAlarmLimits: true,
+          materialType: 'water'
+        }
+      },
+      { 
+        type: 'pump', 
+        label: 'Pump',
+        defaultProps: {
+          tagName: 'P-101',
+          status: 'stopped',
+          flowRate: 0,
+          flowUnits: 'GPM',
+          dischargePressure: 0,
+          pressureUnits: 'PSI',
+          controlMode: 'auto',
+          showDetailedStatus: true
+        }
+      },
+      { 
+        type: 'valve', 
+        label: 'Valve',
+        defaultProps: {
+          tagName: 'V-101',
+          position: 0,
+          status: 'closed',
+          valveType: 'gate',
+          controlMode: 'auto',
+          showPosition: true,
+          orientation: 'horizontal'
+        }
+      },
+      { 
+        type: 'motor', 
+        label: 'Motor',
+        defaultProps: {
+          tagName: 'M-101',
+          running: false,
+          speed: 0,
+          fault: false,
+          controlMode: 'auto'
+        }
+      },
+      { 
+        type: 'mixer', 
+        label: 'Mixer',
+        defaultProps: {
+          tagName: 'MX-101',
+          running: false,
+          speed: 0,
+          level: 50,
+          agitatorType: 'turbine'
+        }
+      }
+    ]
+  },
+  {
+    name: 'Instrumentation',
+    icon: <FaChartLine />,
+    components: [
+      { 
+        type: 'gauge', 
+        label: 'Gauge',
+        defaultProps: {
+          tagName: 'PI-101',
+          currentValue: 0,
+          units: 'PSI',
+          minValue: 0,
+          maxValue: 100,
+          showDigitalValue: true,
+          gaugeType: 'pressure'
+        }
+      },
+      { 
+        type: 'trend', 
+        label: 'Trend',
+        defaultProps: {
+          tagName: 'TREND-101',
+          signals: [],
+          timeRange: '1h',
+          yMin: 0,
+          yMax: 100,
+          showGrid: true,
+          showLegend: true
+        }
+      },
+      { 
+        type: 'indicator', 
+        label: 'Indicator',
+        defaultProps: {
+          tagName: 'IND-101',
+          on: false,
+          onColor: '#00FF00',
+          offColor: '#808080'
+        }
+      }
+    ]
+  },
+  {
+    name: 'Controls',
+    icon: <FaCog />,
+    components: [
+      { 
+        type: 'button', 
+        label: 'Button',
+        defaultProps: {
+          text: 'START',
+          action: 'momentary',
+          confirmRequired: false,
+          activeColor: '#00FF00',
+          inactiveColor: '#808080'
+        }
+      },
+      { 
+        type: 'setpoint', 
+        label: 'Setpoint',
+        defaultProps: {
+          tagName: 'SP-101',
+          value: 50,
+          min: 0,
+          max: 100,
+          units: '%'
+        }
+      }
+    ]
+  },
+  {
+    name: 'Annotation',
+    icon: <FaFont />,
+    components: [
+      { 
+        type: 'text', 
+        label: 'Text',
+        defaultProps: {
+          text: 'Label',
+          fontSize: 12,
+          fontWeight: 'normal',
+          textAlign: 'left'
+        }
+      },
+      { 
+        type: 'title', 
+        label: 'Title',
+        defaultProps: {
+          text: 'Process Area',
+          fontSize: 18,
+          fontWeight: 'bold',
+          textAlign: 'center'
+        }
+      }
+    ]
+  },
+  {
+    name: 'Graphics',
+    icon: <FaShapes />,
+    components: [
+      { 
+        type: 'pipe', 
+        label: 'Pipe',
+        defaultProps: {
+          points: [0, 0, 100, 0],
+          flowAnimation: false,
+          pipeSize: 6
+        }
+      },
+      { 
+        type: 'shape', 
+        label: 'Rectangle',
+        defaultProps: {
+          shapeType: 'rectangle',
+          fill: 'transparent',
+          stroke: '#000000',
+          strokeWidth: 2
+        }
+      }
+    ]
+  }
+]
 
-import MQTTTestDisplay from './MQTTTestDisplay'
+export default function ISA101HMIDesigner() {
+  const [components, setComponents] = useState([])
+  const [selectedId, setSelectedId] = useState(null)
+  const [showGrid, setShowGrid] = useState(true)
+  const [gridSize, setGridSize] = useState(20)
+  const [snapToGrid, setSnapToGrid] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [activeCategory, setActiveCategory] = useState(0)
+  const [stageSize, setStageSize] = useState({ width: 1200, height: 800 })
+  const [isDragging, setIsDragging] = useState(false)
+  const stageRef = useRef()
+  const draggedComponent = useRef(null)
 
-export default function HMIDesigner() {
-  const stageRef = useRef<any>(null)
-  const [showMQTTTest, setShowMQTTTest] = useState(false)
-  const [isa101Mode, setIsa101Mode] = useState(true)
-  const {
-    components,
-    selectedComponentId,
-    addComponent,
-    selectComponent,
-    clearSelection,
-    updateComponent,
-    deleteComponent,
-    showGrid,
-    snapToGrid,
-  } = useHMIStore()
-
-  // Enable keyboard shortcuts
-  useHMIKeyboardShortcuts()
-
-  const [stageSize, setStageSize] = useState({ width: 1920, height: 1080 })
-  const [scale, setScale] = useState(1)
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-
-    const type = e.dataTransfer.getData('hmi-component')
-    if (!type) return
-
-    const stage = stageRef.current
-    if (!stage) return
-
-    // Get the drop position relative to the stage
-    const container = stage.container()
-    const rect = container.getBoundingClientRect()
-
-    // Calculate position accounting for stage offset and scale
-    const transform = stage.getAbsoluteTransform().copy()
-    transform.invert()
-    const pos = transform.point({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    })
-
-    // Snap to grid if enabled
-    let x = pos.x
-    let y = pos.y
-    if (snapToGrid) {
-      x = Math.round(x / 20) * 20
-      y = Math.round(y / 20) * 20
+  // Update stage size on window resize
+  useEffect(() => {
+    const updateSize = () => {
+      const container = document.getElementById('canvas-container')
+      if (container) {
+        setStageSize({
+          width: container.offsetWidth,
+          height: container.offsetHeight
+        })
+      }
     }
+    updateSize()
+    window.addEventListener('resize', updateSize)
+    return () => window.removeEventListener('resize', updateSize)
+  }, [sidebarCollapsed])
 
-    const newComponent: HMIComponent = {
-      id: nanoid(),
-      type: type as any,
-      position: { x, y },
-      size: getDefaultSize(type),
+  // Add component to canvas
+  const addComponent = (componentType) => {
+    const category = componentCategories.find(cat => 
+      cat.components.some(comp => comp.type === componentType)
+    )
+    const componentDef = category?.components.find(comp => comp.type === componentType)
+    
+    if (!componentDef) return
+
+    const newComponent = {
+      id: `${componentType}-${Date.now()}`,
+      type: componentType,
+      position: { x: 100, y: 100 },
+      size: { 
+        width: componentType === 'tank' ? 120 : 80, 
+        height: componentType === 'tank' ? 150 : 80 
+      },
       rotation: 0,
+      properties: { ...componentDef.defaultProps },
       bindings: [],
       animations: [],
       interactions: [],
-      style: getDefaultStyle(type),
-      properties: getDefaultProperties(type),
+      style: {},
+      locked: false,
+      visible: true
     }
 
-    addComponent(newComponent)
-    selectComponent(newComponent.id)
-  }, [scale, snapToGrid, addComponent, selectComponent])
+    setComponents([...components, newComponent])
+    setSelectedId(newComponent.id)
+  }
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-  }, [])
+  // Update component
+  const updateComponent = (id, updates) => {
+    setComponents(components.map(comp => 
+      comp.id === id ? { ...comp, ...updates } : comp
+    ))
+  }
 
-  const handleStageClick = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    // Check if clicked on empty space
-    const clickedOnEmpty = e.target === e.target.getStage()
-    if (clickedOnEmpty) {
-      clearSelection()
+  // Delete selected component
+  const deleteSelected = () => {
+    if (selectedId) {
+      setComponents(components.filter(comp => comp.id !== selectedId))
+      setSelectedId(null)
     }
-  }, [clearSelection])
+  }
 
-  const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
-    e.evt.preventDefault()
-    const stage = stageRef.current
-    if (!stage) return
-
-    const oldScale = scale
-    const pointer = stage.getPointerPosition()
-    const mousePointTo = {
-      x: (pointer.x - stage.x()) / oldScale,
-      y: (pointer.y - stage.y()) / oldScale,
+  // Render component based on type
+  const renderComponent = (component) => {
+    const commonProps = {
+      key: component.id,
+      x: component.position.x,
+      y: component.position.y,
+      width: component.size.width,
+      height: component.size.height,
+      properties: component.properties,
+      style: component.style,
+      selected: component.id === selectedId,
+      onClick: () => setSelectedId(component.id),
+      draggable: !component.locked,
+      onDragEnd: (e) => {
+        const node = e.target
+        let x = node.x()
+        let y = node.y()
+        
+        if (snapToGrid) {
+          x = Math.round(x / gridSize) * gridSize
+          y = Math.round(y / gridSize) * gridSize
+          node.x(x)
+          node.y(y)
+        }
+        
+        updateComponent(component.id, {
+          position: { x, y }
+        })
+      },
+      onDragStart: (e) => {
+        e.target.moveToTop()
+        setIsDragging(true)
+      }
     }
 
-    const newScale = e.evt.deltaY > 0 ? oldScale * 0.9 : oldScale * 1.1
-    const clampedScale = Math.max(0.1, Math.min(5, newScale))
-    
-    setScale(clampedScale)
-
-    const newPos = {
-      x: pointer.x - mousePointTo.x * clampedScale,
-      y: pointer.y - mousePointTo.y * clampedScale,
+    switch (component.type) {
+      case 'tank':
+        return <ISA101TankComponent {...commonProps} />
+      case 'pump':
+        return <ISA101PumpComponent {...commonProps} />
+      case 'valve':
+        return <ISA101ValveComponent {...commonProps} />
+      default:
+        return null
     }
-    stage.position(newPos)
-    stage.batchDraw()
-  }, [scale])
-
-  const selectedComponent = components.find(c => c.id === selectedComponentId)
+  }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <HMISidebar className="w-64 flex-shrink-0" />
-
-      <div className="flex-1 flex flex-col">
-        <HMIToolbar
-          scale={scale}
-          onScaleChange={setScale}
-          stageSize={stageSize}
-          onStageSizeChange={setStageSize}
-        />
-        {isa101Mode ? (
-          <ISA101Dashboard title="Process Overview" area="Water Treatment Plant">
-            <div
-              className="flex-1 relative overflow-hidden bg-gray-100"
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-            >
-              <Stage
-                ref={stageRef}
-                width={window.innerWidth - 600}
-                height={window.innerHeight - 120}
-                onMouseDown={handleStageClick}
-                onWheel={handleWheel}
-                scaleX={scale}
-                scaleY={scale}
-              >
-                <Layer>
-                  {/* Grid */}
-                  {showGrid && (
-                    <GridOverlay
-                      width={stageSize.width}
-                      height={stageSize.height}
-                      gridSize={20}
-                    />
-                  )}
-
-                  {/* HMI Components */}
-                  {components.map((component) => (
-                    <ISA101ComponentRenderer
-                      key={component.id}
-                      component={component}
-                      isSelected={component.id === selectedComponentId}
-                      onSelect={() => selectComponent(component.id)}
-                      onUpdate={(updates) => updateComponent(component.id, updates)}
-                    />
-                  ))}
-                </Layer>
-              </Stage>
-
-              {/* Canvas size indicator */}
-              <div className="absolute bottom-4 left-4 bg-white px-3 py-2 rounded shadow text-sm text-gray-600">
-                Canvas: {stageSize.width} × {stageSize.height}px | Zoom: {Math.round(scale * 100)}%
-              </div>
-
-              {/* MQTT Test Toggle */}
-              <button
-                onClick={() => setShowMQTTTest(!showMQTTTest)}
-                className="absolute bottom-4 right-4 bg-petra-500 text-white px-3 py-2 rounded shadow hover:bg-petra-600 transition-colors text-sm"
-              >
-                {showMQTTTest ? 'Hide' : 'Show'} MQTT Test
-              </button>
-            </div>
-          </ISA101Dashboard>
-        ) : (
-          <div
-            className="flex-1 relative overflow-hidden bg-gray-100"
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
+    <div className="flex h-screen bg-gray-100">
+      {/* ISA-101 Compliant Sidebar */}
+      <div 
+        className={`${
+          sidebarCollapsed ? 'w-12' : 'w-64'
+        } transition-all duration-300 flex flex-col border-r-2`}
+        style={{ 
+          backgroundColor: ISA101Colors.toolbarBg,
+          borderColor: ISA101Colors.toolbarBorder 
+        }}
+      >
+        {/* Sidebar Header */}
+        <div className="flex items-center justify-between p-2 border-b"
+          style={{ borderColor: ISA101Colors.toolbarBorder }}>
+          {!sidebarCollapsed && (
+            <h3 className="font-bold text-sm" style={{ color: ISA101Colors.text }}>
+              Components
+            </h3>
+          )}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="p-1 rounded hover:bg-gray-300"
+            style={{ color: ISA101Colors.text }}
           >
-            <Stage
-              ref={stageRef}
-              width={window.innerWidth - 600} // Account for sidebars
-              height={window.innerHeight - 120} // Account for toolbar
-              onMouseDown={handleStageClick}
-              onWheel={handleWheel}
-              scaleX={scale}
-              scaleY={scale}
-            >
-              <Layer>
-                {/* Grid */}
-                {showGrid && (
-                  <GridOverlay
-                    width={stageSize.width}
-                    height={stageSize.height}
-                    gridSize={20}
-                  />
+            {sidebarCollapsed ? <FaBars /> : <FaTimes />}
+          </button>
+        </div>
+
+        {/* Component Categories */}
+        {!sidebarCollapsed && (
+          <div className="flex-1 overflow-y-auto">
+            {componentCategories.map((category, idx) => (
+              <div key={category.name} className="border-b"
+                style={{ borderColor: ISA101Colors.toolbarBorder }}>
+                <button
+                  onClick={() => setActiveCategory(activeCategory === idx ? -1 : idx)}
+                  className="w-full flex items-center justify-between p-3 hover:bg-gray-300"
+                  style={{ 
+                    backgroundColor: activeCategory === idx ? ISA101Colors.categoryHeader : 'transparent',
+                    color: ISA101Colors.text 
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{category.icon}</span>
+                    <span className="text-sm font-medium">{category.name}</span>
+                  </div>
+                  <span className="text-xs">
+                    {activeCategory === idx ? '−' : '+'}
+                  </span>
+                </button>
+                
+                {activeCategory === idx && (
+                  <div className="grid grid-cols-2 gap-1 p-2">
+                    {category.components.map(comp => (
+                      <button
+                        key={comp.type}
+                        onClick={() => addComponent(comp.type)}
+                        className="p-2 text-xs border rounded hover:bg-gray-200 flex flex-col items-center gap-1"
+                        style={{ 
+                          backgroundColor: ISA101Colors.buttonBg,
+                          borderColor: ISA101Colors.toolbarBorder,
+                          color: ISA101Colors.text 
+                        }}
+                      >
+                        <span className="font-medium">{comp.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
-
-                {/* HMI Components */}
-                {components.map((component) => (
-                  <HMIComponentRenderer
-                    key={component.id}
-                    component={component}
-                    isSelected={component.id === selectedComponentId}
-                    onSelect={() => selectComponent(component.id)}
-                    onUpdate={(updates) => updateComponent(component.id, updates)}
-                  />
-                ))}
-              </Layer>
-            </Stage>
-
-            {/* Canvas size indicator */}
-            <div className="absolute bottom-4 left-4 bg-white px-3 py-2 rounded shadow text-sm text-gray-600">
-              Canvas: {stageSize.width} × {stageSize.height}px | Zoom: {Math.round(scale * 100)}%
-            </div>
-
-            {/* MQTT Test Toggle */}
-            <button
-              onClick={() => setShowMQTTTest(!showMQTTTest)}
-              className="absolute bottom-4 right-4 bg-petra-500 text-white px-3 py-2 rounded shadow hover:bg-petra-600 transition-colors text-sm"
-            >
-              {showMQTTTest ? 'Hide' : 'Show'} MQTT Test
-            </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      <ResizablePanel
-        defaultWidth={300}
-        minWidth={200}
-        maxWidth={500}
-        className="border-l border-gray-300"
-      >
-        {selectedComponent ? (
-          <HMIPropertiesPanel
-            component={selectedComponent}
-            onUpdate={(updates) =>
-              updateComponent(selectedComponent.id, updates)
-            }
-            onDelete={() => deleteComponent(selectedComponent.id)}
-          />
-        ) : (
-          <div className="p-4 text-gray-500 text-center">
-            Select a component to view properties
-          </div>
-        )}
-      </ResizablePanel>
+      {/* Main Canvas Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Top Toolbar - ISA-101 Style */}
+        <div className="h-12 flex items-center justify-between px-4 border-b-2"
+          style={{ 
+            backgroundColor: ISA101Colors.toolbarBg,
+            borderColor: ISA101Colors.toolbarBorder 
+          }}>
+          <div className="flex items-center gap-2">
+            {/* Display Options */}
+            <button
+              onClick={() => setShowGrid(!showGrid)}
+              className={`p-2 rounded text-sm ${showGrid ? 'bg-blue-100' : ''}`}
+              style={{ color: ISA101Colors.text }}
+              title="Toggle Grid"
+            >
+              {showGrid ? <FaEye /> : <FaEyeSlash />}
+            </button>
+            
+            <button
+              onClick={() => setSnapToGrid(!snapToGrid)}
+              className={`p-2 rounded text-sm ${snapToGrid ? 'bg-blue-100' : ''}`}
+              style={{ color: ISA101Colors.text }}
+              title="Snap to Grid"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="1" y="1" width="2" height="2" />
+                <rect x="7" y="1" width="2" height="2" />
+                <rect x="13" y="1" width="2" height="2" />
+                <rect x="1" y="7" width="2" height="2" />
+                <rect x="7" y="7" width="2" height="2" />
+                <rect x="13" y="7" width="2" height="2" />
+                <rect x="1" y="13" width="2" height="2" />
+                <rect x="7" y="13" width="2" height="2" />
+                <rect x="13" y="13" width="2" height="2" />
+              </svg>
+            </button>
 
-      {showMQTTTest && <MQTTTestDisplay />}
+            <div className="w-px h-6 bg-gray-400 mx-1" />
+
+            {/* Component Actions */}
+            {selectedId && (
+              <>
+                <button
+                  onClick={() => {
+                    const comp = components.find(c => c.id === selectedId)
+                    if (comp) {
+                      updateComponent(selectedId, { locked: !comp.locked })
+                    }
+                  }}
+                  className="p-2 rounded text-sm"
+                  style={{ color: ISA101Colors.text }}
+                  title="Lock/Unlock"
+                >
+                  {components.find(c => c.id === selectedId)?.locked ? <FaLock /> : <FaUnlock />}
+                </button>
+                
+                <button
+                  onClick={deleteSelected}
+                  className="p-2 rounded text-sm text-red-600"
+                  title="Delete"
+                >
+                  <FaTrash />
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Status Indicators */}
+            <div className="flex items-center gap-2 text-xs"
+              style={{ color: ISA101Colors.textSecondary }}>
+              <span>Grid: {gridSize}px</span>
+              <span>•</span>
+              <span>{components.length} components</span>
+            </div>
+
+            <div className="w-px h-6 bg-gray-400 mx-1" />
+
+            {/* Action Buttons */}
+            <button className="px-3 py-1 text-sm border rounded"
+              style={{ 
+                backgroundColor: ISA101Colors.buttonBg,
+                borderColor: ISA101Colors.toolbarBorder,
+                color: ISA101Colors.text 
+              }}>
+              <FaSave className="inline mr-1" /> Save
+            </button>
+            
+            <button className="px-3 py-1 text-sm border rounded"
+              style={{ 
+                backgroundColor: ISA101Colors.buttonBg,
+                borderColor: ISA101Colors.toolbarBorder,
+                color: ISA101Colors.text 
+              }}>
+              <FaPlay className="inline mr-1" /> Preview
+            </button>
+          </div>
+        </div>
+
+        {/* Canvas */}
+        <div id="canvas-container" className="flex-1 relative overflow-hidden"
+          style={{ backgroundColor: ISA101Colors.background }}>
+          <Stage
+            ref={stageRef}
+            width={stageSize.width}
+            height={stageSize.height}
+            onMouseDown={(e) => {
+              // Deselect when clicking on empty space
+              const clickedOnEmpty = e.target === e.target.getStage()
+              if (clickedOnEmpty) {
+                setSelectedId(null)
+              }
+            }}
+          >
+            <Layer>
+              {/* Grid */}
+              {showGrid && (
+                <>
+                  {/* Vertical lines */}
+                  {Array.from({ length: Math.ceil(stageSize.width / gridSize) }, (_, i) => (
+                    <Line
+                      key={`v-${i}`}
+                      points={[i * gridSize, 0, i * gridSize, stageSize.height]}
+                      stroke={ISA101Colors.gridLine}
+                      strokeWidth={1}
+                      opacity={0.5}
+                    />
+                  ))}
+                  {/* Horizontal lines */}
+                  {Array.from({ length: Math.ceil(stageSize.height / gridSize) }, (_, i) => (
+                    <Line
+                      key={`h-${i}`}
+                      points={[0, i * gridSize, stageSize.width, i * gridSize]}
+                      stroke={ISA101Colors.gridLine}
+                      strokeWidth={1}
+                      opacity={0.5}
+                    />
+                  ))}
+                </>
+              )}
+
+              {/* Render all components */}
+              {components.map(component => renderComponent(component))}
+            </Layer>
+          </Stage>
+
+          {/* Properties Panel (when component selected) */}
+          {selectedId && (
+            <div className="absolute right-0 top-0 h-full w-80 shadow-lg overflow-y-auto"
+              style={{ 
+                backgroundColor: ISA101Colors.toolbarBg,
+                borderLeft: `2px solid ${ISA101Colors.toolbarBorder}`
+              }}>
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold" style={{ color: ISA101Colors.text }}>
+                    Properties
+                  </h3>
+                  <button
+                    onClick={() => setSelectedId(null)}
+                    className="p-1 rounded hover:bg-gray-300"
+                    style={{ color: ISA101Colors.text }}
+                  >
+                    <FaTimes />
+                  </button>
+                </div>
+
+                {(() => {
+                  const component = components.find(c => c.id === selectedId)
+                  if (!component) return null
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Basic Properties */}
+                      <div>
+                        <h4 className="font-medium text-sm mb-2" 
+                          style={{ color: ISA101Colors.text }}>
+                          General
+                        </h4>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                              ID
+                            </label>
+                            <input
+                              type="text"
+                              value={component.id}
+                              disabled
+                              className="w-full px-2 py-1 text-sm border rounded bg-gray-100"
+                              style={{ borderColor: ISA101Colors.toolbarBorder }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                              Type
+                            </label>
+                            <input
+                              type="text"
+                              value={component.type}
+                              disabled
+                              className="w-full px-2 py-1 text-sm border rounded bg-gray-100"
+                              style={{ borderColor: ISA101Colors.toolbarBorder }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Position & Size */}
+                      <div>
+                        <h4 className="font-medium text-sm mb-2" 
+                          style={{ color: ISA101Colors.text }}>
+                          Position & Size
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                              X
+                            </label>
+                            <input
+                              type="number"
+                              value={component.position.x}
+                              onChange={(e) => updateComponent(component.id, {
+                                position: { ...component.position, x: parseInt(e.target.value) || 0 }
+                              })}
+                              className="w-full px-2 py-1 text-sm border rounded"
+                              style={{ 
+                                backgroundColor: ISA101Colors.buttonBg,
+                                borderColor: ISA101Colors.toolbarBorder 
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                              Y
+                            </label>
+                            <input
+                              type="number"
+                              value={component.position.y}
+                              onChange={(e) => updateComponent(component.id, {
+                                position: { ...component.position, y: parseInt(e.target.value) || 0 }
+                              })}
+                              className="w-full px-2 py-1 text-sm border rounded"
+                              style={{ 
+                                backgroundColor: ISA101Colors.buttonBg,
+                                borderColor: ISA101Colors.toolbarBorder 
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                              Width
+                            </label>
+                            <input
+                              type="number"
+                              value={component.size.width}
+                              onChange={(e) => updateComponent(component.id, {
+                                size: { ...component.size, width: parseInt(e.target.value) || 50 }
+                              })}
+                              className="w-full px-2 py-1 text-sm border rounded"
+                              style={{ 
+                                backgroundColor: ISA101Colors.buttonBg,
+                                borderColor: ISA101Colors.toolbarBorder 
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                              Height
+                            </label>
+                            <input
+                              type="number"
+                              value={component.size.height}
+                              onChange={(e) => updateComponent(component.id, {
+                                size: { ...component.size, height: parseInt(e.target.value) || 50 }
+                              })}
+                              className="w-full px-2 py-1 text-sm border rounded"
+                              style={{ 
+                                backgroundColor: ISA101Colors.buttonBg,
+                                borderColor: ISA101Colors.toolbarBorder 
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Component-specific Properties */}
+                      <div>
+                        <h4 className="font-medium text-sm mb-2" 
+                          style={{ color: ISA101Colors.text }}>
+                          Component Properties
+                        </h4>
+                        <div className="space-y-2">
+                          {component.type === 'tank' && (
+                            <>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Tag Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={component.properties.tagName}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, tagName: e.target.value }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Current Level
+                                </label>
+                                <input
+                                  type="number"
+                                  value={component.properties.currentLevel}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, currentLevel: parseFloat(e.target.value) || 0 }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Material Type
+                                </label>
+                                <select
+                                  value={component.properties.materialType}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, materialType: e.target.value }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                >
+                                  <option value="water">Water</option>
+                                  <option value="chemical">Chemical</option>
+                                  <option value="hot">Hot Liquid</option>
+                                  <option value="oil">Oil</option>
+                                </select>
+                              </div>
+                            </>
+                          )}
+                          
+                          {component.type === 'pump' && (
+                            <>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Tag Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={component.properties.tagName}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, tagName: e.target.value }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Status
+                                </label>
+                                <select
+                                  value={component.properties.status}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, status: e.target.value }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                >
+                                  <option value="stopped">Stopped</option>
+                                  <option value="running">Running</option>
+                                  <option value="fault">Fault</option>
+                                  <option value="transitioning">Transitioning</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Control Mode
+                                </label>
+                                <select
+                                  value={component.properties.controlMode}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, controlMode: e.target.value }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                >
+                                  <option value="auto">Auto</option>
+                                  <option value="manual">Manual</option>
+                                  <option value="cascade">Cascade</option>
+                                </select>
+                              </div>
+                            </>
+                          )}
+                          
+                          {component.type === 'valve' && (
+                            <>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Tag Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={component.properties.tagName}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, tagName: e.target.value }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Position (%)
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={component.properties.position}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, position: parseInt(e.target.value) || 0 }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  Valve Type
+                                </label>
+                                <select
+                                  value={component.properties.valveType}
+                                  onChange={(e) => updateComponent(component.id, {
+                                    properties: { ...component.properties, valveType: e.target.value }
+                                  })}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                >
+                                  <option value="gate">Gate</option>
+                                  <option value="ball">Ball</option>
+                                  <option value="butterfly">Butterfly</option>
+                                  <option value="control">Control</option>
+                                </select>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
-}
-
-// Helper functions
-function getDefaultSize(type: string) {
-  const sizes: Record<string, { width: number; height: number }> = {
-    tank: { width: 120, height: 160 },
-    pump: { width: 80, height: 80 },
-    valve: { width: 60, height: 60 },
-    gauge: { width: 150, height: 150 },
-    trend: { width: 400, height: 200 },
-    text: { width: 200, height: 40 },
-    button: { width: 120, height: 40 },
-    pipe: { width: 100, height: 20 },
-    motor: { width: 100, height: 100 },
-  }
-  return sizes[type] || { width: 100, height: 100 }
-}
-
-function getDefaultStyle(type: string) {
-  const styles: Record<string, any> = {
-    tank: {
-      fill: '#4444ff',
-      stroke: '#333333',
-      strokeWidth: 2,
-      opacity: 0.8,
-    },
-    pump: {
-      fill: '#10b981',
-      stroke: '#333333',
-      strokeWidth: 2,
-    },
-    valve: {
-      fill: '#666666',
-      stroke: '#333333',
-      strokeWidth: 2,
-    },
-    gauge: {
-      fill: '#ffffff',
-      stroke: '#333333',
-      strokeWidth: 2,
-    },
-    trend: {
-      fill: '#1a1a1a',
-      stroke: '#333333',
-      strokeWidth: 1,
-    },
-    text: {
-      fontSize: 16,
-      fontFamily: 'Arial',
-      fill: '#000000',
-    },
-    button: {
-      fill: '#3b82f6',
-      stroke: '#2563eb',
-      strokeWidth: 1,
-    },
-  }
-  return styles[type] || {}
-}
-
-function getDefaultProperties(type: string) {
-  const properties: Record<string, any> = {
-    tank: {
-      maxLevel: 100,
-      currentLevel: 50,
-      alarmHigh: 80,
-      alarmLow: 20,
-      showLabel: true,
-      units: '%',
-      showWaveAnimation: true,
-    },
-    pump: {
-      running: false,
-      fault: false,
-      speed: 0,
-      showStatus: true,
-      runAnimation: true,
-    },
-    valve: {
-      open: false,
-      fault: false,
-      position: 0,
-      valveType: 'gate',
-      showPosition: true,
-    },
-    gauge: {
-      min: 0,
-      max: 100,
-      value: 50,
-      units: '',
-      showScale: true,
-      majorTicks: 5,
-    },
-    trend: {
-      timeRange: '1h',
-      yMin: 0,
-      yMax: 100,
-      showGrid: true,
-      showLegend: true,
-    },
-    text: {
-      text: 'Label',
-      align: 'center',
-    },
-    button: {
-      text: 'Button',
-      action: 'toggle',
-      confirmRequired: false,
-    },
-    'heat-exchanger': {
-      hotInletTemp: 80,
-      hotOutletTemp: 60,
-      coldInletTemp: 20,
-      coldOutletTemp: 40,
-      efficiency: 85,
-      showTemperatures: true,
-    },
-    conveyor: {
-      running: false,
-      speed: 50,
-      direction: 'forward',
-      material: false,
-    },
-    mixer: {
-      running: false,
-      speed: 60,
-      level: 75,
-      agitatorType: 'paddle',
-      temperature: 25,
-    },
-  }
-  return properties[type] || {}
 }
