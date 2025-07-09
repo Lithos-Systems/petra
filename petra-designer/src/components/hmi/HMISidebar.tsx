@@ -166,7 +166,11 @@ const componentCategories: ComponentCategory[] = [
   }
 ]
 
-export default function HMISidebar() {
+interface HMISidebarProps {
+  className?: string
+}
+
+export default function HMISidebar({ className }: HMISidebarProps) {
   const [expandedCategory, setExpandedCategory] = useState<string>('Process Equipment')
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -195,8 +199,8 @@ export default function HMISidebar() {
     )
   })).filter(category => category.components.length > 0)
 
-  return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+    return (
+      <div className={`w-64 bg-white border-r border-gray-200 flex flex-col ${className ?? ''}`}>
       <div className="p-4 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-800 mb-3">HMI Components</h3>
         
