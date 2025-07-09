@@ -42,22 +42,29 @@ export default function HMIDesigner() {
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    e.stopPropagation()
+
     const type = e.dataTransfer.getData('hmi-component')
     if (!type) return
 
     const stage = stageRef.current
     if (!stage) return
 
-    // Get stage position
-    const stageBox = stage.container().getBoundingClientRect()
-    const pointerPosition = {
-      x: (e.clientX - stageBox.left) / scale,
-      y: (e.clientY - stageBox.top) / scale,
-    }
+    // Get the drop position relative to the stage
+    const container = stage.container()
+    const rect = container.getBoundingClientRect()
+
+    // Calculate position accounting for stage offset and scale
+    const transform = stage.getAbsoluteTransform().copy()
+    transform.invert()
+    const pos = transform.point({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    })
 
     // Snap to grid if enabled
-    let x = pointerPosition.x
-    let y = pointerPosition.y
+    let x = pos.x
+    let y = pos.y
     if (snapToGrid) {
       x = Math.round(x / 20) * 20
       y = Math.round(y / 20) * 20
@@ -77,7 +84,8 @@ export default function HMIDesigner() {
     }
 
     addComponent(newComponent)
-  }, [scale, snapToGrid, addComponent])
+    selectComponent(newComponent.id)
+  }, [scale, snapToGrid, addComponent, selectComponent])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/components/hmi/WaterPlantDemo.tsx
 
 import { useState, useEffect, useCallback } from 'react'

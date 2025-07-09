@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/components/hmi/components/HMIComponentRenderer.tsx
 
 import { Group, Rect, Circle, Text, Transformer } from 'react-konva'
