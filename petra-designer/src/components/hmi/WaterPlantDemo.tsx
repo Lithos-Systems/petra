@@ -17,7 +17,7 @@ interface SimulationState {
 }
 
 export default function WaterPlantPetraDemo() {
-  const { connected, signals: petraSignals, setSignalValue } = usePetra()
+  const { connected, signals: petraSignals, setSignalValue, subscribeSignal, unsubscribeSignal } = usePetra()
   const isConnected = connected
   
   // Helper function to get signal value with fallback
@@ -26,6 +26,48 @@ export default function WaterPlantPetraDemo() {
     return value !== undefined ? value : defaultValue
   }, [petraSignals])
   
+  // Subscribe to all required signals
+  useEffect(() => {
+    if (!connected) return
+    
+    // List of all signals we need to subscribe to
+    const signals = [
+      // Tank signals
+      'tank.level_feet', 'tank.level_percent',
+      // Well pump signals
+      'well.running', 'well.flow_rate', 'well.start_level', 'well.stop_level', 'well.setpoint_flow',
+      // System signals
+      'system.pressure', 'system.demand',
+      // Pump 1 signals
+      'pump1.running', 'pump1.flow_rate', 'pump1.setpoint_flow', 'pump1.efficiency', 'pump1.is_lead',
+      // Pump 2 signals
+      'pump2.running', 'pump2.flow_rate', 'pump2.setpoint_flow', 'pump2.efficiency', 'pump2.is_lead',
+      // Pump 3 signals
+      'pump3.running', 'pump3.flow_rate', 'pump3.setpoint_flow', 'pump3.efficiency', 'pump3.is_lead',
+      // Hydrotank signals
+      'hydrotank1.water_level', 'hydrotank1.air_blanket',
+      'hydrotank2.water_level', 'hydrotank2.air_blanket',
+      // Valve signals
+      'valve.discharge1_open', 'valve.discharge2_open', 'valve.discharge3_open',
+      'valve.header1_open', 'valve.header2_open', 'valve.well_open',
+      // Pressure signals
+      'pressure.discharge1', 'pressure.discharge2', 'pressure.discharge3',
+      'pressure.header1', 'pressure.header2', 'pressure.system_header',
+      // Alarm signals
+      'alarm.tank_low', 'alarm.tank_high', 'alarm.pressure_low', 'alarm.pressure_high',
+      // Other signals
+      'lead.rotation_counter', 'pumps.total_flow'
+    ]
+    
+    // Subscribe to all signals
+    signals.forEach(signal => subscribeSignal(signal))
+    
+    // Cleanup: unsubscribe when component unmounts
+    return () => {
+      signals.forEach(signal => unsubscribeSignal(signal))
+    }
+  }, [connected, subscribeSignal, unsubscribeSignal])
+  
   // Debug logging
   useEffect(() => {
     console.log('PETRA Connection Status:', connected)
@@ -33,7 +75,8 @@ export default function WaterPlantPetraDemo() {
     console.log('Sample signals:', {
       tankLevel: getSignalValue('tank.level_feet', 12.5),
       pressure: getSignalValue('system.pressure', 60),
-      pump1Running: getSignalValue('pump1.running', false)
+      pump1Running: getSignalValue('pump1.running', false),
+      systemDemand: getSignalValue('system.demand', 2500)
     })
   }, [connected, petraSignals, getSignalValue])
   
@@ -213,7 +256,7 @@ export default function WaterPlantPetraDemo() {
   }, [simulation.running, simulation.timeMultiplier, isConnected, getSignalValue, setSignalValue])
   
   // Write signal to PETRA
-  const writeSignal = (signal: string, value: any) => {
+  const writeSignal = useCallback((signal: string, value: any) => {
     if (!isConnected) {
       console.warn('Cannot write signal - not connected to PETRA')
       return
@@ -222,9 +265,13 @@ export default function WaterPlantPetraDemo() {
     console.log(`Writing signal ${signal} = ${value}`)
     
     try {
+      // Set the signal value
       setSignalValue(signal, value)
       
-      // Force a re-read to verify the write
+      // For immediate UI feedback, we can optimistically update the local state
+      // The actual value will be confirmed when PETRA sends the signal_update message
+      
+      // Optional: verify the write after a short delay
       setTimeout(() => {
         const newValue = getSignalValue(signal, null)
         console.log(`Verified ${signal} = ${newValue}`)
@@ -232,7 +279,7 @@ export default function WaterPlantPetraDemo() {
     } catch (error) {
       console.error(`Error writing signal ${signal}:`, error)
     }
-  }
+  }, [isConnected, setSignalValue, getSignalValue])
   
   // Control handlers
   const togglePump = (pumpNum: number) => {
