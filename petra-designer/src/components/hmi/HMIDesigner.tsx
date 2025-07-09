@@ -236,6 +236,7 @@ export default function HMIDesigner() {
           </button>
         </div>
       )}
+]
 
       {selectedComponent ? (
         <HMIPropertiesPanel
