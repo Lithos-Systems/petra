@@ -38,8 +38,8 @@ import {
   FaMoon,
   FaSun
 } from 'react-icons/fa'
-import { useFlowStore } from '../../store/flowStore'
-import { usePetra } from '../../contexts/PetraContext'
+import { useFlowStore } from '@/store/flowStore'
+import { usePetra } from '@/contexts/PetraContext'
 
 interface ToolbarProps {
   onSave?: () => void
