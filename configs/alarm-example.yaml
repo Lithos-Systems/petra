@@ -1,71 +1,321 @@
-signals:
-  - name: system_pressure
-    type: float
-    initial: 100.0
-  - name: low_pressure_setpoint
-    type: float
-    initial: 55.0
-  - name: pressure_alarm
-    type: bool
-    initial: false
-  - name: alarm_active
-    type: bool
-    initial: false
+# ISA-18.2 Compliant Alarm Configuration for PETRA
+# This configuration follows ISA-18.2 alarm management standards
 
-blocks:
-  # Compare pressure to setpoint
-  - name: low_pressure_check
-    type: LT
-    inputs:
-      in1: system_pressure
-      in2: low_pressure_setpoint
-    outputs:
-      out: pressure_alarm
+# Feature flags required for full ISA-18.2 compliance
+# In Cargo.toml:
+# [features]
+# alarms = []
+# alarm-history = ["alarms"]
+# alarm-statistics = ["alarms"]
+# alarm-acknowledgment = ["alarms"]
+# alarm-shelving = ["alarms"]
+# alarm-suppression = ["alarms"]
+# alarm-rationalization = ["alarms"]
+# alarm-flood-detection = ["alarms"]
+# alarm-delay = ["alarms"]
+# alarm-hysteresis = ["alarms"]
+# alarm-actions = ["alarms", "email", "twilio"]
+
+alarms:
+  # ==========================================
+  # CRITICAL ALARMS (Priority 1)
+  # ==========================================
   
-  # Add 10 second delay to prevent false alarms
-  - name: alarm_delay
-    type: TON
-    inputs:
-      in: pressure_alarm
-    outputs:
-      q: alarm_active
-    params:
-      preset_ms: 10000
+  - name: "PT_101_HH"
+    description: "Reactor Pressure High-High"
+    tag_name: "PT-101"
+    signal: "reactor.pressure"
+    condition:
+      type: "HighHigh"
+      threshold: 250.0
+    priority: "Critical"
+    consequence: "Reactor rupture risk, potential personnel injury"
+    corrective_action: "1. Open PV-101 immediately\n2. Initiate emergency shutdown\n3. Evacuate area"
+    max_response_time: 1  # minutes
+    classification: "Safety"
+    enabled: true
+    setpoint: 250.0
+    units: "PSIG"
+    area: "Reactor Area"
+    equipment: "R-101"
+    hysteresis: 5.0
+    on_delay_ms: 0      # No delay for critical alarms
+    off_delay_ms: 5000  # 5 second off-delay
+    actions:
+      - type: "Signal"
+        name: "emergency_shutdown"
+        value: true
+      - type: "Email"
+        recipients: ["control-room@plant.com", "safety@plant.com"]
+        template: "critical_alarm"
+      - type: "Sms"
+        recipients: ["+1234567890"]  # Shift supervisor
+    suppression_groups: []  # Critical alarms should not be suppressed
 
-scan_time_ms: 100
+  - name: "TT_102_HH"
+    description: "Reactor Temperature High-High"
+    tag_name: "TT-102"
+    signal: "reactor.temperature"
+    condition:
+      type: "HighHigh"
+      threshold: 180.0
+    priority: "Critical"
+    consequence: "Runaway reaction risk, equipment damage"
+    corrective_action: "1. Reduce feed immediately\n2. Maximize cooling\n3. Prepare for emergency shutdown"
+    max_response_time: 2
+    classification: "Safety"
+    enabled: true
+    setpoint: 180.0
+    units: "°C"
+    area: "Reactor Area"
+    equipment: "R-101"
+    hysteresis: 3.0
+    on_delay_ms: 0
+    off_delay_ms: 10000
+    actions:
+      - type: "Signal"
+        name: "feed_valve.sp"
+        value: 0.0
+      - type: "Signal"
+        name: "cooling_valve.sp"
+        value: 100.0
 
-# MQTT configuration to read pressure from external sensor
-mqtt:
-  broker_host: mqtt.lithos.systems
-  broker_port: 1883
-  client_id: petra-pressure-monitor
-  topic_prefix: petra/alarm
-  publish_on_change: true
-  subscriptions:
-    # Subscribe to external pressure sensor
-    - topic: sensors/pressure/value
-      signal: system_pressure
-      data_type: float
-    # Or if the sensor publishes JSON
-    - topic: sensors/pressure/json
-      signal: system_pressure
-      data_type: float
-      value_path: pressure.value
+  # ==========================================
+  # HIGH PRIORITY ALARMS (Priority 2)
+  # ==========================================
+  
+  - name: "LT_201_H"
+    description: "Feed Tank Level High"
+    tag_name: "LT-201"
+    signal: "feed_tank.level"
+    condition:
+      type: "High"
+      threshold: 90.0
+    priority: "High"
+    consequence: "Tank overflow, environmental release"
+    corrective_action: "1. Stop feed pump P-201\n2. Check downstream valve position\n3. Verify level transmitter"
+    max_response_time: 5
+    classification: "Environmental"
+    enabled: true
+    setpoint: 90.0
+    units: "%"
+    area: "Tank Farm"
+    equipment: "TK-201"
+    hysteresis: 2.0
+    on_delay_ms: 5000   # 5 second on-delay
+    off_delay_ms: 10000 # 10 second off-delay
+    actions:
+      - type: "Email"
+        recipients: ["control-room@plant.com"]
 
-# Twilio configuration for alerts
-twilio:
-  from_number: "+1987654321"
-  actions:
-    - name: low_pressure_alert
-      trigger_signal: alarm_active
-      action_type: call
-      to_number: "+18323127224"
-      content: |
-        <Response>
-          <Say voice="alice">
-            Alert: Low system pressure detected.
-            Current pressure is below 55 PSI.
-            Please check the system immediately.
-          </Say>
-        </Response>
-      cooldown_seconds: 300
+  - name: "FT_301_L"
+    description: "Cooling Water Flow Low"
+    tag_name: "FT-301"
+    signal: "cooling.flow"
+    condition:
+      type: "Low"
+      threshold: 100.0
+    priority: "High"
+    consequence: "Inadequate cooling, temperature rise"
+    corrective_action: "1. Check pump P-301 status\n2. Verify valve lineup\n3. Check for blockage"
+    max_response_time: 10
+    classification: "Process"
+    enabled: true
+    setpoint: 100.0
+    units: "GPM"
+    area: "Utilities"
+    equipment: "Cooling System"
+    hysteresis: 5.0
+    on_delay_ms: 10000
+    off_delay_ms: 5000
+    suppression_groups: ["maintenance_mode"]
+
+  # ==========================================
+  # MEDIUM PRIORITY ALARMS (Priority 3)
+  # ==========================================
+  
+  - name: "PT_101_DEV"
+    description: "Reactor Pressure Deviation"
+    tag_name: "PT-101"
+    signal: "reactor.pressure"
+    condition:
+      type: "Deviation"
+      setpoint: 150.0
+      deadband: 20.0
+    priority: "Medium"
+    consequence: "Process upset, quality impact"
+    corrective_action: "1. Check pressure controller output\n2. Verify setpoint\n3. Check for disturbances"
+    max_response_time: 30
+    classification: "Process"
+    enabled: true
+    setpoint: 150.0
+    units: "PSIG"
+    area: "Reactor Area"
+    equipment: "R-101"
+    hysteresis: 2.0
+    on_delay_ms: 30000  # 30 second delay
+    off_delay_ms: 60000 # 60 second delay
+
+  - name: "AT_401_H"
+    description: "Product pH High"
+    tag_name: "AT-401"
+    signal: "product.ph"
+    condition:
+      type: "High"
+      threshold: 8.5
+    priority: "Medium"
+    consequence: "Product quality deviation"
+    corrective_action: "1. Check acid addition system\n2. Verify pH probe calibration\n3. Take manual sample"
+    max_response_time: 60
+    classification: "Quality"
+    enabled: true
+    setpoint: 8.5
+    units: "pH"
+    area: "Product Area"
+    equipment: "Product Tank"
+    hysteresis: 0.1
+    on_delay_ms: 60000
+    off_delay_ms: 30000
+
+  # ==========================================
+  # LOW PRIORITY ALARMS (Priority 4)
+  # ==========================================
+  
+  - name: "PDT_501_H"
+    description: "Filter Differential Pressure High"
+    tag_name: "PDT-501"
+    signal: "filter.dp"
+    condition:
+      type: "High"
+      threshold: 15.0
+    priority: "Low"
+    consequence: "Filter replacement needed"
+    corrective_action: "1. Schedule filter replacement\n2. Monitor trend\n3. Prepare spare filter"
+    max_response_time: 480  # 8 hours
+    classification: "Equipment"
+    enabled: true
+    setpoint: 15.0
+    units: "PSI"
+    area: "Filtration"
+    equipment: "F-501"
+    hysteresis: 1.0
+    on_delay_ms: 300000  # 5 minute delay
+    off_delay_ms: 600000 # 10 minute delay
+
+  - name: "VIB_601_H"
+    description: "Pump Vibration High"
+    tag_name: "VIB-601"
+    signal: "pump_601.vibration"
+    condition:
+      type: "High"
+      threshold: 0.3
+    priority: "Low"
+    consequence: "Pump wear, maintenance required"
+    corrective_action: "1. Schedule vibration analysis\n2. Check alignment\n3. Plan maintenance"
+    max_response_time: 1440  # 24 hours
+    classification: "Equipment"
+    enabled: true
+    setpoint: 0.3
+    units: "IPS"
+    area: "Pump House"
+    equipment: "P-601"
+    hysteresis: 0.05
+    on_delay_ms: 600000  # 10 minute delay
+    off_delay_ms: 300000 # 5 minute delay
+    suppression_groups: ["pump_maintenance"]
+
+  # ==========================================
+  # SPECIAL ALARM TYPES
+  # ==========================================
+  
+  - name: "XV_701_FAIL"
+    description: "Emergency Valve Position Mismatch"
+    tag_name: "XV-701"
+    signal: "emergency_valve.feedback"
+    condition:
+      type: "Discrete"
+      expected_state: true  # Should match command
+    priority: "Critical"
+    consequence: "Safety system impaired"
+    corrective_action: "1. Verify valve position locally\n2. Check air supply\n3. Test manual override"
+    max_response_time: 5
+    classification: "Safety"
+    enabled: true
+    setpoint: 1.0
+    units: "State"
+    area: "Safety Systems"
+    equipment: "XV-701"
+    on_delay_ms: 2000   # 2 second delay
+    off_delay_ms: 0     # No off delay
+
+  - name: "FT_301_ROC"
+    description: "Cooling Flow Rate of Change"
+    tag_name: "FT-301"
+    signal: "cooling.flow"
+    condition:
+      type: "RateOfChange"
+      max_change_per_second: 10.0
+    priority: "High"
+    consequence: "Rapid flow change, possible line break"
+    corrective_action: "1. Check for line breaks\n2. Verify pump status\n3. Check valve positions"
+    max_response_time: 5
+    classification: "Process"
+    enabled: true
+    setpoint: 10.0
+    units: "GPM/s"
+    area: "Utilities"
+    equipment: "Cooling System"
+
+# ==========================================
+# ALARM GROUPS AND SUPPRESSION
+# ==========================================
+
+alarm_groups:
+  - name: "maintenance_mode"
+    description: "Suppress non-critical alarms during maintenance"
+    suppress_priorities: ["Medium", "Low"]
+    
+  - name: "pump_maintenance"
+    description: "Pump maintenance suppression group"
+    suppress_alarms: ["VIB_601_H", "FT_301_L"]
+
+# ==========================================
+# ALARM FLOOD SETTINGS
+# ==========================================
+
+alarm_flood:
+  detection_enabled: true
+  threshold: 10          # More than 10 alarms per 10 minutes
+  suppression_enabled: true
+  suppress_priorities: ["Low"]  # Only suppress low priority during flood
+  notification_recipients: ["control-room@plant.com"]
+
+# ==========================================
+# ALARM RATIONALIZATION DATA
+# ==========================================
+
+alarm_documentation:
+  PT_101_HH:
+    design_basis: "Based on vessel MAWP of 300 PSIG with 80% alarm setpoint"
+    operator_guide: "See EOP-101 for emergency response procedure"
+    testing_procedure: "Simulate using calibrator per PM-101"
+    last_review: "2024-06-15"
+    review_by: "J. Smith"
+    
+  TT_102_HH:
+    design_basis: "Based on reaction kinetics study, runaway at 185°C"
+    operator_guide: "See SOP-102 for temperature control"
+    testing_procedure: "Simulate using temperature calibrator per PM-102"
+    last_review: "2024-06-15"
+    review_by: "J. Smith"
+
+# ==========================================
+# ALARM PERFORMANCE TARGETS (ISA-18.2)
+# ==========================================
+
+performance_metrics:
+  average_alarms_per_day: 144      # Target: ~6 per hour per operator
+  peak_alarms_per_10min: 10        # Alarm flood threshold
+  standing_alarms_target: 5        # Max alarms active > 24 hours
+  stale_alarms_target: 0           # Alarms in alarm > 7 days
+  alarm_acknowledgment_target: 10  # Minutes for priority 2 alarms
