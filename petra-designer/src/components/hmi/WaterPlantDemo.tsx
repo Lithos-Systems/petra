@@ -526,17 +526,44 @@ export default function WaterPlantPetraDemo() {
                 y={0}
                 width={200}
                 height={300}
-                levelPercent={signals.tankLevelPercent}
-                label="Ground Storage Tank"
-                capacity="200,000 gal"
-                units="ft"
-                currentValue={signals.tankLevelFeet.toFixed(1)}
-                maxValue={25}
-                showAlarm={signals.alarmTankLow || signals.alarmTankHigh}
-                alarmMessage={
-                  signals.alarmTankLow ? 'LOW LEVEL' : 
-                  signals.alarmTankHigh ? 'HIGH LEVEL' : ''
-                }
+                properties={{
+                  currentLevel: signals.tankLevelPercent,
+                  maxLevel: 100,
+                  minLevel: 0,
+                  units: '%',
+                  fillColor: '#3b82f6',
+                  showLabel: true,
+                  label: 'Ground Storage Tank',
+                  alarmHigh: 90,
+                  alarmLow: 10,
+                  isMetric: false
+                }}
+                style={{
+                  fill: '#f3f4f6',
+                  stroke: '#374151',
+                  strokeWidth: 2
+                }}
+                bindings={[]}
+              />
+              {/* Tank annotations */}
+              <Text
+                x={0}
+                y={-30}
+                width={200}
+                text="Ground Storage Tank"
+                fontSize={16}
+                fontStyle="bold"
+                align="center"
+                fill="#374151"
+              />
+              <Text
+                x={0}
+                y={310}
+                width={200}
+                text={`${signals.tankLevelFeet.toFixed(1)} ft (${signals.tankLevelPercent.toFixed(0)}%)`}
+                fontSize={14}
+                align="center"
+                fill="#6b7280"
               />
             </Group>
             
@@ -550,10 +577,20 @@ export default function WaterPlantPetraDemo() {
               />
               <ValveComponent
                 x={380}
-                y={250}
-                isOpen={signals.wellValveOpen}
-                label="Well"
-                showFlow={signals.wellRunning}
+                y={230}
+                width={40}
+                height={40}
+                properties={{
+                  open: signals.wellValveOpen,
+                  position: signals.wellValveOpen ? 100 : 0,
+                  showPosition: false,
+                  fault: false
+                }}
+                style={{
+                  fill: '#6b7280',
+                  stroke: '#374151',
+                  strokeWidth: 2
+                }}
               />
               <Line
                 points={[420, 250, 500, 250]}
@@ -564,11 +601,40 @@ export default function WaterPlantPetraDemo() {
               {/* Well pump */}
               <PumpComponent
                 x={500}
-                y={250}
-                isRunning={signals.wellRunning}
-                label="Well Pump"
-                flowRate={signals.wellFlowRate}
-                isLead={false}
+                y={210}
+                width={80}
+                height={80}
+                properties={{
+                  running: signals.wellRunning,
+                  fault: false,
+                  speed: signals.wellRunning ? 100 : 0,
+                  showStatus: true,
+                  runAnimation: true
+                }}
+                style={{
+                  fill: signals.wellRunning ? '#10b981' : '#e5e7eb',
+                  stroke: '#374151',
+                  strokeWidth: 2
+                }}
+                bindings={[]}
+              />
+              <Text
+                x={500}
+                y={295}
+                width={80}
+                text="Well Pump"
+                fontSize={12}
+                align="center"
+                fill="#374151"
+              />
+              <Text
+                x={500}
+                y={310}
+                width={80}
+                text={`${signals.wellFlowRate} gpm`}
+                fontSize={11}
+                align="center"
+                fill="#6b7280"
               />
               <Line
                 points={[580, 250, 660, 250, 660, 350, 200, 350, 200, 400]}
@@ -589,11 +655,41 @@ export default function WaterPlantPetraDemo() {
                 />
                 <PumpComponent
                   x={500}
-                  y={250 - index * 60}
-                  isRunning={signals[`pump${num}Running` as keyof typeof signals] as boolean}
-                  label={`Pump ${num}`}
-                  flowRate={signals[`pump${num}FlowRate` as keyof typeof signals] as number}
-                  isLead={signals[`pump${num}IsLead` as keyof typeof signals] as boolean}
+                  y={230 - index * 60}
+                  width={80}
+                  height={80}
+                  properties={{
+                    running: signals[`pump${num}Running` as keyof typeof signals] as boolean,
+                    fault: false,
+                    speed: signals[`pump${num}Running` as keyof typeof signals] ? 100 : 0,
+                    showStatus: true,
+                    runAnimation: true
+                  }}
+                  style={{
+                    fill: signals[`pump${num}Running` as keyof typeof signals] ? '#10b981' : '#e5e7eb',
+                    stroke: signals[`pump${num}IsLead` as keyof typeof signals] ? '#f59e0b' : '#374151',
+                    strokeWidth: signals[`pump${num}IsLead` as keyof typeof signals] ? 3 : 2
+                  }}
+                  bindings={[]}
+                />
+                <Text
+                  x={500}
+                  y={315 - index * 60}
+                  width={80}
+                  text={`Pump ${num}`}
+                  fontSize={12}
+                  align="center"
+                  fill="#374151"
+                  fontStyle={signals[`pump${num}IsLead` as keyof typeof signals] ? 'bold' : 'normal'}
+                />
+                <Text
+                  x={500}
+                  y={330 - index * 60}
+                  width={80}
+                  text={`${signals[`pump${num}FlowRate` as keyof typeof signals]} gpm`}
+                  fontSize={11}
+                  align="center"
+                  fill="#6b7280"
                 />
                 <Line
                   points={[580, 250 - index * 60, 620, 250 - index * 60]}
@@ -603,10 +699,20 @@ export default function WaterPlantPetraDemo() {
                 />
                 <ValveComponent
                   x={620}
-                  y={250 - index * 60}
-                  isOpen={signals[`dischargeValve${num}Open` as keyof typeof signals] as boolean}
-                  label={`DV${num}`}
-                  showFlow={signals[`pump${num}Running` as keyof typeof signals] as boolean}
+                  y={230 - index * 60}
+                  width={40}
+                  height={40}
+                  properties={{
+                    open: signals[`dischargeValve${num}Open` as keyof typeof signals] as boolean,
+                    position: 100,
+                    showPosition: false,
+                    fault: false
+                  }}
+                  style={{
+                    fill: '#6b7280',
+                    stroke: '#374151',
+                    strokeWidth: 2
+                  }}
                 />
                 <Line
                   points={[660, 250 - index * 60, 700, 250 - index * 60]}
@@ -616,12 +722,28 @@ export default function WaterPlantPetraDemo() {
                 />
                 <GaugeComponent
                   x={720}
-                  y={250 - index * 60}
-                  value={signals[`dischargePressure${num}` as keyof typeof signals] as number}
-                  maxValue={100}
-                  units="psi"
-                  label={`P${num}`}
-                  showAlarm={false}
+                  y={230 - index * 60}
+                  width={40}
+                  height={40}
+                  properties={{
+                    value: signals[`dischargePressure${num}` as keyof typeof signals] as number,
+                    min: 0,
+                    max: 100,
+                    units: 'psi',
+                    label: `P${num}`,
+                    showDigital: true,
+                    alarmLow: 30,
+                    alarmHigh: 80,
+                    warningLow: 40,
+                    warningHigh: 70
+                  }}
+                  style={{
+                    fill: '#ffffff',
+                    stroke: '#374151',
+                    strokeWidth: 2,
+                    needleColor: '#ef4444',
+                    textColor: '#374151'
+                  }}
                 />
                 <Line
                   points={[780, 250 - index * 60, 820, 250 - index * 60]}
@@ -643,10 +765,20 @@ export default function WaterPlantPetraDemo() {
               />
               <ValveComponent
                 x={900}
-                y={190}
-                isOpen={signals.dischargeHeaderValve1}
-                label="H1"
-                showFlow={signals.pump1Running || signals.pump2Running}
+                y={170}
+                width={40}
+                height={40}
+                properties={{
+                  open: signals.dischargeHeaderValve1,
+                  position: 100,
+                  showPosition: false,
+                  fault: false
+                }}
+                style={{
+                  fill: '#6b7280',
+                  stroke: '#374151',
+                  strokeWidth: 2
+                }}
               />
               <Line
                 points={[940, 190, 980, 190]}
@@ -656,12 +788,28 @@ export default function WaterPlantPetraDemo() {
               />
               <GaugeComponent
                 x={1000}
-                y={190}
-                value={signals.headerPressure1}
-                maxValue={100}
-                units="psi"
-                label="HP1"
-                showAlarm={false}
+                y={170}
+                width={40}
+                height={40}
+                properties={{
+                  value: signals.headerPressure1,
+                  min: 0,
+                  max: 100,
+                  units: 'psi',
+                  label: 'HP1',
+                  showDigital: true,
+                  alarmLow: 30,
+                  alarmHigh: 80,
+                  warningLow: 40,
+                  warningHigh: 70
+                }}
+                style={{
+                  fill: '#ffffff',
+                  stroke: '#374151',
+                  strokeWidth: 2,
+                  needleColor: '#ef4444',
+                  textColor: '#374151'
+                }}
               />
               
               {/* Header 2 - All pumps */}
@@ -673,10 +821,20 @@ export default function WaterPlantPetraDemo() {
               />
               <ValveComponent
                 x={900}
-                y={100}
-                isOpen={signals.dischargeHeaderValve2}
-                label="H2"
-                showFlow={signals.pump1Running || signals.pump2Running || signals.pump3Running}
+                y={80}
+                width={40}
+                height={40}
+                properties={{
+                  open: signals.dischargeHeaderValve2,
+                  position: 100,
+                  showPosition: false,
+                  fault: false
+                }}
+                style={{
+                  fill: '#6b7280',
+                  stroke: '#374151',
+                  strokeWidth: 2
+                }}
               />
               <Line
                 points={[940, 100, 980, 100]}
@@ -686,12 +844,28 @@ export default function WaterPlantPetraDemo() {
               />
               <GaugeComponent
                 x={1000}
-                y={100}
-                value={signals.headerPressure2}
-                maxValue={100}
-                units="psi"
-                label="HP2"
-                showAlarm={false}
+                y={80}
+                width={40}
+                height={40}
+                properties={{
+                  value: signals.headerPressure2,
+                  min: 0,
+                  max: 100,
+                  units: 'psi',
+                  label: 'HP2',
+                  showDigital: true,
+                  alarmLow: 30,
+                  alarmHigh: 80,
+                  warningLow: 40,
+                  warningHigh: 70
+                }}
+                style={{
+                  fill: '#ffffff',
+                  stroke: '#374151',
+                  strokeWidth: 2,
+                  needleColor: '#ef4444',
+                  textColor: '#374151'
+                }}
               />
             </Group>
             
@@ -702,26 +876,48 @@ export default function WaterPlantPetraDemo() {
                 y={0}
                 width={80}
                 height={150}
-                levelPercent={signals.hydrotank1WaterLevel}
-                label="HT-1"
-                units="%"
-                currentValue={signals.hydrotank1WaterLevel.toFixed(0)}
-                maxValue={100}
-                showAlarm={false}
-                tankType="pressure"
+                properties={{
+                  currentLevel: signals.hydrotank1WaterLevel,
+                  maxLevel: 100,
+                  minLevel: 0,
+                  units: '%',
+                  fillColor: '#60a5fa',
+                  showLabel: true,
+                  label: 'HT-1',
+                  alarmHigh: 80,
+                  alarmLow: 20,
+                  isMetric: false
+                }}
+                style={{
+                  fill: '#e0e7ff',
+                  stroke: '#4338ca',
+                  strokeWidth: 2
+                }}
+                bindings={[]}
               />
               <TankComponent
                 x={100}
                 y={0}
                 width={80}
                 height={150}
-                levelPercent={signals.hydrotank2WaterLevel}
-                label="HT-2"
-                units="%"
-                currentValue={signals.hydrotank2WaterLevel.toFixed(0)}
-                maxValue={100}
-                showAlarm={false}
-                tankType="pressure"
+                properties={{
+                  currentLevel: signals.hydrotank2WaterLevel,
+                  maxLevel: 100,
+                  minLevel: 0,
+                  units: '%',
+                  fillColor: '#60a5fa',
+                  showLabel: true,
+                  label: 'HT-2',
+                  alarmHigh: 80,
+                  alarmLow: 20,
+                  isMetric: false
+                }}
+                style={{
+                  fill: '#e0e7ff',
+                  stroke: '#4338ca',
+                  strokeWidth: 2
+                }}
+                bindings={[]}
               />
             </Group>
             
@@ -743,13 +939,28 @@ export default function WaterPlantPetraDemo() {
               {/* System pressure gauge */}
               <GaugeComponent
                 x={1150}
-                y={250}
-                value={signals.systemPressure}
-                maxValue={100}
-                units="psi"
-                label="System"
-                showAlarm={signals.alarmPressureLow || signals.alarmPressureHigh}
-                size={80}
+                y={230}
+                width={80}
+                height={80}
+                properties={{
+                  value: signals.systemPressure,
+                  min: 0,
+                  max: 100,
+                  units: 'psi',
+                  label: 'System',
+                  showDigital: true,
+                  alarmLow: 30,
+                  alarmHigh: 80,
+                  warningLow: 40,
+                  warningHigh: 70
+                }}
+                style={{
+                  fill: '#ffffff',
+                  stroke: signals.alarmPressureLow || signals.alarmPressureHigh ? '#ef4444' : '#374151',
+                  strokeWidth: 3,
+                  needleColor: '#ef4444',
+                  textColor: '#374151'
+                }}
               />
               
               {/* Distribution arrow */}
