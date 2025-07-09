@@ -984,6 +984,11 @@ export default function ISA101HMIDesigner() {
                                   <option value="control">Control</option>
                                 </select>
                               </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Signal Bindings */}
                       <div>
                         <h4 className="font-medium text-sm mb-2 flex items-center justify-between" 
