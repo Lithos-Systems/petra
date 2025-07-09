@@ -87,6 +87,9 @@ export default function WaterPlantPetraDemo() {
     lastUpdate: null,
   })
   
+  const [showControls, setShowControls] = useState(true)
+  const [stageSize, setStageSize] = useState({ width: 800, height: 600 })
+  
   // Add polling for signal values as a temporary workaround
   // This ensures the UI stays in sync even if WebSocket updates aren't working
   useEffect(() => {
