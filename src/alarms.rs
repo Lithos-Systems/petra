@@ -11,6 +11,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
+#[cfg(feature = "web")]
+use reqwest::{Client, Method};
+
 #[cfg(feature = "alarm-persistence")]
 use std::path::PathBuf;
 
@@ -849,7 +852,7 @@ struct ActionExecutor {
     email_client: Option<lettre::AsyncSmtpTransport<lettre::Tokio1Executor>>,
 
     #[cfg(feature = "web")]
-    http_client: reqwest::Client,
+    http_client: Client,
 }
 
 #[cfg(feature = "alarm-actions")]
@@ -860,7 +863,7 @@ impl ActionExecutor {
             email_client: None,
 
             #[cfg(feature = "web")]
-            http_client: reqwest::Client::new(),
+            http_client: Client::new(),
         }
     }
 
@@ -888,7 +891,18 @@ impl ActionExecutor {
                 method,
                 headers,
             } => {
-                // Send webhook
+                let m = method
+                    .parse::<Method>()
+                    .unwrap_or(Method::POST);
+                let mut req = self.http_client.request(m, url);
+                if let Some(h) = headers {
+                    for (k, v) in h {
+                        req = req.header(&k, &v);
+                    }
+                }
+                if let Err(e) = req.send().await {
+                    warn!("failed to send webhook to {}: {}", url, e);
+                }
             }
 
             _ => {}

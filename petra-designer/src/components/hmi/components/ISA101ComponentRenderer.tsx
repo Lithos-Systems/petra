@@ -116,12 +116,14 @@ export default function ISA101ComponentRenderer({
     onClick: onSelect,
     draggable: true,
     onDragEnd: (e: any) => {
+      const node = e.target
       onUpdate({
         position: {
-          x: e.target.x(),
-          y: e.target.y(),
+          x: node.x(),
+          y: node.y(),
         },
       })
+      node.getLayer()?.batchDraw()
     },
   }
 

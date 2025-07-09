@@ -8,6 +8,7 @@ import HMIPropertiesPanel from './HMIPropertiesPanel'
 import HMIToolbar from './HMIToolbar'
 import { useHMIStore } from '@/store/hmiStore'
 import { HMIComponentRenderer } from './components/HMIComponentRenderer'
+import ResizablePanel from './ResizablePanel'
 import ISA101ComponentRenderer from './components/ISA101ComponentRenderer'
 import ISA101Dashboard from './ISA101Dashboard'
 import { nanoid } from 'nanoid'
@@ -128,17 +129,16 @@ export default function HMIDesigner() {
   const selectedComponent = components.find(c => c.id === selectedComponentId)
 
   return (
-    <div className={`flex-1 flex bg-gray-50 ${isa101Mode ? 'isa101-mode' : ''}` }>
-      <HMISidebar />
+    <div className="flex h-screen overflow-hidden">
+      <HMISidebar className="w-64 flex-shrink-0" />
 
       <div className="flex-1 flex flex-col">
-        <HMIToolbar 
+        <HMIToolbar
           scale={scale}
           onScaleChange={setScale}
           stageSize={stageSize}
           onStageSizeChange={setStageSize}
         />
-
         {isa101Mode ? (
           <ISA101Dashboard title="Process Overview" area="Water Treatment Plant">
             <div
@@ -198,67 +198,76 @@ export default function HMIDesigner() {
             onDrop={handleDrop}
             onDragOver={handleDragOver}
           >
-          <Stage
-            ref={stageRef}
-            width={window.innerWidth - 600} // Account for sidebars
-            height={window.innerHeight - 120} // Account for toolbar
-            onMouseDown={handleStageClick}
-            onWheel={handleWheel}
-            scaleX={scale}
-            scaleY={scale}
-          >
-            <Layer>
-              {/* Grid */}
-              {showGrid && (
-                <GridOverlay 
-                  width={stageSize.width} 
-                  height={stageSize.height}
-                  gridSize={20}
-                />
-              )}
+            <Stage
+              ref={stageRef}
+              width={window.innerWidth - 600} // Account for sidebars
+              height={window.innerHeight - 120} // Account for toolbar
+              onMouseDown={handleStageClick}
+              onWheel={handleWheel}
+              scaleX={scale}
+              scaleY={scale}
+            >
+              <Layer>
+                {/* Grid */}
+                {showGrid && (
+                  <GridOverlay
+                    width={stageSize.width}
+                    height={stageSize.height}
+                    gridSize={20}
+                  />
+                )}
 
-              {/* HMI Components */}
-              {components.map((component) => (
-                <HMIComponentRenderer
-                  key={component.id}
-                  component={component}
-                  isSelected={component.id === selectedComponentId}
-                  onSelect={() => selectComponent(component.id)}
-                  onUpdate={(updates) => updateComponent(component.id, updates)}
-                />
-              ))}
-            </Layer>
-          </Stage>
+                {/* HMI Components */}
+                {components.map((component) => (
+                  <HMIComponentRenderer
+                    key={component.id}
+                    component={component}
+                    isSelected={component.id === selectedComponentId}
+                    onSelect={() => selectComponent(component.id)}
+                    onUpdate={(updates) => updateComponent(component.id, updates)}
+                  />
+                ))}
+              </Layer>
+            </Stage>
 
-          {/* Canvas size indicator */}
-          <div className="absolute bottom-4 left-4 bg-white px-3 py-2 rounded shadow text-sm text-gray-600">
-            Canvas: {stageSize.width} × {stageSize.height}px | Zoom: {Math.round(scale * 100)}%
+            {/* Canvas size indicator */}
+            <div className="absolute bottom-4 left-4 bg-white px-3 py-2 rounded shadow text-sm text-gray-600">
+              Canvas: {stageSize.width} × {stageSize.height}px | Zoom: {Math.round(scale * 100)}%
+            </div>
+
+            {/* MQTT Test Toggle */}
+            <button
+              onClick={() => setShowMQTTTest(!showMQTTTest)}
+              className="absolute bottom-4 right-4 bg-petra-500 text-white px-3 py-2 rounded shadow hover:bg-petra-600 transition-colors text-sm"
+            >
+              {showMQTTTest ? 'Hide' : 'Show'} MQTT Test
+            </button>
           </div>
-          
-          {/* MQTT Test Toggle */}
-          <button
-            onClick={() => setShowMQTTTest(!showMQTTTest)}
-            className="absolute bottom-4 right-4 bg-petra-500 text-white px-3 py-2 rounded shadow hover:bg-petra-600 transition-colors text-sm"
-          >
-            {showMQTTTest ? 'Hide' : 'Show'} MQTT Test
-          </button>
-        </div>
-      )}
-]
+        )}
+      </div>
 
-      {selectedComponent ? (
-        <HMIPropertiesPanel
-          component={selectedComponent}
-          onUpdate={(updates) =>
-            updateComponent(selectedComponent.id, updates)
-          }
-          onDelete={() => deleteComponent(selectedComponent.id)}
-        />
-      ) : null}
+      <ResizablePanel
+        defaultWidth={300}
+        minWidth={200}
+        maxWidth={500}
+        className="border-l border-gray-300"
+      >
+        {selectedComponent ? (
+          <HMIPropertiesPanel
+            component={selectedComponent}
+            onUpdate={(updates) =>
+              updateComponent(selectedComponent.id, updates)
+            }
+            onDelete={() => deleteComponent(selectedComponent.id)}
+          />
+        ) : (
+          <div className="p-4 text-gray-500 text-center">
+            Select a component to view properties
+          </div>
+        )}
+      </ResizablePanel>
 
-      {/* MQTT Test Display */}
       {showMQTTTest && <MQTTTestDisplay />}
-    </div>
     </div>
   )
 }
