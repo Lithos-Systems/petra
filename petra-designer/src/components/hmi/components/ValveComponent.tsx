@@ -8,26 +8,42 @@ interface ValveComponentProps {
   y: number
   width: number
   height: number
-  properties: ValveProperties
-  style: any
+  properties?: ValveProperties
+  style?: any
   [key: string]: any
 }
 
 export default function ValveComponent({
-  x, y, width, height, properties, style, ...rest
+  x, 
+  y, 
+  width, 
+  height, 
+  properties = {
+    open: true,
+    position: 100,
+    fault: false,
+    showPosition: false
+  }, 
+  style = {}, 
+  ...rest
 }: ValveComponentProps) {
   const isOpen = properties.open
   const centerX = width / 2
   const centerY = height / 2
+  
+  // Get colors
+  const fillColor = properties.fault ? '#ff4444' : (style.fill || '#666666')
+  const strokeColor = style.stroke || '#333333'
+  const strokeWidth = style.strokeWidth || 2
   
   return (
     <Group x={x} y={y} {...rest}>
       {/* Valve body */}
       <Path
         data={`M 0 ${centerY - 10} L ${centerX - 15} ${centerY - 10} L ${centerX} ${centerY - 20} L ${centerX + 15} ${centerY - 10} L ${width} ${centerY - 10} L ${width} ${centerY + 10} L ${centerX + 15} ${centerY + 10} L ${centerX} ${centerY + 20} L ${centerX - 15} ${centerY + 10} L 0 ${centerY + 10} Z`}
-        fill={properties.fault ? '#ff4444' : style.fill || '#666666'}
-        stroke={style.stroke || '#333333'}
-        strokeWidth={style.strokeWidth || 2}
+        fill={fillColor}
+        stroke={strokeColor}
+        strokeWidth={strokeWidth}
       />
       
       {/* Valve stem */}
@@ -36,7 +52,7 @@ export default function ValveComponent({
         y={centerY - 30}
         width={10}
         height={30}
-        fill={style.stroke || '#333333'}
+        fill={strokeColor}
         rotation={isOpen ? 0 : 90}
         offsetX={5}
         offsetY={15}
