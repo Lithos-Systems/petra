@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { Group, Circle, Line, Text, Shape, Rect } from 'react-konva'
+import { useRef } from 'react'
 
+// ISA-101 Standard Colors
 const ISA101Colors = {
   equipmentOutline: '#000000',
   equipmentFill: '#FFFFFF',
@@ -9,6 +11,9 @@ const ISA101Colors = {
   alarmHigh: '#FF8C00',
   alarmLow: '#FF8C00',
   scale: '#666666',
+  needleNormal: '#000000',
+  needleAlarm: '#FF0000',
+  background: '#FFFFFF',
 }
 
 interface ISA101GaugeProps {
@@ -27,11 +32,17 @@ interface ISA101GaugeProps {
     setpoint?: number
     showDigitalValue?: boolean
     gaugeType?: 'pressure' | 'temperature' | 'flow' | 'level'
+    showTrend?: boolean
+  }
+  style?: {
+    lineWidth?: number
   }
   selected?: boolean
   onClick?: () => void
+  onContextMenu?: (e: any) => void
   draggable?: boolean
   onDragEnd?: (e: any) => void
+  onDragStart?: (e: any) => void
 }
 
 export default function ISA101GaugeComponent({
@@ -40,22 +51,33 @@ export default function ISA101GaugeComponent({
   width,
   height,
   properties,
-  selected,
+  style = {},
+  selected = false,
   onClick,
-  draggable,
+  onContextMenu,
+  draggable = true,
   onDragEnd,
+  onDragStart,
+  ...restProps
 }: ISA101GaugeProps) {
+  const groupRef = useRef<any>()
   const radius = Math.min(width, height) / 2 - 10
   const centerX = width / 2
   const centerY = height / 2
 
-  // Calculate angle for value
-  const valueRange = properties.maxValue - properties.minValue
-  const normalizedValue = (properties.currentValue - properties.minValue) / valueRange
-  const startAngle = -135
-  const endAngle = 135
-  const valueAngle = startAngle + (endAngle - startAngle) * normalizedValue
+  // Calculate angles
+  const startAngle = -135 // Start at 225 degrees (lower left)
+  const endAngle = 135   // End at 315 degrees (lower right)
+  const angleRange = endAngle - startAngle
 
+  // Calculate value position
+  const valueRange = properties.maxValue - properties.minValue
+  const normalizedValue = Math.max(0, Math.min(1, 
+    (properties.currentValue - properties.minValue) / valueRange
+  ))
+  const valueAngle = startAngle + (angleRange * normalizedValue)
+
+  // Helper function to convert angle to x,y coordinates
   const getXY = (angle: number, r: number) => {
     const rad = (angle * Math.PI) / 180
     return {
@@ -64,13 +86,86 @@ export default function ISA101GaugeComponent({
     }
   }
 
+  // Determine if value is in alarm
+  const isInAlarm = () => {
+    if (properties.alarmHigh && properties.currentValue >= properties.alarmHigh) return true
+    if (properties.alarmLow && properties.currentValue <= properties.alarmLow) return true
+    return false
+  }
+
+  // Generate scale marks
+  const generateScaleMarks = () => {
+    const marks = []
+    const majorTicks = 5 // Number of major tick marks
+    const minorTicks = 4 // Minor ticks between major ticks
+
+    for (let i = 0; i <= majorTicks; i++) {
+      const angle = startAngle + (angleRange * i / majorTicks)
+      const value = properties.minValue + (valueRange * i / majorTicks)
+      const outer = getXY(angle, radius)
+      const inner = getXY(angle, radius - 10)
+      const label = getXY(angle, radius - 20)
+
+      // Major tick
+      marks.push(
+        <Line
+          key={`major-${i}`}
+          points={[outer.x, outer.y, inner.x, inner.y]}
+          stroke={ISA101Colors.scale}
+          strokeWidth={2}
+        />
+      )
+
+      // Scale label
+      marks.push(
+        <Text
+          key={`label-${i}`}
+          x={label.x - 15}
+          y={label.y - 5}
+          width={30}
+          text={value.toFixed(0)}
+          fontSize={10}
+          fill={ISA101Colors.scale}
+          align="center"
+        />
+      )
+
+      // Minor ticks
+      if (i < majorTicks) {
+        for (let j = 1; j <= minorTicks; j++) {
+          const minorAngle = angle + (angleRange / majorTicks * j / (minorTicks + 1))
+          const minorOuter = getXY(minorAngle, radius)
+          const minorInner = getXY(minorAngle, radius - 5)
+          
+          marks.push(
+            <Line
+              key={`minor-${i}-${j}`}
+              points={[minorOuter.x, minorOuter.y, minorInner.x, minorInner.y]}
+              stroke={ISA101Colors.scale}
+              strokeWidth={1}
+            />
+          )
+        }
+      }
+    }
+
+    return marks
+  }
+
   return (
     <Group
+      ref={groupRef}
       x={x}
       y={y}
       draggable={draggable}
       onDragEnd={onDragEnd}
+      onDragStart={(e) => {
+        e.target.moveToTop()
+        onDragStart?.(e)
+      }}
       onClick={onClick}
+      onContextMenu={onContextMenu}
+      {...restProps}
     >
       {/* Selection indicator */}
       {selected && (
@@ -86,132 +181,194 @@ export default function ISA101GaugeComponent({
         />
       )}
 
-      {/* Gauge background */}
+      {/* Gauge background circle */}
       <Circle
         x={centerX}
         y={centerY}
-        radius={radius}
+        radius={radius + 5}
         fill={ISA101Colors.equipmentFill}
         stroke={ISA101Colors.equipmentOutline}
-        strokeWidth={2}
+        strokeWidth={style.lineWidth || 2}
       />
 
       {/* Scale arc */}
       <Shape
-        sceneFunc={(context, shape) => {
-          context.beginPath()
-          context.arc(
+        sceneFunc={(ctx, shape) => {
+          ctx.beginPath()
+          ctx.arc(
             centerX,
             centerY,
-            radius - 10,
+            radius,
             (startAngle * Math.PI) / 180,
-            (endAngle * Math.PI) / 180
+            (endAngle * Math.PI) / 180,
+            false
           )
-          context.strokeStyle = ISA101Colors.scale
-          context.lineWidth = 2
-          context.stroke()
+          ctx.fillStrokeShape(shape)
         }}
+        stroke={ISA101Colors.scale}
+        strokeWidth={2}
       />
 
-      {/* Scale ticks and labels */}
-      {[0, 0.25, 0.5, 0.75, 1].map((fraction, i) => {
-        const angle = startAngle + (endAngle - startAngle) * fraction
-        const inner = getXY(angle, radius - 15)
-        const outer = getXY(angle, radius - 5)
-        const label = getXY(angle, radius - 30)
-        const value = properties.minValue + valueRange * fraction
+      {/* Alarm zones */}
+      {properties.alarmHigh && (
+        <Shape
+          sceneFunc={(ctx, shape) => {
+            const alarmNormalized = (properties.alarmHigh - properties.minValue) / valueRange
+            const alarmStartAngle = startAngle + (angleRange * alarmNormalized)
+            ctx.beginPath()
+            ctx.arc(
+              centerX,
+              centerY,
+              radius - 3,
+              (alarmStartAngle * Math.PI) / 180,
+              (endAngle * Math.PI) / 180,
+              false
+            )
+            ctx.fillStrokeShape(shape)
+          }}
+          stroke={ISA101Colors.alarmHigh}
+          strokeWidth={4}
+          opacity={0.6}
+        />
+      )}
 
-        return (
-          <Group key={i}>
-            <Line
-              points={[inner.x, inner.y, outer.x, outer.y]}
-              stroke={ISA101Colors.scale}
-              strokeWidth={2}
-            />
-            <Text
-              x={label.x - 15}
-              y={label.y - 6}
-              width={30}
-              text={value.toFixed(0)}
-              fontSize={10}
-              fontFamily="Arial"
-              fill={ISA101Colors.processValue}
-              align="center"
-            />
-          </Group>
-        )
-      })}
+      {properties.alarmLow && (
+        <Shape
+          sceneFunc={(ctx, shape) => {
+            const alarmNormalized = (properties.alarmLow - properties.minValue) / valueRange
+            const alarmEndAngle = startAngle + (angleRange * alarmNormalized)
+            ctx.beginPath()
+            ctx.arc(
+              centerX,
+              centerY,
+              radius - 3,
+              (startAngle * Math.PI) / 180,
+              (alarmEndAngle * Math.PI) / 180,
+              false
+            )
+            ctx.fillStrokeShape(shape)
+          }}
+          stroke={ISA101Colors.alarmLow}
+          strokeWidth={4}
+          opacity={0.6}
+        />
+      )}
 
-      {/* Alarm limits */}
-      {properties.alarmHigh !== undefined && (
+      {/* Scale marks and labels */}
+      {generateScaleMarks()}
+
+      {/* Setpoint indicator */}
+      {properties.setpoint !== undefined && (
         (() => {
-          const angle =
-            startAngle +
-            ((properties.alarmHigh - properties.minValue) / valueRange) *
-              (endAngle - startAngle)
-          const inner = getXY(angle, radius - 15)
-          const outer = getXY(angle, radius)
+          const setpointNormalized = (properties.setpoint - properties.minValue) / valueRange
+          const setpointAngle = startAngle + (angleRange * setpointNormalized)
+          const sp = getXY(setpointAngle, radius + 8)
           return (
-            <Line
-              points={[inner.x, inner.y, outer.x, outer.y]}
-              stroke={ISA101Colors.alarmHigh}
-              strokeWidth={3}
+            <Shape
+              sceneFunc={(ctx, shape) => {
+                ctx.beginPath()
+                ctx.moveTo(sp.x - 4, sp.y - 4)
+                ctx.lineTo(sp.x + 4, sp.y - 4)
+                ctx.lineTo(sp.x, sp.y + 4)
+                ctx.closePath()
+                ctx.fillStrokeShape(shape)
+              }}
+              fill={ISA101Colors.setpoint}
+              stroke={ISA101Colors.setpoint}
+              strokeWidth={1}
             />
           )
         })()
       )}
 
-      {/* Value pointer */}
-      <Line
-        points={[centerX, centerY, getXY(valueAngle, radius - 20).x, getXY(valueAngle, radius - 20).y]}
-        stroke={ISA101Colors.processValue}
-        strokeWidth={3}
-        lineCap="round"
-      />
-
-      {/* Center dot */}
-      <Circle
-        x={centerX}
-        y={centerY}
-        radius={5}
-        fill={ISA101Colors.equipmentOutline}
-      />
+      {/* Gauge needle */}
+      <Group rotation={valueAngle} x={centerX} y={centerY}>
+        <Line
+          points={[0, 0, radius - 15, 0]}
+          stroke={isInAlarm() ? ISA101Colors.needleAlarm : ISA101Colors.needleNormal}
+          strokeWidth={3}
+          lineCap="round"
+        />
+        {/* Needle hub */}
+        <Circle
+          x={0}
+          y={0}
+          radius={6}
+          fill={ISA101Colors.equipmentOutline}
+        />
+      </Group>
 
       {/* Tag name */}
       <Text
         x={0}
-        y={height - 25}
+        y={-15}
         width={width}
         text={properties.tagName}
         fontSize={12}
-        fontFamily="Arial"
         fontStyle="bold"
         fill={ISA101Colors.processValue}
         align="center"
       />
 
       {/* Digital value display */}
-      {properties.showDigitalValue && (
-        <Group y={centerY + 20}>
+      {properties.showDigitalValue !== false && (
+        <Group x={centerX - 40} y={centerY + radius - 20}>
           <Rect
-            x={centerX - 40}
+            x={0}
             y={0}
             width={80}
-            height={25}
-            fill={ISA101Colors.equipmentFill}
+            height={24}
+            fill={ISA101Colors.background}
             stroke={ISA101Colors.equipmentOutline}
             strokeWidth={1}
           />
           <Text
-            x={centerX - 40}
-            y={5}
+            x={0}
+            y={4}
             width={80}
             text={`${properties.currentValue.toFixed(1)} ${properties.units}`}
-            fontSize={12}
-            fontFamily="Courier New"
+            fontSize={14}
             fontStyle="bold"
-            fill={ISA101Colors.processValue}
+            fill={isInAlarm() ? ISA101Colors.needleAlarm : ISA101Colors.processValue}
             align="center"
+          />
+        </Group>
+      )}
+
+      {/* Gauge type indicator */}
+      <Text
+        x={0}
+        y={height + 5}
+        width={width}
+        text={properties.gaugeType?.toUpperCase() || 'GAUGE'}
+        fontSize={10}
+        fill={ISA101Colors.scale}
+        align="center"
+      />
+
+      {/* Trend indicator (simplified) */}
+      {properties.showTrend && (
+        <Group x={width - 50} y={5}>
+          <Rect
+            x={0}
+            y={0}
+            width={45}
+            height={20}
+            fill={ISA101Colors.background}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={1}
+          />
+          <Text
+            x={2}
+            y={2}
+            text="TREND"
+            fontSize={8}
+            fill={ISA101Colors.scale}
+          />
+          <Line
+            points={[5, 15, 15, 12, 25, 14, 35, 10, 40, 13]}
+            stroke={ISA101Colors.setpoint}
+            strokeWidth={1}
           />
         </Group>
       )}
