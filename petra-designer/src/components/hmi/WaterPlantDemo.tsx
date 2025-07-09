@@ -1,6 +1,6 @@
-// src/components/hmi/WaterPlantPetraDemo.tsx
+// src/components/hmi/WaterPlantDemo.tsx
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Stage, Layer, Group, Rect, Circle, Line, Text, Path } from 'react-konva'
 import { FaPlay, FaPause, FaCog, FaExclamationTriangle, FaSync } from 'react-icons/fa'
 import TankComponent from './components/TankComponent'
@@ -20,28 +20,22 @@ export default function WaterPlantPetraDemo() {
   const { connected, signals: petraSignals, setSignalValue } = usePetra()
   const isConnected = connected
   
+  // Helper function to get signal value with fallback
+  const getSignalValue = useCallback((signalName: string, defaultValue: any) => {
+    const value = petraSignals.get(signalName)
+    return value !== undefined ? value : defaultValue
+  }, [petraSignals])
+  
   // Debug logging
   useEffect(() => {
     console.log('PETRA Connection Status:', connected)
     console.log('PETRA Signals Map size:', petraSignals.size)
     console.log('Sample signals:', {
-      tankLevel: petraSignals.get('tank.level_feet'),
-      pressure: petraSignals.get('system.pressure'),
-      pump1Running: petraSignals.get('pump1.running')
+      tankLevel: getSignalValue('tank.level_feet', 12.5),
+      pressure: getSignalValue('system.pressure', 60),
+      pump1Running: getSignalValue('pump1.running', false)
     })
-    
-    // Log first few signals to see format
-    if (petraSignals.size > 0) {
-      console.log('First 5 signals:');
-      let count = 0;
-      petraSignals.forEach((value, key) => {
-        if (count < 5) {
-          console.log(`  ${key}:`, value);
-          count++;
-        }
-      });
-    }
-  }, [connected, petraSignals])
+  }, [connected, petraSignals, getSignalValue])
   
   const [simulation, setSimulation] = useState<SimulationState>({
     running: true,
@@ -56,69 +50,73 @@ export default function WaterPlantPetraDemo() {
   // PETRA signal values (read from signal bus)
   const signals = {
     // Tank
-    tankLevelFeet: Number(petraSignals.get('tank.level_feet') ?? 12.5),
-    tankLevelPercent: Number(petraSignals.get('tank.level_percent') ?? 50),
+    tankLevelFeet: Number(getSignalValue('tank.level_feet', 12.5)),
+    tankLevelPercent: Number(getSignalValue('tank.level_percent', 50)),
 
     // Well pump
-    wellRunning: Boolean(petraSignals.get('well.running') ?? false),
-    wellFlowRate: Number(petraSignals.get('well.flow_rate') ?? 0),
-    wellStartLevel: Number(petraSignals.get('well.start_level') ?? 8),
-    wellStopLevel: Number(petraSignals.get('well.stop_level') ?? 20),
-    wellSetpointFlow: Number(petraSignals.get('well.setpoint_flow') ?? 2000),
+    wellRunning: Boolean(getSignalValue('well.running', false)),
+    wellFlowRate: Number(getSignalValue('well.flow_rate', 0)),
+    wellStartLevel: Number(getSignalValue('well.start_level', 8)),
+    wellStopLevel: Number(getSignalValue('well.stop_level', 20)),
+    wellSetpointFlow: Number(getSignalValue('well.setpoint_flow', 2000)),
 
     // System
-    systemPressure: Number(petraSignals.get('system.pressure') ?? 60),
-    systemDemand: Number(petraSignals.get('system.demand') ?? 2500),
+    systemPressure: Number(getSignalValue('system.pressure', 60)),
+    systemDemand: Number(getSignalValue('system.demand', 2500)),
 
     // Pumps
-    pump1Running: Boolean(petraSignals.get('pump1.running') ?? false),
-    pump1FlowRate: Number(petraSignals.get('pump1.flow_rate') ?? 0),
-    pump1SetpointFlow: Number(petraSignals.get('pump1.setpoint_flow') ?? 1500),
-    pump1Efficiency: Number(petraSignals.get('pump1.efficiency') ?? 85),
-    pump1IsLead: Boolean(petraSignals.get('pump1.is_lead') ?? false),
+    pump1Running: Boolean(getSignalValue('pump1.running', false)),
+    pump1FlowRate: Number(getSignalValue('pump1.flow_rate', 0)),
+    pump1SetpointFlow: Number(getSignalValue('pump1.setpoint_flow', 1500)),
+    pump1Efficiency: Number(getSignalValue('pump1.efficiency', 85)),
+    pump1IsLead: Boolean(getSignalValue('pump1.is_lead', true)),
 
-    pump2Running: Boolean(petraSignals.get('pump2.running') ?? false),
-    pump2FlowRate: Number(petraSignals.get('pump2.flow_rate') ?? 0),
-    pump2SetpointFlow: Number(petraSignals.get('pump2.setpoint_flow') ?? 1500),
-    pump2Efficiency: Number(petraSignals.get('pump2.efficiency') ?? 85),
-    pump2IsLead: Boolean(petraSignals.get('pump2.is_lead') ?? false),
+    pump2Running: Boolean(getSignalValue('pump2.running', false)),
+    pump2FlowRate: Number(getSignalValue('pump2.flow_rate', 0)),
+    pump2SetpointFlow: Number(getSignalValue('pump2.setpoint_flow', 1500)),
+    pump2Efficiency: Number(getSignalValue('pump2.efficiency', 85)),
+    pump2IsLead: Boolean(getSignalValue('pump2.is_lead', false)),
 
-    pump3Running: Boolean(petraSignals.get('pump3.running') ?? false),
-    pump3FlowRate: Number(petraSignals.get('pump3.flow_rate') ?? 0),
-    pump3SetpointFlow: Number(petraSignals.get('pump3.setpoint_flow') ?? 2000),
-    pump3Efficiency: Number(petraSignals.get('pump3.efficiency') ?? 90),
-    pump3IsLead: Boolean(petraSignals.get('pump3.is_lead') ?? false),
-
-    // Pressure setpoints
-    leadStartPressure: Number(petraSignals.get('pressure.lead_start') ?? 55),
-    leadStopPressure: Number(petraSignals.get('pressure.lead_stop') ?? 65),
-    lagStartPressure: Number(petraSignals.get('pressure.lag_start') ?? 50),
-    lagStopPressure: Number(petraSignals.get('pressure.lag_stop') ?? 70),
+    pump3Running: Boolean(getSignalValue('pump3.running', false)),
+    pump3FlowRate: Number(getSignalValue('pump3.flow_rate', 0)),
+    pump3SetpointFlow: Number(getSignalValue('pump3.setpoint_flow', 1500)),
+    pump3Efficiency: Number(getSignalValue('pump3.efficiency', 85)),
+    pump3IsLead: Boolean(getSignalValue('pump3.is_lead', false)),
 
     // Hydrotanks
-    hydrotank1WaterLevel: Number(petraSignals.get('hydrotank1.water_level') ?? 50),
-    hydrotank1AirBlanket: Number(petraSignals.get('hydrotank1.air_blanket') ?? 50),
-    compressor1Running: Boolean(petraSignals.get('compressor1.running') ?? false),
+    hydrotank1WaterLevel: Number(getSignalValue('hydrotank1.water_level', 50)),
+    hydrotank1AirBlanket: Number(getSignalValue('hydrotank1.air_blanket', 50)),
 
-    hydrotank2WaterLevel: Number(petraSignals.get('hydrotank2.water_level') ?? 50),
-    hydrotank2AirBlanket: Number(petraSignals.get('hydrotank2.air_blanket') ?? 50),
-    compressor2Running: Boolean(petraSignals.get('compressor2.running') ?? false),
+    hydrotank2WaterLevel: Number(getSignalValue('hydrotank2.water_level', 50)),
+    hydrotank2AirBlanket: Number(getSignalValue('hydrotank2.air_blanket', 50)),
 
-    // Hydrotank setpoints
-    hydrotankAirBlanketMin: Number(petraSignals.get('hydrotank.air_blanket_min') ?? 45),
-    hydrotankAirBlanketMax: Number(petraSignals.get('hydrotank.air_blanket_max') ?? 55),
+    // Valves
+    dischargeValve1Open: Boolean(getSignalValue('valve.discharge1_open', true)),
+    dischargeValve2Open: Boolean(getSignalValue('valve.discharge2_open', true)),
+    dischargeValve3Open: Boolean(getSignalValue('valve.discharge3_open', true)),
+    dischargeHeaderValve1: Boolean(getSignalValue('valve.header1_open', true)),
+    dischargeHeaderValve2: Boolean(getSignalValue('valve.header2_open', true)),
+    wellValveOpen: Boolean(getSignalValue('valve.well_open', true)),
+
+    // Pressures
+    dischargePressure1: Number(getSignalValue('pressure.discharge1', 62)),
+    dischargePressure2: Number(getSignalValue('pressure.discharge2', 61)),
+    dischargePressure3: Number(getSignalValue('pressure.discharge3', 60)),
+    headerPressure1: Number(getSignalValue('pressure.header1', 59)),
+    headerPressure2: Number(getSignalValue('pressure.header2', 58)),
+    systemHeaderPressure: Number(getSignalValue('pressure.system_header', 55)),
 
     // Alarms
-    alarmTankLow: Boolean(petraSignals.get('alarm.tank_low') ?? false),
-    alarmTankHigh: Boolean(petraSignals.get('alarm.tank_high') ?? false),
-    alarmPressureLow: Boolean(petraSignals.get('alarm.pressure_low') ?? false),
-    alarmPressureHigh: Boolean(petraSignals.get('alarm.pressure_high') ?? false),
+    alarmTankLow: Boolean(getSignalValue('alarm.tank_low', false)),
+    alarmTankHigh: Boolean(getSignalValue('alarm.tank_high', false)),
+    alarmPressureLow: Boolean(getSignalValue('alarm.pressure_low', false)),
+    alarmPressureHigh: Boolean(getSignalValue('alarm.pressure_high', false)),
 
     // Lead pump rotation
-    currentLeadPump: Math.round(Number(petraSignals.get('lead.rotation_counter') ?? 1)),
+    currentLeadPump: Math.round(Number(getSignalValue('lead.rotation_counter', 1))),
     
     // Total pump flow
-    totalPumpFlow: Number(petraSignals.get('pumps.total_flow') ?? 0),
+    totalPumpFlow: Number(getSignalValue('pumps.total_flow', 0)),
   }
   
   // Update stage size on window resize
@@ -134,22 +132,6 @@ export default function WaterPlantPetraDemo() {
     return () => window.removeEventListener('resize', updateSize)
   }, [showControls])
   
-  // Manually fetch signals if connected but map is empty
-  useEffect(() => {
-    if (isConnected && petraSignals.size === 0) {
-      console.log('Connected but no signals, attempting manual fetch...');
-      
-      // Try to fetch signals via HTTP API
-      fetch('http://localhost:8080/api/signals')
-        .then(res => res.json())
-        .then(data => {
-          console.log('Fetched signals from API:', data);
-          // Note: This won't update petraSignals map, but shows what format we should expect
-        })
-        .catch(err => console.error('Failed to fetch signals:', err));
-    }
-  }, [isConnected, petraSignals.size]);
-  
   // Simulation physics (updates PETRA signals)
   useEffect(() => {
     if (!simulation.running || !isConnected) return
@@ -158,7 +140,7 @@ export default function WaterPlantPetraDemo() {
       try {
         const timeStep = 1 / 60 * simulation.timeMultiplier
         
-        // Read current values (handle wrapped format)
+        // Read current values
         const tankLevel = Number(getSignalValue('tank.level_feet', 12.5))
         const wellFlow = Number(getSignalValue('well.flow_rate', 0))
         const totalPumpFlow = Number(getSignalValue('pumps.total_flow', 0))
@@ -209,7 +191,7 @@ export default function WaterPlantPetraDemo() {
         
         // Hydrotank 1
         const ht1WaterLevel = Number(getSignalValue('hydrotank1.water_level', 50))
-        const ht1NewLevel = Math.max(0, Math.min(100, ht1WaterLevel + htFlowShare / 50)) // 50 gpm = 1% per minute
+        const ht1NewLevel = Math.max(0, Math.min(100, ht1WaterLevel + htFlowShare / 50))
         setSignalValue('hydrotank1.water_level', ht1NewLevel)
         setSignalValue('hydrotank1.air_blanket', 100 - ht1NewLevel)
         
@@ -228,7 +210,7 @@ export default function WaterPlantPetraDemo() {
     }, 100)
     
     return () => clearInterval(interval)
-  }, [simulation.running, simulation.timeMultiplier, isConnected, petraSignals, setSignalValue])
+  }, [simulation.running, simulation.timeMultiplier, isConnected, getSignalValue, setSignalValue])
   
   // Write signal to PETRA
   const writeSignal = (signal: string, value: any) => {
@@ -244,7 +226,7 @@ export default function WaterPlantPetraDemo() {
       
       // Force a re-read to verify the write
       setTimeout(() => {
-        const newValue = petraSignals.get(signal)
+        const newValue = getSignalValue(signal, null)
         console.log(`Verified ${signal} = ${newValue}`)
       }, 100)
     } catch (error) {
@@ -294,25 +276,6 @@ export default function WaterPlantPetraDemo() {
                 Last update: {simulation.lastUpdate.toLocaleTimeString()}
               </div>
             )}
-            {/* Debug Test Button */}
-            <button
-              onClick={() => {
-                console.log('Testing signal write...');
-                console.log('Current petraSignals:', petraSignals);
-                const currentValue = getSignalValue('pump1.running', false);
-                console.log('Current pump1.running value:', currentValue);
-                const testValue = !currentValue;
-                writeSignal('pump1.running', testValue);
-                setTimeout(() => {
-                  console.log('Signals after write:', petraSignals);
-                  const newValue = getSignalValue('pump1.running', false);
-                  console.log('New pump1.running value:', newValue);
-                }, 500);
-              }}
-              className="mt-2 px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
-            >
-              Test Toggle Pump 1
-            </button>
           </div>
           
           {/* Simulation Control */}
@@ -380,34 +343,86 @@ export default function WaterPlantPetraDemo() {
                 <span className={`font-medium ${
                   signals.alarmTankLow ? 'text-red-600' :
                   signals.alarmTankHigh ? 'text-orange-600' :
-                  'text-gray-700'
+                  'text-green-600'
                 }`}>
                   {signals.tankLevelFeet.toFixed(1)} ft ({signals.tankLevelPercent.toFixed(0)}%)
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Total Pump Flow:</span>
-                <span className="font-medium">
-                  {signals.totalPumpFlow.toFixed(0)} gpm
-                </span>
+                <span>Total Flow:</span>
+                <span className="font-medium">{signals.totalPumpFlow.toLocaleString()} gpm</span>
               </div>
               <div className="flex justify-between">
-                <span>Current Demand:</span>
-                <span className="font-medium">{signals.systemDemand.toLocaleString()} gpm</span>
+                <span>Lead Pump:</span>
+                <span className="font-medium">Pump {signals.currentLeadPump}</span>
               </div>
             </div>
           </div>
           
-          {/* Well Pump Control */}
+          {/* Pump Controls */}
           <div className="mb-6">
-            <h3 className="font-semibold mb-3">Well Pump Control</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between items-center mb-3">
-                <span className="font-medium">Manual Control:</span>
+            <h3 className="font-semibold mb-3">Distribution Pumps</h3>
+            
+            {[1, 2, 3].map(num => (
+              <div key={num} className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium flex items-center gap-2">
+                    Pump {num}
+                    {signals[`pump${num}IsLead` as keyof typeof signals] && (
+                      <span className="text-xs bg-petra-600 text-white px-2 py-1 rounded">LEAD</span>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => togglePump(num)}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      signals[`pump${num}Running` as keyof typeof signals]
+                        ? 'bg-green-500 text-white' 
+                        : 'bg-gray-300 text-gray-700'
+                    }`}
+                    disabled={!isConnected}
+                  >
+                    {signals[`pump${num}Running` as keyof typeof signals] ? 'Running' : 'Stopped'}
+                  </button>
+                </div>
+                
+                <div className="flex justify-between items-center text-sm">
+                  <span>Flow:</span>
+                  <span className="font-medium">
+                    {signals[`pump${num}FlowRate` as keyof typeof signals].toLocaleString()} gpm
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span>Setpoint:</span>
+                  <input
+                    type="number"
+                    value={signals[`pump${num}SetpointFlow` as keyof typeof signals]}
+                    onChange={(e) => updateSetpoint(`pump${num}.setpoint_flow`, parseInt(e.target.value))}
+                    className="w-20 px-2 py-1 border rounded text-right"
+                    min="0"
+                    max="3000"
+                    step="100"
+                    disabled={!isConnected}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span>Efficiency:</span>
+                  <span className="font-medium">{signals[`pump${num}Efficiency` as keyof typeof signals]}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Well Pump Control */}
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+            <h3 className="font-semibold mb-3">Well Pump</h3>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span>Status:</span>
                 <button
                   onClick={toggleWellPump}
-                  className={`px-3 py-1 rounded text-sm ${
-                    signals.wellRunning 
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                    signals.wellRunning
                       ? 'bg-green-500 text-white' 
                       : 'bg-gray-300 text-gray-700'
                   }`}
@@ -458,253 +473,41 @@ export default function WaterPlantPetraDemo() {
               </div>
               <div className="mt-2 p-2 bg-gray-100 rounded">
                 <div className="text-xs text-gray-600">
-                  Current: {signals.wellRunning ? 'Running' : 'Stopped'} at {signals.wellFlowRate} gpm
+                  Current: {signals.wellRunning ? `${signals.wellFlowRate.toLocaleString()} gpm` : 'Off'}
                 </div>
               </div>
             </div>
           </div>
           
-          {/* Pump Pressure Setpoints */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Pump Pressure Control</h3>
-            <div className="space-y-2 text-sm">
-              <div className="font-medium text-gray-700">Lead Pump</div>
-              <div className="flex justify-between items-center">
-                <span>Start Pressure:</span>
-                <input
-                  type="number"
-                  value={signals.leadStartPressure}
-                  onChange={(e) => updateSetpoint('pressure.lead_start', parseInt(e.target.value))}
-                  className="w-20 px-2 py-1 border rounded text-right"
-                  disabled={!isConnected}
-                />
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Stop Pressure:</span>
-                <input
-                  type="number"
-                  value={signals.leadStopPressure}
-                  onChange={(e) => updateSetpoint('pressure.lead_stop', parseInt(e.target.value))}
-                  className="w-20 px-2 py-1 border rounded text-right"
-                  disabled={!isConnected}
-                />
-              </div>
-              
-              <div className="font-medium text-gray-700 mt-3">Lag Pumps</div>
-              <div className="flex justify-between items-center">
-                <span>Start Pressure:</span>
-                <input
-                  type="number"
-                  value={signals.lagStartPressure}
-                  onChange={(e) => updateSetpoint('pressure.lag_start', parseInt(e.target.value))}
-                  className="w-20 px-2 py-1 border rounded text-right"
-                  disabled={!isConnected}
-                />
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Stop Pressure:</span>
-                <input
-                  type="number"
-                  value={signals.lagStopPressure}
-                  onChange={(e) => updateSetpoint('pressure.lag_stop', parseInt(e.target.value))}
-                  className="w-20 px-2 py-1 border rounded text-right"
-                  disabled={!isConnected}
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Hydrotank Setpoints */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Hydrotank Air Blanket Control</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between items-center">
-                <span>Compressor Start (%):</span>
-                <input
-                  type="number"
-                  value={signals.hydrotankAirBlanketMin}
-                  onChange={(e) => updateSetpoint('hydrotank.air_blanket_min', parseInt(e.target.value))}
-                  className="w-20 px-2 py-1 border rounded text-right"
-                  min="20"
-                  max="80"
-                  disabled={!isConnected}
-                />
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Compressor Stop (%):</span>
-                <input
-                  type="number"
-                  value={signals.hydrotankAirBlanketMax}
-                  onChange={(e) => updateSetpoint('hydrotank.air_blanket_max', parseInt(e.target.value))}
-                  className="w-20 px-2 py-1 border rounded text-right"
-                  min="20"
-                  max="80"
-                  disabled={!isConnected}
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Current Lead Pump Indicator */}
-          <div className="mb-6 p-4 bg-green-50 rounded-lg">
-            <h3 className="font-semibold mb-2">Lead Pump Rotation</h3>
-            <div className="text-sm">
-              <span>Current Lead: </span>
-              <span className="font-bold text-green-700">Pump {signals.currentLeadPump}</span>
-            </div>
-            <div className="text-xs text-gray-600 mt-1">
-              Controlled by PETRA logic blocks
-            </div>
-          </div>
-          
-          {/* Booster Pump Status */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Booster Pump Status</h3>
-            <div className="space-y-3">
-              {[1, 2, 3].map(num => {
-                const isRunning = (signals as any)[`pump${num}Running`]
-                const flowRate = (signals as any)[`pump${num}FlowRate`]
-                const setpointFlow = (signals as any)[`pump${num}SetpointFlow`]
-                const efficiency = (signals as any)[`pump${num}Efficiency`]
-                const isLead = num === signals.currentLeadPump
-                
-                return (
-                  <div 
-                    key={num} 
-                    className={`p-3 border rounded-lg ${
-                      isLead ? 'border-green-500 bg-green-50' : 'border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">
-                        Pump {num} 
-                        {isLead && 
-                          <span className="ml-2 text-xs bg-green-600 text-white px-2 py-0.5 rounded">LEAD</span>
-                        }
-                      </span>
-                      <button
-                        onClick={() => togglePump(num)}
-                        className={`px-3 py-1 rounded text-sm ${
-                          isRunning 
-                            ? 'bg-green-500 text-white' 
-                            : 'bg-gray-300 text-gray-700'
-                        }`}
-                        disabled={!isConnected}
-                      >
-                        {isRunning ? 'Running' : 'Stopped'}
-                      </button>
-                    </div>
-                    
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <div>Flow: {flowRate.toFixed(0)} / {setpointFlow} gpm</div>
-                      <div className="flex items-center gap-2">
-                        <span>Setpoint:</span>
-                        <input
-                          type="number"
-                          value={setpointFlow}
-                          onChange={(e) => updateSetpoint(`pump${num}.setpoint_flow`, parseInt(e.target.value))}
-                          className="w-16 px-1 py-0.5 border rounded text-right text-xs"
-                          min="0"
-                          max="3000"
-                          step="100"
-                          disabled={!isConnected}
-                        />
-                        <span className="text-xs text-gray-500">gpm</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span>Efficiency:</span>
-                        <input
-                          type="number"
-                          value={efficiency}
-                          onChange={(e) => updateSetpoint(`pump${num}.efficiency`, parseInt(e.target.value))}
-                          className="w-16 px-1 py-0.5 border rounded text-right text-xs"
-                          min="0"
-                          max="100"
-                          step="5"
-                          disabled={!isConnected}
-                        />
-                        <span className="text-xs text-gray-500">%</span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-          
-          {/* Hydrotank Status */}
-          <div className="mb-6">
-            <h3 className="font-semibold mb-3">Hydrotank Status</h3>
-            <div className="space-y-3">
-              {[1, 2].map(num => {
-                const waterLevel = num === 1 ? signals.hydrotank1WaterLevel : signals.hydrotank2WaterLevel
-                const airBlanket = num === 1 ? signals.hydrotank1AirBlanket : signals.hydrotank2AirBlanket
-                const compressorRunning = num === 1 ? signals.compressor1Running : signals.compressor2Running
-                
-                return (
-                  <div key={num} className="p-3 border rounded-lg">
-                    <div className="font-medium mb-2">Hydrotank {num}</div>
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <div>Air Blanket: {airBlanket.toFixed(1)}%</div>
-                      <div>Water Level: {waterLevel.toFixed(1)}%</div>
-                      <div>Pressure: {signals.systemPressure} psi</div>
-                      <div className="flex items-center gap-2">
-                        <span>Compressor:</span>
-                        <span className={`font-medium ${compressorRunning ? 'text-green-600' : 'text-gray-600'}`}>
-                          {compressorRunning ? 'Running' : 'Off'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-          
-          {/* Active Alarms */}
+          {/* Alarms */}
           {(signals.alarmTankLow || signals.alarmTankHigh || signals.alarmPressureLow || signals.alarmPressureHigh) && (
-            <div className="mb-6 p-4 bg-red-50 rounded-lg">
-              <h3 className="font-semibold mb-2 text-red-700 flex items-center gap-2">
+            <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg">
+              <h3 className="font-semibold text-red-700 mb-2 flex items-center gap-2">
                 <FaExclamationTriangle />
                 Active Alarms
               </h3>
-              <div className="space-y-1 text-sm">
-                {signals.alarmTankLow && (
-                  <div className="text-red-600">
-                    <span className="font-medium">Tank Low:</span> Level below 5 ft
-                  </div>
-                )}
-                {signals.alarmTankHigh && (
-                  <div className="text-red-600">
-                    <span className="font-medium">Tank High:</span> Level above 22.5 ft
-                  </div>
-                )}
-                {signals.alarmPressureLow && (
-                  <div className="text-red-600">
-                    <span className="font-medium">Low Pressure:</span> Below 40 psi
-                  </div>
-                )}
-                {signals.alarmPressureHigh && (
-                  <div className="text-red-600">
-                    <span className="font-medium">High Pressure:</span> Above 80 psi
-                  </div>
-                )}
+              <div className="space-y-1 text-sm text-red-600">
+                {signals.alarmTankLow && <div>• Tank Level Low</div>}
+                {signals.alarmTankHigh && <div>• Tank Level High</div>}
+                {signals.alarmPressureLow && <div>• System Pressure Low</div>}
+                {signals.alarmPressureHigh && <div>• System Pressure High</div>}
               </div>
             </div>
           )}
         </div>
       )}
       
-      {/* Toggle Controls Button */}
-      <button
-        onClick={() => setShowControls(!showControls)}
-        className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-white border border-gray-300 rounded-r-lg px-2 py-4 shadow-lg hover:bg-gray-50 z-10"
-      >
-        {showControls ? '◀' : '▶'}
-      </button>
-      
-      {/* Main Display */}
+      {/* Main Stage */}
       <div className="flex-1 relative">
+        {/* Control Toggle Button */}
+        <button
+          onClick={() => setShowControls(!showControls)}
+          className="absolute top-4 left-4 z-10 bg-white rounded-lg px-3 py-2 shadow-md flex items-center gap-2 hover:bg-gray-50"
+        >
+          <FaCog />
+          {showControls ? 'Hide' : 'Show'} Controls
+        </button>
+        
         <Stage width={stageSize.width} height={stageSize.height}>
           <Layer>
             {/* Background */}
@@ -713,435 +516,273 @@ export default function WaterPlantPetraDemo() {
               y={0}
               width={stageSize.width}
               height={stageSize.height}
-              fill="#f8fafc"
+              fill="#f9fafb"
             />
-            
-            {/* Title */}
-            <Text
-              x={20}
-              y={20}
-              text="Water Treatment Plant - PETRA Logic Control"
-              fontSize={24}
-              fontStyle="bold"
-              fill="#1e293b"
-            />
-            
-            {/* PETRA Status */}
-            <Group x={stageSize.width - 200} y={20}>
-              <Rect
-                x={0}
-                y={0}
-                width={180}
-                height={30}
-                fill={isConnected ? '#dcfce7' : '#fee2e2'}
-                stroke={isConnected ? '#16a34a' : '#dc2626'}
-                strokeWidth={2}
-                cornerRadius={5}
-              />
-              <Text
-                x={0}
-                y={8}
-                width={180}
-                text={isConnected ? 'PETRA Connected' : 'PETRA Disconnected'}
-                fontSize={14}
-                align="center"
-                fill={isConnected ? '#16a34a' : '#dc2626'}
-                fontStyle="bold"
-              />
-            </Group>
             
             {/* Ground Storage Tank */}
-            <Group x={100} y={200}>
+            <Group x={100} y={100}>
               <TankComponent
                 x={0}
                 y={0}
                 width={200}
-                height={250}
-                properties={{
-                  maxLevel: 100,
-                  currentLevel: signals.tankLevelPercent,
-                  alarmHigh: 90,
-                  alarmLow: 20,
-                  showLabel: true,
-                  units: '%',
-                  showWaveAnimation: true,
-                }}
-                bindings={[]}
-                style={{
-                  fill: '#e0f2fe',
-                  stroke: signals.alarmTankHigh || signals.alarmTankLow ? '#dc2626' : '#0284c7',
-                  strokeWidth: 3,
-                }}
-              />
-              <Text
-                x={0}
-                y={-30}
-                width={200}
-                text="Ground Storage Tank"
-                fontSize={16}
-                fontStyle="bold"
-                align="center"
-                fill="#0284c7"
-              />
-              <Text
-                x={0}
-                y={260}
-                width={200}
-                text={`200k gal capacity`}
-                fontSize={12}
-                align="center"
-                fill="#64748b"
-              />
-              <Text
-                x={0}
-                y={275}
-                width={200}
-                text={`Level: ${signals.tankLevelFeet.toFixed(1)} ft`}
-                fontSize={12}
-                align="center"
-                fill="#64748b"
+                height={300}
+                levelPercent={signals.tankLevelPercent}
+                label="Ground Storage Tank"
+                capacity="200,000 gal"
+                units="ft"
+                currentValue={signals.tankLevelFeet.toFixed(1)}
+                maxValue={25}
+                showAlarm={signals.alarmTankLow || signals.alarmTankHigh}
+                alarmMessage={
+                  signals.alarmTankLow ? 'LOW LEVEL' : 
+                  signals.alarmTankHigh ? 'HIGH LEVEL' : ''
+                }
               />
             </Group>
             
-            {/* Well Pump */}
-            <Group x={100} y={520}>
+            {/* Well connection */}
+            <Group>
+              <Line
+                points={[300, 250, 380, 250]}
+                stroke="#4B5563"
+                strokeWidth={6}
+                lineCap="round"
+              />
+              <ValveComponent
+                x={380}
+                y={250}
+                isOpen={signals.wellValveOpen}
+                label="Well"
+                showFlow={signals.wellRunning}
+              />
+              <Line
+                points={[420, 250, 500, 250]}
+                stroke="#4B5563"
+                strokeWidth={6}
+                lineCap="round"
+              />
+              {/* Well pump */}
               <PumpComponent
+                x={500}
+                y={250}
+                isRunning={signals.wellRunning}
+                label="Well Pump"
+                flowRate={signals.wellFlowRate}
+                isLead={false}
+              />
+              <Line
+                points={[580, 250, 660, 250, 660, 350, 200, 350, 200, 400]}
+                stroke="#4B5563"
+                strokeWidth={6}
+                lineCap="round"
+              />
+            </Group>
+            
+            {/* Distribution pumps */}
+            {[1, 2, 3].map((num, index) => (
+              <Group key={num}>
+                <Line
+                  points={[200, 250 - index * 60, 500, 250 - index * 60]}
+                  stroke="#4B5563"
+                  strokeWidth={6}
+                  lineCap="round"
+                />
+                <PumpComponent
+                  x={500}
+                  y={250 - index * 60}
+                  isRunning={signals[`pump${num}Running` as keyof typeof signals] as boolean}
+                  label={`Pump ${num}`}
+                  flowRate={signals[`pump${num}FlowRate` as keyof typeof signals] as number}
+                  isLead={signals[`pump${num}IsLead` as keyof typeof signals] as boolean}
+                />
+                <Line
+                  points={[580, 250 - index * 60, 620, 250 - index * 60]}
+                  stroke="#4B5563"
+                  strokeWidth={6}
+                  lineCap="round"
+                />
+                <ValveComponent
+                  x={620}
+                  y={250 - index * 60}
+                  isOpen={signals[`dischargeValve${num}Open` as keyof typeof signals] as boolean}
+                  label={`DV${num}`}
+                  showFlow={signals[`pump${num}Running` as keyof typeof signals] as boolean}
+                />
+                <Line
+                  points={[660, 250 - index * 60, 700, 250 - index * 60]}
+                  stroke="#4B5563"
+                  strokeWidth={6}
+                  lineCap="round"
+                />
+                <GaugeComponent
+                  x={720}
+                  y={250 - index * 60}
+                  value={signals[`dischargePressure${num}` as keyof typeof signals] as number}
+                  maxValue={100}
+                  units="psi"
+                  label={`P${num}`}
+                  showAlarm={false}
+                />
+                <Line
+                  points={[780, 250 - index * 60, 820, 250 - index * 60]}
+                  stroke="#4B5563"
+                  strokeWidth={6}
+                  lineCap="round"
+                />
+              </Group>
+            ))}
+            
+            {/* Discharge headers */}
+            <Group>
+              {/* Header 1 - Pumps 1&2 */}
+              <Line
+                points={[820, 250, 820, 200, 820, 190, 900, 190]}
+                stroke="#4B5563"
+                strokeWidth={6}
+                lineCap="round"
+              />
+              <ValveComponent
+                x={900}
+                y={190}
+                isOpen={signals.dischargeHeaderValve1}
+                label="H1"
+                showFlow={signals.pump1Running || signals.pump2Running}
+              />
+              <Line
+                points={[940, 190, 980, 190]}
+                stroke="#4B5563"
+                strokeWidth={6}
+                lineCap="round"
+              />
+              <GaugeComponent
+                x={1000}
+                y={190}
+                value={signals.headerPressure1}
+                maxValue={100}
+                units="psi"
+                label="HP1"
+                showAlarm={false}
+              />
+              
+              {/* Header 2 - All pumps */}
+              <Line
+                points={[820, 130, 820, 100, 900, 100]}
+                stroke="#4B5563"
+                strokeWidth={6}
+                lineCap="round"
+              />
+              <ValveComponent
+                x={900}
+                y={100}
+                isOpen={signals.dischargeHeaderValve2}
+                label="H2"
+                showFlow={signals.pump1Running || signals.pump2Running || signals.pump3Running}
+              />
+              <Line
+                points={[940, 100, 980, 100]}
+                stroke="#4B5563"
+                strokeWidth={6}
+                lineCap="round"
+              />
+              <GaugeComponent
+                x={1000}
+                y={100}
+                value={signals.headerPressure2}
+                maxValue={100}
+                units="psi"
+                label="HP2"
+                showAlarm={false}
+              />
+            </Group>
+            
+            {/* Hydrotanks */}
+            <Group x={900} y={300}>
+              <TankComponent
                 x={0}
                 y={0}
                 width={80}
-                height={80}
-                properties={{
-                  running: signals.wellRunning,
-                  fault: false,
-                  speed: signals.wellRunning ? 100 : 0,
-                  showStatus: true,
-                  runAnimation: true,
-                }}
-                bindings={[]}
-                style={{
-                  fill: '#ffffff',
-                  stroke: '#7c3aed',
-                  strokeWidth: 2,
-                }}
-              />
-              <Text
-                x={-20}
-                y={85}
-                width={120}
-                text="Well Pump"
-                fontSize={14}
-                align="center"
-                fill="#7c3aed"
-              />
-              <Text
-                x={-20}
-                y={100}
-                width={120}
-                text={`${signals.wellFlowRate} gpm`}
-                fontSize={12}
-                align="center"
-                fill="#64748b"
-              />
-              
-              {/* Pipe from well to tank */}
-              <Line
-                points={[40, 0, 40, -70]}
-                stroke="#7c3aed"
-                strokeWidth={6}
-              />
-            </Group>
-            
-            {/* Booster Pumps */}
-            {[1, 2, 3].map((num, index) => {
-              const isRunning = (signals as any)[`pump${num}Running`]
-              const flowRate = (signals as any)[`pump${num}FlowRate`]
-              const isLead = num === signals.currentLeadPump
-              
-              return (
-                <Group key={num} x={400 + index * 150} y={350}>
-                  <PumpComponent
-                    x={0}
-                    y={0}
-                    width={80}
-                    height={80}
-                    properties={{
-                      running: isRunning,
-                      fault: false,
-                      speed: isRunning ? 85 : 0,
-                      showStatus: true,
-                      runAnimation: true,
-                    }}
-                    bindings={[]}
-                    style={{
-                      fill: '#ffffff',
-                      stroke: isRunning ? '#16a34a' : '#6b7280',
-                      strokeWidth: 2,
-                    }}
-                  />
-                  <Text
-                    x={-20}
-                    y={-25}
-                    width={120}
-                    text={`Pump ${num}`}
-                    fontSize={14}
-                    align="center"
-                    fontStyle="bold"
-                    fill={isRunning ? '#16a34a' : '#6b7280'}
-                  />
-                  {isLead && (
-                    <Rect
-                      x={20}
-                      y={-40}
-                      width={40}
-                      height={20}
-                      fill="#16a34a"
-                      cornerRadius={3}
-                    />
-                  )}
-                  {isLead && (
-                    <Text
-                      x={20}
-                      y={-36}
-                      width={40}
-                      text="LEAD"
-                      fontSize={10}
-                      align="center"
-                      fill="#ffffff"
-                      fontStyle="bold"
-                    />
-                  )}
-                  <Text
-                    x={-20}
-                    y={85}
-                    width={120}
-                    text={`${flowRate.toFixed(0)} gpm`}
-                    fontSize={12}
-                    align="center"
-                    fill="#64748b"
-                  />
-                  <Text
-                    x={-20}
-                    y={100}
-                    width={120}
-                    text={`${signals.systemPressure} psi`}
-                    fontSize={12}
-                    align="center"
-                    fill="#64748b"
-                  />
-                  
-                  {/* Inlet pipe */}
-                  <Line
-                    points={[40, 80, 40, 120, -100 + index * 150, 120]}
-                    stroke="#6b7280"
-                    strokeWidth={4}
-                  />
-                  
-                  {/* Outlet pipe */}
-                  <Line
-                    points={[40, 0, 40, -50]}
-                    stroke={isRunning ? '#16a34a' : '#6b7280'}
-                    strokeWidth={4}
-                  />
-                </Group>
-              )
-            })}
-            
-            {/* Main distribution pipe */}
-            <Line
-              points={[300, 300, 850, 300]}
-              stroke="#0284c7"
-              strokeWidth={8}
-            />
-            
-            {/* Connect tank to distribution */}
-            <Line
-              points={[300, 325, 350, 325, 350, 300]}
-              stroke="#0284c7"
-              strokeWidth={6}
-            />
-            
-            {/* Hydrotanks */}
-            {[1, 2].map((num, index) => {
-              const waterLevel = num === 1 ? signals.hydrotank1WaterLevel : signals.hydrotank2WaterLevel
-              const airBlanket = num === 1 ? signals.hydrotank1AirBlanket : signals.hydrotank2AirBlanket
-              const compressorRunning = num === 1 ? signals.compressor1Running : signals.compressor2Running
-              
-              return (
-                <Group key={num} x={900 + index * 180} y={320}>
-                  {/* Tank body */}
-                  <Rect
-                    x={0}
-                    y={0}
-                    width={120}
-                    height={180}
-                    fill="#ffffff"
-                    stroke="#0284c7"
-                    strokeWidth={3}
-                    cornerRadius={10}
-                  />
-                  
-                  {/* Water level */}
-                  <Rect
-                    x={3}
-                    y={180 - (180 * waterLevel / 100) - 3}
-                    width={114}
-                    height={180 * waterLevel / 100}
-                    fill="#3b82f6"
-                    opacity={0.3}
-                    cornerRadius={8}
-                  />
-                  
-                  {/* Air blanket indicator */}
-                  <Rect
-                    x={3}
-                    y={3}
-                    width={114}
-                    height={180 * airBlanket / 100 - 6}
-                    fill="#e0f2fe"
-                    opacity={0.5}
-                    cornerRadius={8}
-                  />
-                  
-                  {/* Compressor */}
-                  <Circle
-                    x={60}
-                    y={-30}
-                    radius={15}
-                    fill={compressorRunning ? '#10b981' : '#e5e7eb'}
-                    stroke="#374151"
-                    strokeWidth={2}
-                  />
-                  <Text
-                    x={55}
-                    y={-35}
-                    text="C"
-                    fontSize={14}
-                    fontStyle="bold"
-                    fill="#374151"
-                  />
-                  
-                  {/* Air line */}
-                  <Line
-                    points={[60, -15, 60, 0]}
-                    stroke="#374151"
-                    strokeWidth={3}
-                  />
-                  
-                  {/* Labels */}
-                  <Text
-                    x={0}
-                    y={-55}
-                    width={120}
-                    text={`Hydrotank ${num}`}
-                    fontSize={14}
-                    align="center"
-                    fontStyle="bold"
-                    fill="#0284c7"
-                  />
-                  
-                  <Text
-                    x={0}
-                    y={190}
-                    width={120}
-                    text={`Air: ${airBlanket.toFixed(0)}%`}
-                    fontSize={11}
-                    align="center"
-                    fill="#374151"
-                  />
-                  
-                  <Text
-                    x={0}
-                    y={205}
-                    width={120}
-                    text={`${signals.systemPressure} psi`}
-                    fontSize={11}
-                    align="center"
-                    fill="#374151"
-                  />
-                  
-                  {/* Connection pipe */}
-                  <Line
-                    points={[60, 180, 60, 220, -50 + index * 180, 220, -50 + index * 180, 300]}
-                    stroke="#0284c7"
-                    strokeWidth={4}
-                  />
-                </Group>
-              )
-            })}
-            
-            {/* To distribution */}
-            <Line
-              points={[850, 300, 850, 200]}
-              stroke="#0284c7"
-              strokeWidth={8}
-            />
-            
-            {/* System Pressure Gauge */}
-            <Group x={750} y={70}>
-              <GaugeComponent
-                x={0}
-                y={0}
-                width={150}
                 height={150}
-                properties={{
-                  min: 0,
-                  max: 100,
-                  value: signals.systemPressure,
-                  units: 'psi',
-                  showScale: true,
-                  majorTicks: 5,
-                }}
-                bindings={[]}
-                style={{
-                  fill: '#ffffff',
-                  stroke: signals.alarmPressureLow || signals.alarmPressureHigh ? '#dc2626' : '#0284c7',
-                  strokeWidth: 3,
-                }}
+                levelPercent={signals.hydrotank1WaterLevel}
+                label="HT-1"
+                units="%"
+                currentValue={signals.hydrotank1WaterLevel.toFixed(0)}
+                maxValue={100}
+                showAlarm={false}
+                tankType="pressure"
               />
-              <Text
-                x={0}
-                y={155}
-                width={150}
-                text="System Pressure"
-                fontSize={14}
-                align="center"
-                fill="#0284c7"
+              <TankComponent
+                x={100}
+                y={0}
+                width={80}
+                height={150}
+                levelPercent={signals.hydrotank2WaterLevel}
+                label="HT-2"
+                units="%"
+                currentValue={signals.hydrotank2WaterLevel.toFixed(0)}
+                maxValue={100}
+                showAlarm={false}
+                tankType="pressure"
               />
             </Group>
             
-            {/* Demand indicator */}
-            <Group x={950} y={70}>
-              <Text
-                x={0}
-                y={0}
-                text="Current Demand"
-                fontSize={16}
-                fontStyle="bold"
-                fill="#0284c7"
+            {/* Main system header */}
+            <Group>
+              <Line
+                points={[1060, 190, 1100, 190, 1100, 300, 1100, 375, 980, 375]}
+                stroke="#4B5563"
+                strokeWidth={8}
+                lineCap="round"
               />
-              <Text
-                x={0}
-                y={25}
-                text={`${signals.systemDemand.toLocaleString()} gpm`}
-                fontSize={24}
-                fontStyle="bold"
-                fill="#0284c7"
+              <Line
+                points={[1060, 100, 1100, 100, 1100, 190]}
+                stroke="#4B5563"
+                strokeWidth={8}
+                lineCap="round"
               />
-              <Text
-                x={0}
-                y={55}
-                text="Total Pump Flow"
-                fontSize={14}
-                fill="#64748b"
+              
+              {/* System pressure gauge */}
+              <GaugeComponent
+                x={1150}
+                y={250}
+                value={signals.systemPressure}
+                maxValue={100}
+                units="psi"
+                label="System"
+                showAlarm={signals.alarmPressureLow || signals.alarmPressureHigh}
+                size={80}
               />
-              <Text
-                x={0}
-                y={75}
-                text={`${signals.totalPumpFlow.toFixed(0)} gpm`}
-                fontSize={20}
-                fontStyle="bold"
-                fill={signals.totalPumpFlow >= signals.systemDemand ? '#16a34a' : '#dc2626'}
-              />
+              
+              {/* Distribution arrow */}
+              <Group x={1100} y={450}>
+                <Line
+                  points={[0, 0, 0, 50]}
+                  stroke="#4B5563"
+                  strokeWidth={8}
+                  lineCap="round"
+                />
+                <Path
+                  data="M -10 50 L 10 50 L 0 70 Z"
+                  fill="#4B5563"
+                />
+                <Text
+                  x={-50}
+                  y={80}
+                  text="To Distribution"
+                  fontSize={14}
+                  fill="#374151"
+                  align="center"
+                  width={100}
+                />
+                <Text
+                  x={-50}
+                  y={100}
+                  text={`${signals.systemDemand.toLocaleString()} gpm`}
+                  fontSize={12}
+                  fill="#6B7280"
+                  align="center"
+                  width={100}
+                />
+              </Group>
             </Group>
           </Layer>
         </Stage>
