@@ -87,6 +87,9 @@ export interface ComponentStyle {
   backgroundColor?: string
   borderRadius?: number
   shadow?: boolean
+  // Additional style properties
+  needleColor?: string
+  textColor?: string
 }
 
 export interface HMIDisplay {
@@ -115,6 +118,10 @@ export interface TankProperties {
   units: string
   liquidColor?: string
   showWaveAnimation?: boolean
+  // Additional properties
+  fillColor?: string
+  label?: string
+  isMetric?: boolean
 }
 
 export interface PumpProperties {
@@ -129,7 +136,7 @@ export interface ValveProperties {
   open: boolean
   fault: boolean
   position: number
-  valveType: 'gate' | 'ball' | 'butterfly' | 'control'
+  valveType?: 'gate' | 'ball' | 'butterfly' | 'control'
   showPosition?: boolean
 }
 
@@ -138,14 +145,21 @@ export interface GaugeProperties {
   max: number
   value: number
   units: string
-  showScale: boolean
-  majorTicks: number
+  showScale?: boolean
+  majorTicks?: number
   minorTicks?: number
   ranges?: Array<{
     start: number
     end: number
     color: string
   }>
+  // Additional properties
+  label?: string
+  showDigital?: boolean
+  alarmLow?: number
+  alarmHigh?: number
+  warningLow?: number
+  warningHigh?: number
 }
 
 export interface TrendProperties {
@@ -196,10 +210,7 @@ export interface HMIExportOptions {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Enhanced component bindings with expressions and validation
-// ---------------------------------------------------------------------------
-
 export interface EnhancedBinding extends SignalBinding {
   /** Optional JavaScript expression for computed bindings */
   expression?: string
@@ -215,10 +226,7 @@ export interface EnhancedBinding extends SignalBinding {
   visibilityCondition?: string
 }
 
-// ---------------------------------------------------------------------------
 // Component template definitions
-// ---------------------------------------------------------------------------
-
 export interface ComponentTemplate {
   name: string
   description: string
