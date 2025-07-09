@@ -26,21 +26,46 @@ interface FlowState {
   updateNode: (nodeId: string, data: any) => void
   updateNodeData: (nodeId: string, data: any) => void
   deleteNode: (nodeId: string) => void
-  deleteEdge: (edgeId: string) => void  // Add this line
+  deleteEdge: (edgeId: string) => void
   setSelectedNode: (node: Node | null) => void
   clearFlow: () => void
   loadFlow: (nodes: Node[], edges: Edge[]) => void
+  // History for undo/redo
+  history: Array<{ nodes: Node[]; edges: Edge[] }>
+  historyIndex: number
+  undo: () => void
+  redo: () => void
+  canUndo: () => boolean
+  canRedo: () => boolean
+}
+
+type FlowStore = FlowState
+
+// Helper to save current nodes/edges to history
+const saveHistory = (get: () => FlowStore, set: (state: Partial<FlowStore>) => void) => {
+  const state = get()
+  const snapshot = {
+    nodes: JSON.parse(JSON.stringify(state.nodes)),
+    edges: JSON.parse(JSON.stringify(state.edges)),
+  }
+  const newHistory = state.history.slice(0, state.historyIndex + 1)
+  newHistory.push(snapshot)
+  if (newHistory.length > 50) newHistory.shift()
+  set({ history: newHistory, historyIndex: newHistory.length - 1 })
 }
 
 export const useFlowStore = create<FlowState>((set, get) => ({
   nodes: [],
   edges: [],
   selectedNode: null,
+  history: [{ nodes: [], edges: [] }],
+  historyIndex: 0,
   
   deleteEdge: (edgeId: string) => {
     set({
       edges: get().edges.filter((e) => e.id !== edgeId),
     })
+    saveHistory(get, set)
   },
 
   onNodesChange: (changes: NodeChange[]) => {
@@ -87,6 +112,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       edges: [...edges, newEdge],
     })
 
+    saveHistory(get, set)
+
     toast.success('Connected successfully')
   },
 
@@ -107,6 +134,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set({
       nodes: [...get().nodes, newNode],
     })
+    saveHistory(get, set)
   },
 
   // Deprecated - use updateNodeData instead
@@ -143,6 +171,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     })
 
     set({ nodes })
+    saveHistory(get, set)
 
     // Update selected node if it was the one updated
     if (get().selectedNode?.id === nodeId) {
@@ -159,6 +188,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
       selectedNode: get().selectedNode?.id === nodeId ? null : get().selectedNode,
     })
+    saveHistory(get, set)
   },
 
   setSelectedNode: (node: Node | null) => {
@@ -171,6 +201,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       edges: [],
       selectedNode: null,
     })
+    saveHistory(get, set)
   },
 
   loadFlow: (nodes: Node[], edges: Edge[]) => {
@@ -179,7 +210,39 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       edges,
       selectedNode: null,
     })
+    saveHistory(get, set)
   },
+
+  undo: () => {
+    const state = get()
+    if (state.historyIndex > 0) {
+      const newIndex = state.historyIndex - 1
+      const snap = state.history[newIndex]
+      set({
+        nodes: JSON.parse(JSON.stringify(snap.nodes)),
+        edges: JSON.parse(JSON.stringify(snap.edges)),
+        historyIndex: newIndex,
+        selectedNode: null,
+      })
+    }
+  },
+
+  redo: () => {
+    const state = get()
+    if (state.historyIndex < state.history.length - 1) {
+      const newIndex = state.historyIndex + 1
+      const snap = state.history[newIndex]
+      set({
+        nodes: JSON.parse(JSON.stringify(snap.nodes)),
+        edges: JSON.parse(JSON.stringify(snap.edges)),
+        historyIndex: newIndex,
+        selectedNode: null,
+      })
+    }
+  },
+
+  canUndo: () => get().historyIndex > 0,
+  canRedo: () => get().historyIndex < get().history.length - 1,
 }))
 
 function getDefaultNodeData(type: string): any {
