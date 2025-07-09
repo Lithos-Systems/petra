@@ -52,6 +52,7 @@ interface ISA101ValveProps {
   selected?: boolean
   onContextMenu?: (e: any) => void
   onClick?: () => void
+  [key: string]: any
 }
 
 export default function ISA101ValveComponent({
@@ -63,7 +64,8 @@ export default function ISA101ValveComponent({
   style = {},
   selected = false,
   onContextMenu,
-  onClick
+  onClick,
+  ...rest
 }: ISA101ValveProps) {
   const [blinkState, setBlinkState] = useState(true)
   
@@ -259,7 +261,7 @@ export default function ISA101ValveComponent({
   const showAlarm = (properties.travelAlarm || properties.positionDeviation) && blinkState
   
   return (
-    <Group x={x} y={y} onClick={onClick} onContextMenu={onContextMenu}>
+    <Group x={x} y={y} onClick={onClick} onContextMenu={onContextMenu} {...rest}>
       {/* Selection indicator */}
       {selected && (
         <Rect

@@ -77,6 +77,7 @@ interface ISA101TankProps {
   }
   selected?: boolean
   onContextMenu?: (e: any) => void
+  [key: string]: any
 }
 
 export default function ISA101TankComponent({
@@ -87,7 +88,8 @@ export default function ISA101TankComponent({
   properties,
   style = {},
   selected = false,
-  onContextMenu
+  onContextMenu,
+  ...rest
 }: ISA101TankProps) {
   const [animatedLevel, setAnimatedLevel] = useState(properties.currentLevel)
   const [trendData, setTrendData] = useState<number[]>([])
@@ -164,7 +166,7 @@ export default function ISA101TankComponent({
   const showAlarm = alarmColor && blinkState
   
   return (
-    <Group x={x} y={y} onContextMenu={onContextMenu}>
+    <Group x={x} y={y} onContextMenu={onContextMenu} {...rest}>
       {/* Selection indicator */}
       {selected && (
         <Rect

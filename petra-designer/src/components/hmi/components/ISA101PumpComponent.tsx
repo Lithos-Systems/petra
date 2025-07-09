@@ -66,6 +66,7 @@ interface ISA101PumpProps {
   selected?: boolean
   onContextMenu?: (e: any) => void
   onClick?: () => void
+  [key: string]: any
 }
 
 export default function ISA101PumpComponent({
@@ -77,7 +78,8 @@ export default function ISA101PumpComponent({
   style = {},
   selected = false,
   onContextMenu,
-  onClick
+  onClick,
+  ...rest
 }: ISA101PumpProps) {
   const [blinkState, setBlinkState] = useState(true)
   const [rotation, setRotation] = useState(0)
@@ -128,7 +130,7 @@ export default function ISA101PumpComponent({
   const showAlarm = properties.alarmState !== 'none' && blinkState
   
   return (
-    <Group x={x} y={y} onClick={onClick} onContextMenu={onContextMenu}>
+    <Group x={x} y={y} onClick={onClick} onContextMenu={onContextMenu} {...rest}>
       {/* Selection indicator */}
       {selected && (
         <Rect
