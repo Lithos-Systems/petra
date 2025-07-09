@@ -21,7 +21,7 @@ import YamlPreview from './components/YamlPreview'
 import Toolbar from './components/Toolbar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import HMIDesigner from './components/hmi/HMIDesigner'
-import WaterPlantDemo from './components/hmi/WaterPlantDemo'
+import ISA101WaterPlantDemo from './components/hmi/ISA101WaterPlantDemo'
 import { FaProjectDiagram, FaDesktop } from 'react-icons/fa'
 import { PetraProvider } from './contexts/PetraContext'
 import ConnectionStatusSidebar from './components/ConnectionStatusSidebar'
@@ -327,7 +327,7 @@ function App() {
     return (
       <ErrorBoundary>
         <PetraProvider>
-          <WaterPlantDemo />
+          <ISA101WaterPlantDemo />
         </PetraProvider>
       </ErrorBoundary>
     )

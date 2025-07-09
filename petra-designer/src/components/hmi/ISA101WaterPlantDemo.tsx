@@ -4,10 +4,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Stage, Layer, Group, Rect, Circle, Line, Text, Path } from 'react-konva'
 import { FaPlay, FaPause, FaCog, FaExclamationTriangle, FaSync } from 'react-icons/fa'
-import TankComponent from './components/TankComponent'
-import PumpComponent from './components/PumpComponent'
-import ValveComponent from './components/ValveComponent'
-import GaugeComponent from './components/GaugeComponent'
+import ISA101TankComponent from './components/ISA101TankComponent'
+import ISA101PumpComponent from './components/ISA101PumpComponent'
+import ISA101ValveComponent from './components/ISA101ValveComponent'
+import ISA101GaugeComponent from './components/ISA101GaugeComponent'
 import { usePetra } from '../../contexts/PetraContext'
 
 interface SimulationState {
@@ -478,7 +478,7 @@ export default function WaterPlantPetraDemo() {
             
             {/* Ground Storage Tank */}
             <Group x={100} y={100}>
-              <TankComponent
+              <ISA101TankComponent
                 x={0}
                 y={0}
                 width={200}
@@ -532,7 +532,7 @@ export default function WaterPlantPetraDemo() {
                 strokeWidth={6}
                 lineCap="round"
               />
-              <ValveComponent
+              <ISA101ValveComponent
                 x={380}
                 y={230}
                 width={40}
@@ -556,7 +556,7 @@ export default function WaterPlantPetraDemo() {
                 lineCap="round"
               />
               {/* Well pump */}
-              <PumpComponent
+              <ISA101PumpComponent
                 x={500}
                 y={210}
                 width={80}
@@ -610,7 +610,7 @@ export default function WaterPlantPetraDemo() {
                   strokeWidth={6}
                   lineCap="round"
                 />
-                <PumpComponent
+                <ISA101PumpComponent
                   x={500}
                   y={230 - index * 60}
                   width={80}
@@ -654,7 +654,7 @@ export default function WaterPlantPetraDemo() {
                   strokeWidth={6}
                   lineCap="round"
                 />
-                <ValveComponent
+                <ISA101ValveComponent
                   x={620}
                   y={230 - index * 60}
                   width={40}
@@ -677,7 +677,7 @@ export default function WaterPlantPetraDemo() {
                   strokeWidth={6}
                   lineCap="round"
                 />
-                <GaugeComponent
+                <ISA101GaugeComponent
                   x={720}
                   y={230 - index * 60}
                   width={40}
@@ -720,7 +720,7 @@ export default function WaterPlantPetraDemo() {
                 strokeWidth={6}
                 lineCap="round"
               />
-              <ValveComponent
+              <ISA101ValveComponent
                 x={900}
                 y={170}
                 width={40}
@@ -743,7 +743,7 @@ export default function WaterPlantPetraDemo() {
                 strokeWidth={6}
                 lineCap="round"
               />
-              <GaugeComponent
+              <ISA101GaugeComponent
                 x={1000}
                 y={170}
                 width={40}
@@ -776,7 +776,7 @@ export default function WaterPlantPetraDemo() {
                 strokeWidth={6}
                 lineCap="round"
               />
-              <ValveComponent
+              <ISA101ValveComponent
                 x={900}
                 y={80}
                 width={40}
@@ -799,7 +799,7 @@ export default function WaterPlantPetraDemo() {
                 strokeWidth={6}
                 lineCap="round"
               />
-              <GaugeComponent
+              <ISA101GaugeComponent
                 x={1000}
                 y={80}
                 width={40}
@@ -828,7 +828,7 @@ export default function WaterPlantPetraDemo() {
             
             {/* Hydrotanks */}
             <Group x={900} y={300}>
-              <TankComponent
+              <ISA101TankComponent
                 x={0}
                 y={0}
                 width={80}
@@ -852,7 +852,7 @@ export default function WaterPlantPetraDemo() {
                 }}
                 bindings={[]}
               />
-              <TankComponent
+              <ISA101TankComponent
                 x={100}
                 y={0}
                 width={80}
@@ -894,7 +894,7 @@ export default function WaterPlantPetraDemo() {
               />
               
               {/* System pressure gauge */}
-              <GaugeComponent
+              <ISA101GaugeComponent
                 x={1150}
                 y={230}
                 width={80}
