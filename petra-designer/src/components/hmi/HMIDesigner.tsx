@@ -6,9 +6,9 @@ import {
   FaPalette, FaEye, FaEyeSlash, FaLock, FaUnlock, FaTrash,
   FaCog, FaSave, FaFolder, FaPlay, FaPause, FaExclamationTriangle
 } from 'react-icons/fa'
-import ISA101TankComponent from './ISA101TankComponent'
-import ISA101PumpComponent from './ISA101PumpComponent'
-import ISA101ValveComponent from './ISA101ValveComponent'
+import ISA101TankComponent from './components/ISA101TankComponent'
+import ISA101PumpComponent from './components/ISA101PumpComponent'
+import ISA101ValveComponent from './components/ISA101ValveComponent'
 
 // ISA-101 Standard Colors
 const ISA101Colors = {
