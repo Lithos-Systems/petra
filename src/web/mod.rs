@@ -41,11 +41,12 @@ pub async fn create_server(signal_bus: Arc<SignalBus>, config: crate::Config) ->
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    let addr = "0.0.0.0:8080".parse().unwrap();
-    println!("Web server listening on {}", addr);
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
+        .await
+        .map_err(|e| PlcError::WebServer(e.to_string()))?;
+    println!("Web server listening on {}", listener.local_addr().unwrap());
 
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+    axum::serve(listener, app.into_make_service())
         .await
         .map_err(|e| PlcError::WebServer(e.to_string()))?;
 
