@@ -5,6 +5,7 @@ pub mod timer;
 pub mod arithmetic;  // Changed from math to arithmetic
 pub mod data;
 pub mod cache_optimized;
+pub mod simulation;
 
 #[cfg(feature = "edge-detection")]
 pub mod edge;
@@ -225,6 +226,7 @@ pub fn create_block(config: &BlockConfig) -> Result<Box<dyn Block>> {
         "MUX" => data::create_mux_block(config),
         "DEMUX" => data::create_demux_block(config),
         "DATA_GENERATOR" => data::create_data_generator_block(config),
+        "TANK_SIMULATION" => simulation::create_tank_simulation_block(config),
         
         // Edge detection blocks (feature-gated)
         #[cfg(feature = "edge-detection")]
@@ -311,6 +313,7 @@ pub fn get_available_block_types() -> Vec<&'static str> {
         "ON_DELAY", "OFF_DELAY", "PULSE",
         "ADD", "SUB", "MUL", "DIV",
         "SCALE", "LIMIT", "SELECT", "MUX", "DEMUX", "DATA_GENERATOR",
+        "TANK_SIMULATION",
         #[cfg(feature = "edge-detection")]
         "RISING_EDGE",
         #[cfg(feature = "edge-detection")]
