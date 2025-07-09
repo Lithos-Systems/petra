@@ -235,18 +235,22 @@ export default function HMIDesigner() {
             {showMQTTTest ? 'Hide' : 'Show'} MQTT Test
           </button>
         </div>
-      )
+      )}
+]
 
-      {selectedComponent && (
-        <HMIPropertiesPanel 
+      {selectedComponent ? (
+        <HMIPropertiesPanel
           component={selectedComponent}
-          onUpdate={(updates) => updateComponent(selectedComponent.id, updates)}
+          onUpdate={(updates) =>
+            updateComponent(selectedComponent.id, updates)
+          }
           onDelete={() => deleteComponent(selectedComponent.id)}
         />
-      )}
-      
+      ) : null}
+
       {/* MQTT Test Display */}
       {showMQTTTest && <MQTTTestDisplay />}
+    </div>
     </div>
   )
 }
