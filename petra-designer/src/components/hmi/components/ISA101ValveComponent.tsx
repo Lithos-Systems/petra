@@ -1,20 +1,19 @@
-// File: petra-designer/src/components/hmi/components/ISA101ValveComponent.tsx
-// ISA-101 Compliant Valve Component following HMI standards
-import { useEffect, useState } from 'react'
+// @ts-nocheck
+import { useEffect, useState, useRef } from 'react'
 import { Group, Line, Shape, Text, Rect, Circle } from 'react-konva'
 
+// ISA-101 Standard Colors
 const ISA101Colors = {
   equipmentOutline: '#000000',
   equipmentFill: '#E6E6E6',
-  processLine: '#000000',
   open: '#00FF00',
   closed: '#808080',
   transitioning: '#FFFF00',
   fault: '#FF0000',
+  manual: '#9370DB',
   processValue: '#000000',
-  containerBackground: '#FFFFFF',
-  alarmCritical: '#FF0000',
-  alarmHigh: '#FF8C00',
+  background: '#FFFFFF',
+  interlocked: '#FF8C00',
 }
 
 interface ISA101ValveProps {
@@ -24,35 +23,24 @@ interface ISA101ValveProps {
   height: number
   properties: {
     tagName: string
-    position: number  // 0-100%
-    commandPosition?: number  // Target position
-    
-    // Valve states
+    position: number // 0-100%
     status: 'open' | 'closed' | 'transitioning' | 'fault'
-    valveType: 'gate' | 'ball' | 'butterfly' | 'control' | 'globe'
-    actuatorType?: 'manual' | 'pneumatic' | 'electric' | 'hydraulic'
-    
-    // Fault/Alarm states
-    failPosition?: 'open' | 'closed' | 'last' | 'none'
-    travelAlarm?: boolean
-    positionDeviation?: boolean
-    
-    // Control
-    controlMode?: 'local' | 'remote' | 'cascade' | 'manual'
+    valveType?: 'gate' | 'ball' | 'butterfly' | 'control'
+    controlMode?: 'auto' | 'manual' | 'cascade'
     interlocked?: boolean
-    
-    // Display options
     showPosition?: boolean
-    showFailPosition?: boolean
     orientation?: 'horizontal' | 'vertical'
+    failPosition?: 'open' | 'closed' | 'last'
   }
   style?: {
     lineWidth?: number
   }
   selected?: boolean
-  onContextMenu?: (e: any) => void
   onClick?: () => void
-  [key: string]: any
+  onContextMenu?: (e: any) => void
+  draggable?: boolean
+  onDragEnd?: (e: any) => void
+  onDragStart?: (e: any) => void
 }
 
 export default function ISA101ValveComponent({
@@ -63,355 +51,376 @@ export default function ISA101ValveComponent({
   properties,
   style = {},
   selected = false,
-  onContextMenu,
   onClick,
-  ...rest
+  onContextMenu,
+  draggable = true,
+  onDragEnd,
+  onDragStart,
+  ...restProps
 }: ISA101ValveProps) {
-  const [blinkState, setBlinkState] = useState(true)
-  
-  // Blink for alarms
-  useEffect(() => {
-    if (properties.travelAlarm || properties.positionDeviation) {
-      const timer = setInterval(() => {
-        setBlinkState(prev => !prev)
-      }, 500)
-      return () => clearInterval(timer)
-    } else {
-      setBlinkState(true)
+  const [isAnimating, setIsAnimating] = useState(false)
+  const animationRef = useRef<any>()
+  const groupRef = useRef<any>()
+
+  // Determine valve color based on status
+  const getValveColor = () => {
+    if (properties.interlocked) return ISA101Colors.interlocked
+    switch (properties.status) {
+      case 'open': return ISA101Colors.open
+      case 'closed': return ISA101Colors.closed
+      case 'transitioning': return ISA101Colors.transitioning
+      case 'fault': return ISA101Colors.fault
+      default: return ISA101Colors.equipmentFill
     }
-  }, [properties.travelAlarm, properties.positionDeviation])
-  
-  const lineWidth = style.lineWidth || 2
+  }
+
+  // Animate valve during transition
+  useEffect(() => {
+    if (properties.status === 'transitioning') {
+      setIsAnimating(true)
+      let blink = true
+      const animate = () => {
+        blink = !blink
+        if (groupRef.current) {
+          groupRef.current.opacity(blink ? 1 : 0.5)
+          groupRef.current.getLayer()?.batchDraw()
+        }
+        animationRef.current = setTimeout(animate, 500)
+      }
+      animationRef.current = setTimeout(animate, 500)
+    } else {
+      setIsAnimating(false)
+      if (groupRef.current) {
+        groupRef.current.opacity(1)
+        groupRef.current.getLayer()?.batchDraw()
+      }
+    }
+
+    return () => {
+      if (animationRef.current) {
+        clearTimeout(animationRef.current)
+      }
+    }
+  }, [properties.status])
+
   const centerX = width / 2
   const centerY = height / 2
   const isVertical = properties.orientation === 'vertical'
-  
-  // Get valve body color based on position
-  const getValveColor = () => {
-    if (properties.status === 'fault') return ISA101Colors.fault
-    if (properties.status === 'transitioning') return ISA101Colors.transitioning
-    if (properties.position > 95) return ISA101Colors.open
-    if (properties.position < 5) return ISA101Colors.closed
-    // Partially open - blend between open and closed
-    return ISA101Colors.transitioning
-  }
-  
-  // Draw valve symbol based on type
-  const drawValveSymbol = (context: any, shape: any) => {
-    context.strokeStyle = ISA101Colors.equipmentOutline
-    context.lineWidth = lineWidth
-    context.fillStyle = getValveColor()
-    
+
+  // Draw valve based on type
+  const drawValve = () => {
+    const valveSize = Math.min(width, height) * 0.6
+
     switch (properties.valveType) {
-      case 'gate':
-        // Gate valve symbol
-        if (isVertical) {
-          context.beginPath()
-          context.moveTo(centerX - 15, centerY - 10)
-          context.lineTo(centerX - 15, centerY + 10)
-          context.lineTo(centerX + 15, centerY + 10)
-          context.lineTo(centerX + 15, centerY - 10)
-          context.closePath()
-          context.fill()
-          context.stroke()
-          
-          // Stem
-          context.beginPath()
-          context.moveTo(centerX, centerY - 10)
-          context.lineTo(centerX, centerY - 20)
-          context.stroke()
-        } else {
-          context.beginPath()
-          context.moveTo(centerX - 10, centerY - 15)
-          context.lineTo(centerX - 10, centerY + 15)
-          context.lineTo(centerX + 10, centerY + 15)
-          context.lineTo(centerX + 10, centerY - 15)
-          context.closePath()
-          context.fill()
-          context.stroke()
-          
-          // Stem
-          context.beginPath()
-          context.moveTo(centerX, centerY - 15)
-          context.lineTo(centerX, centerY - 25)
-          context.stroke()
-        }
-        break
-        
       case 'ball':
-        // Ball valve symbol
-        context.beginPath()
-        context.arc(centerX, centerY, 12, 0, Math.PI * 2)
-        context.fill()
-        context.stroke()
-        
-        // Ball position indicator
-        context.save()
-        context.translate(centerX, centerY)
-        context.rotate((properties.position / 100) * Math.PI / 2)
-        context.beginPath()
-        context.moveTo(-8, 0)
-        context.lineTo(8, 0)
-        context.strokeStyle = ISA101Colors.equipmentOutline
-        context.lineWidth = 3
-        context.stroke()
-        context.restore()
-        break
-        
+        return (
+          <Group x={centerX} y={centerY}>
+            {/* Ball valve body */}
+            <Circle
+              x={0}
+              y={0}
+              radius={valveSize / 2}
+              fill={ISA101Colors.equipmentFill}
+              stroke={properties.status === 'fault' ? ISA101Colors.fault : ISA101Colors.equipmentOutline}
+              strokeWidth={properties.status === 'fault' ? 3 : 2}
+            />
+            {/* Ball position indicator */}
+            <Rect
+              x={-valveSize / 4}
+              y={-valveSize / 8}
+              width={valveSize / 2}
+              height={valveSize / 4}
+              fill={getValveColor()}
+              stroke={ISA101Colors.equipmentOutline}
+              strokeWidth={1}
+              rotation={isVertical ? 
+                (properties.position > 50 ? 0 : 90) : 
+                (properties.position > 50 ? 90 : 0)}
+            />
+          </Group>
+        )
+
       case 'butterfly':
-        // Butterfly valve symbol
-        context.beginPath()
-        context.arc(centerX, centerY, 12, 0, Math.PI * 2)
-        context.stroke()
-        
-        // Disc
-        context.save()
-        context.translate(centerX, centerY)
-        context.rotate((properties.position / 100) * Math.PI / 2)
-        context.beginPath()
-        context.ellipse(0, 0, 10, 3, 0, 0, Math.PI * 2)
-        context.fillStyle = getValveColor()
-        context.fill()
-        context.stroke()
-        context.restore()
-        break
-        
+        return (
+          <Group x={centerX} y={centerY}>
+            {/* Butterfly valve body */}
+            <Circle
+              x={0}
+              y={0}
+              radius={valveSize / 2}
+              fill={ISA101Colors.equipmentFill}
+              stroke={properties.status === 'fault' ? ISA101Colors.fault : ISA101Colors.equipmentOutline}
+              strokeWidth={properties.status === 'fault' ? 3 : 2}
+            />
+            {/* Butterfly disc */}
+            <Line
+              points={[0, -valveSize / 2, 0, valveSize / 2]}
+              stroke={getValveColor()}
+              strokeWidth={valveSize / 8}
+              lineCap="round"
+              rotation={isVertical ? 
+                (90 - properties.position * 0.9) : 
+                (properties.position * 0.9)}
+            />
+          </Group>
+        )
+
       case 'control':
-      case 'globe':
-        // Control/Globe valve symbol
-        context.beginPath()
-        context.moveTo(centerX - 12, centerY - 12)
-        context.lineTo(centerX, centerY)
-        context.lineTo(centerX + 12, centerY - 12)
-        context.lineTo(centerX + 12, centerY + 12)
-        context.lineTo(centerX - 12, centerY + 12)
-        context.closePath()
-        context.fill()
-        context.stroke()
-        
-        // Stem with position indicator
-        const stemY = centerY - 12 - (properties.position / 100) * 10
-        context.beginPath()
-        context.moveTo(centerX, centerY - 12)
-        context.lineTo(centerX, stemY - 10)
-        context.stroke()
-        
-        // Position indicator
-        context.beginPath()
-        context.moveTo(centerX - 5, stemY)
-        context.lineTo(centerX + 5, stemY)
-        context.lineWidth = 3
-        context.stroke()
-        break
+        return (
+          <Group x={centerX} y={centerY}>
+            {/* Control valve body (globe style) */}
+            <Shape
+              sceneFunc={(ctx, shape) => {
+                const s = valveSize / 2
+                ctx.beginPath()
+                ctx.moveTo(-s, -s)
+                ctx.lineTo(s, -s)
+                ctx.lineTo(s * 0.5, 0)
+                ctx.lineTo(s, s)
+                ctx.lineTo(-s, s)
+                ctx.lineTo(-s * 0.5, 0)
+                ctx.closePath()
+                ctx.fillStrokeShape(shape)
+              }}
+              fill={ISA101Colors.equipmentFill}
+              stroke={properties.status === 'fault' ? ISA101Colors.fault : ISA101Colors.equipmentOutline}
+              strokeWidth={properties.status === 'fault' ? 3 : 2}
+            />
+            {/* Stem position */}
+            <Line
+              points={[0, -valveSize / 2, 0, -valveSize]}
+              stroke={ISA101Colors.equipmentOutline}
+              strokeWidth={2}
+            />
+            <Circle
+              x={0}
+              y={-valveSize + (properties.position / 100) * (valveSize / 2)}
+              radius={valveSize / 8}
+              fill={getValveColor()}
+              stroke={ISA101Colors.equipmentOutline}
+              strokeWidth={1}
+            />
+          </Group>
+        )
+
+      default: // gate valve
+        return (
+          <Group x={centerX} y={centerY}>
+            {/* Gate valve body */}
+            <Shape
+              sceneFunc={(ctx, shape) => {
+                const s = valveSize / 2
+                ctx.beginPath()
+                ctx.moveTo(-s, -s * 0.6)
+                ctx.lineTo(s, -s * 0.6)
+                ctx.lineTo(s, s * 0.6)
+                ctx.lineTo(-s, s * 0.6)
+                ctx.closePath()
+                ctx.fillStrokeShape(shape)
+              }}
+              fill={ISA101Colors.equipmentFill}
+              stroke={properties.status === 'fault' ? ISA101Colors.fault : ISA101Colors.equipmentOutline}
+              strokeWidth={properties.status === 'fault' ? 3 : 2}
+            />
+            {/* Gate position */}
+            <Rect
+              x={-valveSize / 3}
+              y={-valveSize * 0.6 + (1 - properties.position / 100) * valveSize * 1.2}
+              width={valveSize * 2 / 3}
+              height={valveSize * 0.2}
+              fill={getValveColor()}
+              stroke={ISA101Colors.equipmentOutline}
+              strokeWidth={1}
+            />
+            {/* Stem */}
+            <Line
+              points={[0, -valveSize * 0.6, 0, -valveSize]}
+              stroke={ISA101Colors.equipmentOutline}
+              strokeWidth={2}
+            />
+          </Group>
+        )
     }
   }
-  
-  // Draw actuator based on type
-  const drawActuator = (context: any) => {
-    if (!properties.actuatorType || properties.actuatorType === 'manual') return
-    
-    context.strokeStyle = ISA101Colors.equipmentOutline
-    context.lineWidth = lineWidth
-    context.fillStyle = ISA101Colors.equipmentFill
-    
-    const actuatorY = isVertical ? centerY - 35 : centerY - 40
-    
-    switch (properties.actuatorType) {
-      case 'pneumatic':
-        // Diaphragm actuator
-        context.beginPath()
-        context.arc(centerX, actuatorY, 15, Math.PI, 0, true)
-        context.closePath()
-        context.fill()
-        context.stroke()
-        break
-        
-      case 'electric':
-        // Motor actuator
-        context.beginPath()
-        context.rect(centerX - 12, actuatorY - 12, 24, 24)
-        context.fill()
-        context.stroke()
-        
-        // M symbol
-        context.fillStyle = ISA101Colors.processValue
-        context.font = 'bold 10px Arial'
-        context.textAlign = 'center'
-        context.textBaseline = 'middle'
-        context.fillText('M', centerX, actuatorY)
-        break
-        
-      case 'hydraulic':
-        // Hydraulic cylinder
-        context.beginPath()
-        context.rect(centerX - 10, actuatorY - 15, 20, 20)
-        context.fill()
-        context.stroke()
-        
-        // H symbol
-        context.fillStyle = ISA101Colors.processValue
-        context.font = 'bold 10px Arial'
-        context.textAlign = 'center'
-        context.textBaseline = 'middle'
-        context.fillText('H', centerX, actuatorY - 5)
-        break
-    }
-  }
-  
-  const showAlarm = (properties.travelAlarm || properties.positionDeviation) && blinkState
-  
+
   return (
-    <Group x={x} y={y} onClick={onClick} onContextMenu={onContextMenu} {...rest}>
+    <Group
+      ref={groupRef}
+      x={x}
+      y={y}
+      draggable={draggable}
+      onDragEnd={onDragEnd}
+      onDragStart={(e) => {
+        e.target.moveToTop()
+        onDragStart?.(e)
+      }}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      {...restProps}
+    >
       {/* Selection indicator */}
       {selected && (
         <Rect
-          x={-10}
-          y={-10}
-          width={width + 20}
-          height={height + 20}
+          x={-5}
+          y={-5}
+          width={width + 10}
+          height={height + 10}
           stroke="#0080FF"
           strokeWidth={2}
           dash={[5, 5]}
           fill="transparent"
         />
       )}
-      
-      {/* Process lines */}
-      <Group>
-        {isVertical ? (
-          <>
-            <Line
-              points={[centerX, 0, centerX, centerY - 15]}
-              stroke={ISA101Colors.processLine}
-              strokeWidth={3}
-            />
-            <Line
-              points={[centerX, centerY + 15, centerX, height]}
-              stroke={ISA101Colors.processLine}
-              strokeWidth={3}
-            />
-          </>
-        ) : (
-          <>
-            <Line
-              points={[0, centerY, centerX - 15, centerY]}
-              stroke={ISA101Colors.processLine}
-              strokeWidth={3}
-            />
-            <Line
-              points={[centerX + 15, centerY, width, centerY]}
-              stroke={ISA101Colors.processLine}
-              strokeWidth={3}
-            />
-          </>
-        )}
-      </Group>
-      
+
+      {/* Pipe connections */}
+      {isVertical ? (
+        <>
+          <Line
+            points={[centerX, 0, centerX, centerY - Math.min(width, height) * 0.3]}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={4}
+          />
+          <Line
+            points={[centerX, centerY + Math.min(width, height) * 0.3, centerX, height]}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={4}
+          />
+        </>
+      ) : (
+        <>
+          <Line
+            points={[0, centerY, centerX - Math.min(width, height) * 0.3, centerY]}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={4}
+          />
+          <Line
+            points={[centerX + Math.min(width, height) * 0.3, centerY, width, centerY]}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={4}
+          />
+        </>
+      )}
+
       {/* Valve body */}
-      <Shape sceneFunc={drawValveSymbol} />
-      
-      {/* Actuator */}
-      <Shape sceneFunc={drawActuator} />
-      
-      {/* Equipment tag */}
+      {drawValve()}
+
+      {/* Tag name */}
       <Text
         x={0}
-        y={-45}
+        y={-15}
         width={width}
         text={properties.tagName}
         fontSize={12}
-        fontFamily="Arial"
         fontStyle="bold"
         fill={ISA101Colors.processValue}
         align="center"
       />
-      
-      {/* Position display */}
+
+      {/* Position indicator (if enabled) */}
       {properties.showPosition && (
-        <Group y={height + 5}>
+        <Group x={0} y={height + 5}>
           <Rect
-            x={centerX - 25}
+            x={width / 2 - 30}
             y={0}
-            width={50}
+            width={60}
             height={18}
-            fill={showAlarm ? ISA101Colors.alarmHigh : ISA101Colors.containerBackground}
+            fill={ISA101Colors.background}
             stroke={ISA101Colors.equipmentOutline}
             strokeWidth={1}
           />
           <Text
-            x={centerX - 25}
+            x={width / 2 - 30}
             y={2}
-            width={50}
+            width={60}
             text={`${properties.position.toFixed(0)}%`}
-            fontSize={11}
-            fontFamily="Arial"
+            fontSize={12}
             fontStyle="bold"
-            fill={showAlarm ? '#FFFFFF' : ISA101Colors.processValue}
-            align="center"
-          />
-        </Group>
-      )}
-      
-      {/* Command position indicator */}
-      {properties.commandPosition !== undefined && 
-       Math.abs(properties.commandPosition - properties.position) > 2 && (
-        <Group y={height + 25}>
-          <Text
-            x={0}
-            y={0}
-            width={width}
-            text={`CMD: ${properties.commandPosition.toFixed(0)}%`}
-            fontSize={10}
-            fontFamily="Arial"
-            fill={ISA101Colors.transitioning}
-            align="center"
-          />
-        </Group>
-      )}
-      
-      {/* Fail position indicator */}
-      {properties.showFailPosition && properties.failPosition && (
-        <Group x={centerX + 20} y={centerY - 20}>
-          <Circle
-            x={0}
-            y={0}
-            radius={10}
-            fill={ISA101Colors.containerBackground}
-            stroke={ISA101Colors.equipmentOutline}
-            strokeWidth={1}
-          />
-          <Text
-            x={-8}
-            y={-6}
-            width={16}
-            text={properties.failPosition === 'open' ? 'FO' : 
-                  properties.failPosition === 'closed' ? 'FC' : 
-                  properties.failPosition === 'last' ? 'FL' : ''}
-            fontSize={8}
-            fontFamily="Arial"
             fill={ISA101Colors.processValue}
             align="center"
           />
         </Group>
       )}
-      
-      {/* Interlock indicator */}
-      {properties.interlocked && (
-        <Group x={centerX - 30} y={centerY - 20}>
+
+      {/* Control mode indicator */}
+      {properties.controlMode === 'manual' && (
+        <Group x={width - 20} y={5}>
           <Circle
             x={0}
             y={0}
             radius={8}
-            fill={ISA101Colors.alarmHigh}
+            fill={ISA101Colors.manual}
             stroke={ISA101Colors.equipmentOutline}
             strokeWidth={1}
           />
           <Text
-            x={-3}
-            y={-4}
-            text="I"
+            x={-5}
+            y={-5}
+            text="M"
             fontSize={10}
-            fontFamily="Arial"
+            fontStyle="bold"
+            fill="#FFFFFF"
+          />
+        </Group>
+      )}
+
+      {/* Interlock indicator */}
+      {properties.interlocked && (
+        <Group x={centerX - 20} y={height - 20}>
+          <Rect
+            x={0}
+            y={0}
+            width={40}
+            height={16}
+            fill={ISA101Colors.interlocked}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={1}
+          />
+          <Text
+            x={0}
+            y={2}
+            width={40}
+            text="INTLK"
+            fontSize={10}
+            fontStyle="bold"
+            fill="#FFFFFF"
+            align="center"
+          />
+        </Group>
+      )}
+
+      {/* Fail position indicator */}
+      {properties.failPosition && (
+        <Text
+          x={5}
+          y={height - 10}
+          text={`F${properties.failPosition === 'open' ? 'O' : properties.failPosition === 'closed' ? 'C' : 'L'}`}
+          fontSize={10}
+          fill={ISA101Colors.processValue}
+        />
+      )}
+
+      {/* Fault indicator */}
+      {properties.status === 'fault' && (
+        <Group x={5} y={5}>
+          <Shape
+            sceneFunc={(ctx, shape) => {
+              // Draw warning triangle
+              ctx.beginPath()
+              ctx.moveTo(10, 0)
+              ctx.lineTo(0, 17)
+              ctx.lineTo(20, 17)
+              ctx.closePath()
+              ctx.fillStrokeShape(shape)
+            }}
+            fill={ISA101Colors.fault}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={1}
+          />
+          <Text
+            x={7}
+            y={8}
+            text="!"
+            fontSize={12}
             fontStyle="bold"
             fill="#FFFFFF"
           />
