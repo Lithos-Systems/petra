@@ -1,6 +1,7 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
+@import './isa101-theme.css';
 
 /* Custom button classes */
 @layer components {
@@ -51,4 +52,11 @@
 
 .yaml-preview::-webkit-scrollbar-thumb:hover {
   background: #5a5a5a;
+}
+
+/* ISA-101 override mode */
+.isa101-mode {
+  --primary-color: var(--isa101-equipment-outline);
+  --background-color: var(--isa101-background);
+  --text-color: var(--isa101-text-primary);
 }
