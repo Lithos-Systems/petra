@@ -103,8 +103,9 @@ pub async fn handle_socket(socket: WebSocket, state: AppState) {
     let tx_clone = tx.clone();
     
     tokio::spawn(async move {
-        let mut ticker = interval(Duration::from_millis(100)); // 10Hz update rate
+        let mut ticker = interval(Duration::from_millis(50)); // 20Hz update rate for better responsiveness
         let mut last_values: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+        let mut update_count = 0;
         
         loop {
             ticker.tick().await;
@@ -114,6 +115,14 @@ pub async fn handle_socket(socket: WebSocket, state: AppState) {
                 continue;
             }
             
+            // Log subscription count periodically
+            update_count += 1;
+            if update_count % 100 == 0 { // Every 5 seconds at 20Hz
+                println!("WebSocket: Monitoring {} subscribed signals", subs.len());
+            }
+            
+            let mut updates_sent = 0;
+            
             for signal_name in subs.iter() {
                 if let Some(current_value) = state_clone.signal_bus.get(signal_name) {
                     let should_send = match last_values.get(signal_name) {
@@ -122,6 +131,7 @@ pub async fn handle_socket(socket: WebSocket, state: AppState) {
                     };
                     
                     if should_send {
+                        updates_sent += 1;
                         last_values.insert(signal_name.clone(), current_value.clone());
                         
                         let update = ServerMessage::SignalUpdate {
@@ -134,10 +144,16 @@ pub async fn handle_socket(socket: WebSocket, state: AppState) {
                         };
                         
                         if tx_clone.send(serde_json::to_string(&update).unwrap()).await.is_err() {
+                            println!("WebSocket: Client disconnected");
                             return; // Client disconnected
                         }
                     }
                 }
+            }
+            
+            // Log updates periodically for debugging
+            if updates_sent > 0 && update_count % 20 == 0 { // Every second at 20Hz
+                println!("WebSocket: Sent {} signal updates", updates_sent);
             }
         }
     });
@@ -207,16 +223,8 @@ async fn handle_client_message(
             println!("WebSocket: Set signal {} = {:?}", signal, value);
             match state.signal_bus.set(&signal, value.clone()) {
                 Ok(_) => {
-                    // Immediately send update to confirm
-                    let update = ServerMessage::SignalUpdate {
-                        data: SignalUpdateData {
-                            signal,
-                            value,
-                            timestamp: get_timestamp(),
-                            quality: Some("good".to_string()),
-                        },
-                    };
-                    let _ = tx.send(serde_json::to_string(&update).unwrap()).await;
+                    // Don't send immediate update - let the update loop handle it
+                    // This prevents duplicate updates
                 }
                 Err(e) => {
                     let error_msg = ServerMessage::Error { 
@@ -254,7 +262,23 @@ fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Bool(x), Value::Bool(y)) => x == y,
         (Value::Integer(x), Value::Integer(y)) => x == y,
-        (Value::Float(x), Value::Float(y)) => (x - y).abs() < f64::EPSILON,
+        (Value::Float(x), Value::Float(y)) => {
+            // Use a small epsilon for float comparison to avoid floating point precision issues
+            (x - y).abs() < 0.0001
+        }
+        // Add support for other value types if using extended-types feature
+        #[cfg(feature = "extended-types")]
+        (Value::String(x), Value::String(y)) => x == y,
+        #[cfg(feature = "extended-types")]
+        (Value::Binary(x), Value::Binary(y)) => x == y,
+        #[cfg(feature = "extended-types")]
+        (Value::Timestamp(x), Value::Timestamp(y)) => x == y,
+        #[cfg(feature = "extended-types")]
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y.iter()).all(|(a, b)| values_equal(a, b)),
+        #[cfg(feature = "extended-types")]
+        (Value::Object(x), Value::Object(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).map_or(false, |v2| values_equal(v, v2)))
+        }
         _ => false,
     }
 }
