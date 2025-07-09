@@ -173,6 +173,18 @@ export default function HMISidebar() {
   const handleDragStart = (e: React.DragEvent, type: string) => {
     e.dataTransfer.setData('hmi-component', type)
     e.dataTransfer.effectAllowed = 'copy'
+
+    // Add visual feedback
+    const dragImage = e.currentTarget.cloneNode(true) as HTMLElement
+    dragImage.style.opacity = '0.5'
+    dragImage.style.position = 'absolute'
+    dragImage.style.top = '-1000px'
+    document.body.appendChild(dragImage)
+    e.dataTransfer.setDragImage(dragImage, 40, 40)
+
+    setTimeout(() => {
+      document.body.removeChild(dragImage)
+    }, 0)
   }
 
   const filteredCategories = componentCategories.map(category => ({

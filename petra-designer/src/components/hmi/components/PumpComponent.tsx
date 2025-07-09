@@ -5,6 +5,7 @@ import { Group, Circle, Line, Text, Rect, Shape, Wedge } from 'react-konva'
 
 // ISA-101 Standard Colors
 const ISA101Colors = {
+  processLine: '#000000',
   equipmentOutline: '#000000',
   equipmentFill: '#E6E6E6',
   running: '#00FF00',
