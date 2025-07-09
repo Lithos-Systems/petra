@@ -11,7 +11,10 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\" --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@xyflow/react": "^12.0.0",
+    "@xyflow/react": "latest",
+    "reactflow": "^11.10.1",
+    "recharts": "^2.9.3",
+    "lucide-react": "^0.292.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zustand": "^4.5.0",

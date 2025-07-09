@@ -8,6 +8,10 @@ use axum::{
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
+
+mod static_files;
+use static_files::spa_fallback;
 
 pub mod handlers;
 pub mod websocket;
@@ -32,6 +36,8 @@ pub async fn create_server(signal_bus: Arc<SignalBus>, config: crate::Config) ->
         .route("/api/config", get(handlers::get_config))
         .route("/api/config", post(handlers::update_config))
         .route("/ws", get(websocket_handler))
+        .nest_service("/", ServeDir::new("petra-designer/dist"))
+        .fallback(spa_fallback)
         .layer(CorsLayer::permissive())
         .with_state(state);
 

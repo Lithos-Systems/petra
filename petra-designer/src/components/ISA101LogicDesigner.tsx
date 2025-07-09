@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import ReactFlow, { 
+import { ReactFlow,
   Node,
   Edge,
   Controls,
@@ -12,8 +12,8 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   ReactFlowProvider
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 
 // ISA-101 compliant colors
 const ISA_COLORS = {
