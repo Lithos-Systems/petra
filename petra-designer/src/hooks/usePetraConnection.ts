@@ -8,6 +8,14 @@ export interface Value {
   value: boolean | number
 }
 
+export interface PerformanceMetrics {
+  latency: number
+  messageRate: number
+  queueSize: number
+  connectedAt: number | null
+  reconnectAttempts: number
+}
+
 /**
  * Convert a backend value (which may be a plain primitive) into an adjacently
  * tagged enum representation.
@@ -125,10 +133,12 @@ export function usePetraConnection({
   const [signals, setSignals] = useState<Map<string, any>>(new Map())
   const [quality, setQuality] = useState<Map<string, string>>(new Map())
   const [mqttData, setMqttData] = useState<Map<string, any>>(new Map())
-  const [performance, setPerformance] = useState({
+  const [performance, setPerformance] = useState<PerformanceMetrics>({
     latency: 0,
     messageRate: 0,
-    queueSize: 0
+    queueSize: 0,
+    connectedAt: null,
+    reconnectAttempts: 0
   })
   
   const wsRef = useRef<WebSocket | null>(null)
@@ -177,6 +187,11 @@ export function usePetraConnection({
         setConnected(true)
         setConnectionState('connected')
         reconnectCountRef.current = 0
+        setPerformance(prev => ({
+          ...prev,
+          connectedAt: Date.now(),
+          reconnectAttempts: reconnectCountRef.current
+        }))
         toast.success('Connected to PETRA')
         
         // Start ping interval to keep connection alive
@@ -293,6 +308,11 @@ export function usePetraConnection({
         setConnected(false)
         setConnectionState('disconnected')
         wsRef.current = null
+
+        setPerformance(prev => ({
+          ...prev,
+          reconnectAttempts: reconnectCountRef.current
+        }))
         
         // Clear ping interval
         if (pingIntervalRef.current) {

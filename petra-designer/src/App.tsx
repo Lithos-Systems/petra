@@ -26,6 +26,7 @@ import { FaProjectDiagram, FaDesktop } from 'react-icons/fa'
 import { PetraProvider } from './contexts/PetraContext'
 import ConnectionStatusSidebar from './components/ConnectionStatusSidebar'
 import { usePetraConnection } from './hooks/usePetraConnection'
+import type { ConnectionInfo } from './types/hmi'
 import './styles/isa101-theme.css'
 
 type DesignerMode = 'logic' | 'graphics'
@@ -64,13 +65,13 @@ function Flow() {
   })
 
   // Connection info for sidebar
-  const connectionInfo = {
+  const connectionInfo: ConnectionInfo = {
     status: connectionState,
     latency: performance.latency,
-    uptime: Math.floor((Date.now() - (performance.connectedAt || Date.now())) / 1000),
-    lastError: lastError,
+    uptime: Math.floor((Date.now() - (performance.connectedAt ?? Date.now())) / 1000),
+    lastError: lastError ?? undefined,
     messageRate: performance.messageRate,
-    reconnectAttempts: performance.reconnectAttempts || 0
+    reconnectAttempts: performance.reconnectAttempts
   }
 
   // Add keyboard shortcuts
