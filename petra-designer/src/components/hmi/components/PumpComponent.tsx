@@ -1,448 +1,405 @@
-// Enhanced Pump Component with realistic animations and effects
-import { useEffect, useState, useRef } from 'react'
-import Konva from 'konva'
-import { Group, Circle, Shape, Text, Arc, Line, Rect } from 'react-konva'
+// File: petra-designer/src/components/hmi/components/ISA101PumpComponent.tsx
+// ISA-101 Compliant Pump Component following HMI standards
+import { useEffect, useState } from 'react'
+import { Group, Circle, Line, Text, Rect, Shape, Wedge } from 'react-konva'
 
-interface PumpComponentProps {
+// ISA-101 Standard Colors
+const ISA101Colors = {
+  equipmentOutline: '#000000',
+  equipmentFill: '#E6E6E6',
+  running: '#00FF00',
+  stopped: '#808080',
+  fault: '#FF0000',
+  processValue: '#000000',
+  background: '#F0F0F0',
+  containerBackground: '#FFFFFF',
+  // Alarm colors
+  alarmCritical: '#FF0000',
+  alarmHigh: '#FF8C00',
+  alarmMedium: '#FFFF00',
+  alarmLow: '#00FFFF',
+}
+
+interface ISA101PumpProps {
   x: number
   y: number
   width: number
   height: number
   properties: {
-    running: boolean
-    fault: boolean
-    speed: number // 0-100%
-    flowRate?: number
-    pressure?: number
-    temperature?: number
+    tagName: string                    // Equipment tag (e.g., "P-101A")
+    status: 'running' | 'stopped' | 'fault'
+    
+    // Process values
+    flowRate?: number                  // Current flow rate
+    flowUnits?: string                 // Flow units (e.g., "GPM")
+    dischargePressure?: number         // Discharge pressure
+    pressureUnits?: string             // Pressure units (e.g., "PSI")
+    speed?: number                     // Speed percentage (0-100)
+    current?: number                   // Motor current
+    
+    // Alarm states
+    alarmState?: 'none' | 'warning' | 'fault' | 'trip'
+    alarmAcknowledged?: boolean
+    
+    // Interlock status
+    interlocked?: boolean
+    interlockReason?: string
+    
+    // Control mode
+    controlMode?: 'local' | 'remote' | 'cascade' | 'manual'
+    runPermissive?: boolean
+    
+    // Additional status
+    sealFlushPressure?: number
+    bearingTemp?: number
     vibration?: number
-    efficiency?: number
-    runHours?: number
-    showStatus?: boolean
-    runAnimation?: boolean
-    pumpType?: 'centrifugal' | 'positive-displacement' | 'axial'
-    direction?: 'horizontal' | 'vertical'
+    
+    // Display options
+    showFlowDirection?: boolean
+    showDetailedStatus?: boolean
+    pumpType?: 'centrifugal' | 'positive-displacement'
   }
   style?: {
-    fill?: string
-    stroke?: string
-    strokeWidth?: number
-    runningColor?: string
-    faultColor?: string
+    lineWidth?: number
   }
-  bindings?: any[]
+  selected?: boolean
+  onContextMenu?: (e: any) => void
+  onClick?: () => void
 }
 
-export default function EnhancedPumpComponent({
+export default function ISA101PumpComponent({
   x,
   y,
   width,
   height,
   properties,
   style = {},
-  bindings = []
-}: PumpComponentProps) {
+  selected = false,
+  onContextMenu,
+  onClick
+}: ISA101PumpProps) {
+  const [blinkState, setBlinkState] = useState(true)
   const [rotation, setRotation] = useState(0)
-  const [vibrationOffset, setVibrationOffset] = useState({ x: 0, y: 0 })
-  const [glowOpacity, setGlowOpacity] = useState(0)
-  const groupRef = useRef<any>(null)
-
+  
+  // Blink for unacknowledged alarms
   useEffect(() => {
-    if (!properties.running || !properties.runAnimation) {
-      setVibrationOffset({ x: 0, y: 0 })
-      return
+    if (properties.alarmState !== 'none' && !properties.alarmAcknowledged) {
+      const timer = setInterval(() => {
+        setBlinkState(prev => !prev)
+      }, 500)
+      return () => clearInterval(timer)
+    } else {
+      setBlinkState(true)
     }
-
-    const anim = new Konva.Animation((frame) => {
-      if (!frame) return
-      
-      // Rotation animation based on speed
-      const speedFactor = (properties.speed || 100) / 100
-      setRotation(prev => prev + (6 * speedFactor))
-      
-      // Vibration effect
-      if (properties.vibration || properties.running) {
-        const vibrationLevel = properties.vibration || 0.5
-        setVibrationOffset({
-          x: Math.sin(frame.time * 0.05) * vibrationLevel,
-          y: Math.cos(frame.time * 0.05) * vibrationLevel * 0.5
-        })
-      }
-      
-      // Glow pulse effect
-      setGlowOpacity(Math.sin(frame.time * 0.002) * 0.3 + 0.7)
-    })
-    
-    anim.start()
-    return () => anim.stop()
-  }, [properties.running, properties.runAnimation, properties.speed, properties.vibration])
-
+  }, [properties.alarmState, properties.alarmAcknowledged])
+  
+  // Rotation animation for running pumps
+  useEffect(() => {
+    if (properties.status === 'running') {
+      const timer = setInterval(() => {
+        setRotation(prev => (prev + 5) % 360)
+      }, 50)
+      return () => clearInterval(timer)
+    }
+  }, [properties.status])
+  
+  const lineWidth = style.lineWidth || 2
   const centerX = width / 2
   const centerY = height / 2
   const radius = Math.min(width, height) / 2 - 10
-
-  // Calculate colors based on state
-  const getPumpColor = () => {
-    if (properties.fault) return style.faultColor || '#ef4444'
-    if (properties.running) return style.runningColor || '#10b981'
-    return style.fill || '#6b7280'
+  
+  // Determine fill color based on status
+  const getFillColor = () => {
+    if (properties.status === 'fault') return ISA101Colors.fault
+    if (properties.status === 'running') return ISA101Colors.running
+    return ISA101Colors.stopped
   }
-
-  const getEfficiencyColor = (efficiency: number) => {
-    if (efficiency >= 80) return '#10b981' // Green
-    if (efficiency >= 60) return '#f59e0b' // Amber
-    return '#ef4444' // Red
+  
+  // Get status text
+  const getStatusText = () => {
+    if (properties.interlocked) return 'INTLK'
+    if (properties.status === 'fault') return 'FAULT'
+    if (properties.status === 'running') return 'RUN'
+    return 'STOP'
   }
-
-  const getTemperatureColor = (temp: number) => {
-    if (temp < 60) return '#3b82f6' // Blue
-    if (temp < 80) return '#10b981' // Green
-    if (temp < 100) return '#f59e0b' // Amber
-    return '#ef4444' // Red
-  }
-
+  
+  const fillColor = getFillColor()
+  const showAlarm = properties.alarmState !== 'none' && blinkState
+  
   return (
-    <Group 
-      x={x + vibrationOffset.x} 
-      y={y + vibrationOffset.y} 
-      ref={groupRef}
-    >
-      {/* Shadow */}
-      <Circle
-        x={centerX + 2}
-        y={centerY + 2}
-        radius={radius + 5}
-        fill="rgba(0,0,0,0.2)"
-      />
-      
-      {/* Outer glow when running */}
-      {properties.running && (
-        <Circle
-          x={centerX}
-          y={centerY}
-          radius={radius + 8}
-          stroke={getPumpColor()}
-          strokeWidth={3}
-          opacity={glowOpacity * 0.3}
+    <Group x={x} y={y} onClick={onClick} onContextMenu={onContextMenu}>
+      {/* Selection indicator */}
+      {selected && (
+        <Rect
+          x={-10}
+          y={-10}
+          width={width + 20}
+          height={height + 20}
+          stroke="#0080FF"
+          strokeWidth={2}
+          dash={[5, 5]}
+          fill="transparent"
         />
       )}
       
-      {/* Pump casing with gradient */}
-      <Shape
-        sceneFunc={(context, shape) => {
-          const gradient = context.createRadialGradient(
-            centerX - radius / 3,
-            centerY - radius / 3,
-            0,
-            centerX,
-            centerY,
-            radius
-          )
-          
-          const baseColor = getPumpColor()
-          if (baseColor === '#10b981') {
-            gradient.addColorStop(0, '#34d399')
-            gradient.addColorStop(0.7, '#10b981')
-            gradient.addColorStop(1, '#059669')
-          } else if (baseColor === '#ef4444') {
-            gradient.addColorStop(0, '#f87171')
-            gradient.addColorStop(0.7, '#ef4444')
-            gradient.addColorStop(1, '#dc2626')
-          } else {
-            gradient.addColorStop(0, '#9ca3af')
-            gradient.addColorStop(0.7, '#6b7280')
-            gradient.addColorStop(1, '#4b5563')
-          }
-          
-          context.beginPath()
-          context.arc(centerX, centerY, radius, 0, Math.PI * 2)
-          context.fillStyle = gradient
-          context.fill()
-          context.strokeStyle = style.stroke || '#374151'
-          context.lineWidth = style.strokeWidth || 3
-          context.stroke()
-        }}
+      {/* Pump casing - ISA-101 simplified representation */}
+      <Circle
+        x={centerX}
+        y={centerY}
+        radius={radius}
+        fill={ISA101Colors.equipmentFill}
+        stroke={ISA101Colors.equipmentOutline}
+        strokeWidth={lineWidth}
       />
       
-      {/* Impeller/rotor */}
-      <Group rotation={rotation} offsetX={centerX} offsetY={centerY} x={centerX} y={centerY}>
-        {properties.pumpType === 'centrifugal' ? (
-          // Centrifugal impeller
-          <Shape
-            sceneFunc={(context) => {
-              context.translate(centerX, centerY)
-              
-              for (let i = 0; i < 6; i++) {
-                context.save()
-                context.rotate((i * Math.PI * 2) / 6)
-                
-                context.beginPath()
-                context.moveTo(0, 0)
-                context.quadraticCurveTo(
-                  radius * 0.3,
-                  -radius * 0.1,
-                  radius * 0.7,
-                  -radius * 0.05
-                )
-                context.quadraticCurveTo(
-                  radius * 0.5,
-                  radius * 0.1,
-                  0,
-                  0
-                )
-                
-                context.fillStyle = 'rgba(255,255,255,0.3)'
-                context.fill()
-                context.strokeStyle = 'rgba(255,255,255,0.5)'
-                context.lineWidth = 1
-                context.stroke()
-                
-                context.restore()
-              }
-            }}
+      {/* Pump impeller (simplified for ISA-101) */}
+      {properties.pumpType === 'centrifugal' ? (
+        <Group x={centerX} y={centerY} rotation={rotation}>
+          {/* Centrifugal impeller vanes */}
+          {[0, 120, 240].map(angle => (
+            <Wedge
+              key={angle}
+              x={0}
+              y={0}
+              radius={radius * 0.7}
+              angle={60}
+              rotation={angle}
+              fill={ISA101Colors.containerBackground}
+              stroke={ISA101Colors.equipmentOutline}
+              strokeWidth={1}
+            />
+          ))}
+        </Group>
+      ) : (
+        /* Positive displacement representation */
+        <Group x={centerX} y={centerY}>
+          <Rect
+            x={-radius * 0.5}
+            y={-radius * 0.3}
+            width={radius}
+            height={radius * 0.6}
+            fill={ISA101Colors.containerBackground}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={1}
+            rotation={rotation}
           />
-        ) : (
-          // Positive displacement gears
-          <>
-            <Circle
-              x={centerX - radius * 0.3}
-              y={centerY}
-              radius={radius * 0.35}
-              fill="rgba(255,255,255,0.2)"
-              stroke="rgba(255,255,255,0.4)"
-              strokeWidth={2}
-            />
-            <Circle
-              x={centerX + radius * 0.3}
-              y={centerY}
-              radius={radius * 0.35}
-              fill="rgba(255,255,255,0.2)"
-              stroke="rgba(255,255,255,0.4)"
-              strokeWidth={2}
-            />
-          </>
-        )}
-        
-        {/* Center hub */}
-        <Circle
-          x={centerX}
-          y={centerY}
-          radius={radius * 0.15}
-          fill="#374151"
-          stroke="#1f2937"
-          strokeWidth={2}
-        />
-      </Group>
+        </Group>
+      )}
       
-      {/* Flow direction arrows */}
-      {properties.running && (
-        <Group opacity={0.7}>
+      {/* Center hub with status color */}
+      <Circle
+        x={centerX}
+        y={centerY}
+        radius={radius * 0.3}
+        fill={fillColor}
+        stroke={ISA101Colors.equipmentOutline}
+        strokeWidth={lineWidth}
+      />
+      
+      {/* Flow direction arrows (ISA-101 style) */}
+      {properties.showFlowDirection && properties.status === 'running' && (
+        <Group>
           {/* Inlet arrow */}
           <Shape
-            x={-radius}
-            y={centerY}
-            sceneFunc={(context) => {
+            sceneFunc={(context, shape) => {
               context.beginPath()
-              context.moveTo(0, -8)
-              context.lineTo(15, 0)
-              context.lineTo(0, 8)
-              context.strokeStyle = '#3b82f6'
-              context.lineWidth = 3
+              context.moveTo(-radius - 15, centerY)
+              context.lineTo(-radius - 5, centerY)
+              context.moveTo(-radius - 10, centerY - 5)
+              context.lineTo(-radius - 5, centerY)
+              context.lineTo(-radius - 10, centerY + 5)
+              context.strokeStyle = ISA101Colors.processValue
+              context.lineWidth = 2
               context.stroke()
             }}
           />
           
           {/* Outlet arrow */}
           <Shape
-            x={width + radius - 15}
-            y={centerY}
-            sceneFunc={(context) => {
+            sceneFunc={(context, shape) => {
               context.beginPath()
-              context.moveTo(0, -8)
-              context.lineTo(15, 0)
-              context.lineTo(0, 8)
-              context.strokeStyle = '#3b82f6'
-              context.lineWidth = 3
+              context.moveTo(width + radius + 5, centerY)
+              context.lineTo(width + radius + 15, centerY)
+              context.moveTo(width + radius + 10, centerY - 5)
+              context.lineTo(width + radius + 15, centerY)
+              context.lineTo(width + radius + 10, centerY + 5)
+              context.strokeStyle = ISA101Colors.processValue
+              context.lineWidth = 2
               context.stroke()
             }}
           />
         </Group>
       )}
       
-      {/* Status indicators */}
-      {properties.showStatus && (
-        <Group y={height + 10}>
-          {/* Main status */}
+      {/* Equipment tag */}
+      <Text
+        x={0}
+        y={-radius - 25}
+        width={width}
+        text={properties.tagName}
+        fontSize={12}
+        fontFamily="Arial"
+        fontStyle="bold"
+        fill={ISA101Colors.processValue}
+        align="center"
+      />
+      
+      {/* Status display box */}
+      <Group y={radius + 10}>
+        <Rect
+          x={centerX - 30}
+          y={0}
+          width={60}
+          height={20}
+          fill={showAlarm ? 
+            (properties.alarmState === 'fault' || properties.alarmState === 'trip' ? 
+              ISA101Colors.alarmCritical : ISA101Colors.alarmHigh) : 
+            ISA101Colors.containerBackground}
+          stroke={ISA101Colors.equipmentOutline}
+          strokeWidth={1}
+        />
+        <Text
+          x={centerX - 30}
+          y={3}
+          width={60}
+          text={getStatusText()}
+          fontSize={11}
+          fontFamily="Arial"
+          fontStyle="bold"
+          fill={showAlarm ? '#FFFFFF' : ISA101Colors.processValue}
+          align="center"
+        />
+      </Group>
+      
+      {/* Control mode indicator */}
+      {properties.controlMode && (
+        <Group y={radius + 35}>
           <Text
             x={0}
             y={0}
             width={width}
-            text={properties.fault ? 'FAULT' : (properties.running ? 'RUNNING' : 'STOPPED')}
-            fontSize={12}
-            fill={getPumpColor()}
+            text={properties.controlMode.toUpperCase()}
+            fontSize={10}
+            fontFamily="Arial"
+            fill={ISA101Colors.processValue}
             align="center"
-            fontStyle="bold"
           />
-          
-          {/* Speed indicator */}
-          {properties.running && (
-            <Group y={15}>
-              <Rect
-                x={5}
-                y={0}
-                width={width - 10}
-                height={6}
-                fill="#e5e7eb"
-                cornerRadius={3}
-              />
-              <Rect
-                x={5}
-                y={0}
-                width={(width - 10) * (properties.speed / 100)}
-                height={6}
-                fill="#3b82f6"
-                cornerRadius={3}
-              />
+        </Group>
+      )}
+      
+      {/* Process values display */}
+      {properties.showDetailedStatus && (
+        <Group y={radius + 50}>
+          {/* Flow rate */}
+          {properties.flowRate !== undefined && (
+            <Group y={0}>
               <Text
                 x={0}
-                y={8}
+                y={0}
                 width={width}
-                text={`${properties.speed}% Speed`}
+                text={`${properties.flowRate.toFixed(1)} ${properties.flowUnits || 'GPM'}`}
                 fontSize={10}
-                fill="#6b7280"
+                fontFamily="Arial"
+                fill={ISA101Colors.processValue}
                 align="center"
               />
             </Group>
           )}
           
-          {/* Metrics display */}
-          {properties.running && (
-            <Group y={properties.speed ? 35 : 20}>
-              {properties.flowRate !== undefined && (
-                <Text
-                  x={0}
-                  y={0}
-                  width={width}
-                  text={`${properties.flowRate} GPM`}
-                  fontSize={10}
-                  fill="#374151"
-                  align="center"
-                />
-              )}
-              
-              {properties.pressure !== undefined && (
-                <Text
-                  x={0}
-                  y={12}
-                  width={width}
-                  text={`${properties.pressure} PSI`}
-                  fontSize={10}
-                  fill="#374151"
-                  align="center"
-                />
-              )}
-              
-              {properties.temperature !== undefined && (
-                <Text
-                  x={0}
-                  y={24}
-                  width={width}
-                  text={`${properties.temperature}°F`}
-                  fontSize={10}
-                  fill={getTemperatureColor(properties.temperature)}
-                  align="center"
-                />
-              )}
-              
-              {properties.efficiency !== undefined && (
-                <Group y={36}>
-                  <Text
-                    x={0}
-                    y={0}
-                    width={width / 2}
-                    text="Eff:"
-                    fontSize={9}
-                    fill="#6b7280"
-                    align="right"
-                  />
-                  <Text
-                    x={width / 2 + 2}
-                    y={0}
-                    width={width / 2 - 2}
-                    text={`${properties.efficiency}%`}
-                    fontSize={9}
-                    fill={getEfficiencyColor(properties.efficiency)}
-                    align="left"
-                    fontStyle="bold"
-                  />
-                </Group>
-              )}
+          {/* Discharge pressure */}
+          {properties.dischargePressure !== undefined && (
+            <Group y={12}>
+              <Text
+                x={0}
+                y={0}
+                width={width}
+                text={`${properties.dischargePressure.toFixed(0)} ${properties.pressureUnits || 'PSI'}`}
+                fontSize={10}
+                fontFamily="Arial"
+                fill={ISA101Colors.processValue}
+                align="center"
+              />
+            </Group>
+          )}
+          
+          {/* Speed */}
+          {properties.speed !== undefined && (
+            <Group y={24}>
+              <Text
+                x={0}
+                y={0}
+                width={width}
+                text={`${properties.speed.toFixed(0)}% SPD`}
+                fontSize={10}
+                fontFamily="Arial"
+                fill={ISA101Colors.processValue}
+                align="center"
+              />
             </Group>
           )}
         </Group>
       )}
       
-      {/* Fault indicator */}
-      {properties.fault && (
-        <Group>
+      {/* Interlock indicator */}
+      {properties.interlocked && (
+        <Group x={centerX + radius - 10} y={centerY - radius - 10}>
           <Circle
-            x={centerX + radius * 0.7}
-            y={centerY - radius * 0.7}
-            radius={12}
-            fill="#ef4444"
-            stroke="#dc2626"
-            strokeWidth={2}
+            x={0}
+            y={0}
+            radius={8}
+            fill={ISA101Colors.alarmMedium}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={1}
           />
           <Text
-            x={centerX + radius * 0.7 - 6}
-            y={centerY - radius * 0.7 - 8}
-            text="!"
-            fontSize={16}
-            fill="#ffffff"
+            x={-3}
+            y={-4}
+            text="I"
+            fontSize={10}
+            fontFamily="Arial"
             fontStyle="bold"
-            align="center"
+            fill={ISA101Colors.equipmentOutline}
           />
         </Group>
       )}
       
-      {/* Efficiency arc indicator */}
-      {properties.efficiency !== undefined && properties.running && (
-        <Arc
-          x={centerX}
-          y={centerY}
-          innerRadius={radius + 12}
-          outerRadius={radius + 16}
-          angle={270 * (properties.efficiency / 100)}
-          rotation={-135}
-          fill={getEfficiencyColor(properties.efficiency)}
-          opacity={0.6}
-        />
+      {/* Permissive indicator */}
+      {properties.runPermissive === false && (
+        <Group x={centerX - radius + 10} y={centerY - radius - 10}>
+          <Circle
+            x={0}
+            y={0}
+            radius={8}
+            fill={ISA101Colors.alarmHigh}
+            stroke={ISA101Colors.equipmentOutline}
+            strokeWidth={1}
+          />
+          <Text
+            x={-3}
+            y={-4}
+            text="P"
+            fontSize={10}
+            fontFamily="Arial"
+            fontStyle="bold"
+            fill="#FFFFFF"
+          />
+        </Group>
       )}
       
-      {/* Connection flanges */}
+      {/* Process connection lines */}
       <Group>
-        {/* Inlet flange */}
-        <Rect
-          x={-5}
-          y={centerY - 10}
-          width={10}
-          height={20}
-          fill="#6b7280"
-          stroke="#374151"
-          strokeWidth={1}
-          cornerRadius={2}
+        {/* Suction line */}
+        <Line
+          points={[-radius - 5, centerY, 0, centerY]}
+          stroke={ISA101Colors.processLine}
+          strokeWidth={3}
         />
         
-        {/* Outlet flange */}
-        <Rect
-          x={width - 5}
-          y={centerY - 10}
-          width={10}
-          height={20}
-          fill="#6b7280"
-          stroke="#374151"
-          strokeWidth={1}
-          cornerRadius={2}
+        {/* Discharge line */}
+        <Line
+          points={[width, centerY, width + radius + 5, centerY]}
+          stroke={ISA101Colors.processLine}
+          strokeWidth={3}
         />
       </Group>
     </Group>
