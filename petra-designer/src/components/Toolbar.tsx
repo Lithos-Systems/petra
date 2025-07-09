@@ -34,10 +34,10 @@ import {
   FaChartLine,
   FaServer,
   FaWifi,
-  FaWifiSlash,
   FaMoon,
   FaSun
 } from 'react-icons/fa'
+import { MdWifiOff } from 'react-icons/md'
 import { useFlowStore } from '@/store/flowStore'
 import { usePetra } from '@/contexts/PetraContext'
 
@@ -318,7 +318,7 @@ export default function EnhancedToolbar({
                 </>
               ) : (
                 <>
-                  <FaWifiSlash className="w-3 h-3" />
+                  <MdWifiOff className="w-3 h-3" />
                   <span>Disconnected</span>
                 </>
               )}
