@@ -7,17 +7,17 @@ import {
   FaCog, FaSave, FaFolder, FaPlay, FaPause, FaExclamationTriangle,
   FaLink, FaUnlink
 } from 'react-icons/fa'
-import ISA101TankComponent from './ISA101TankComponent'
-import ISA101PumpComponent from './ISA101PumpComponent'
-import ISA101ValveComponent from './ISA101ValveComponent'
-import ISA101GaugeComponent from './ISA101GaugeComponent'
-import ISA101MotorComponent from './ISA101MotorComponent'
-import ISA101MixerComponent from './ISA101MixerComponent'
-import ISA101TextComponent from './ISA101TextComponent'
-import ISA101ButtonComponent from './ISA101ButtonComponent'
-import ISA101IndicatorComponent from './ISA101IndicatorComponent'
-import ISA101PipeComponent from './ISA101PipeComponent'
-import ISA101ShapeComponent from './ISA101ShapeComponent'
+import ISA101TankComponent from './components/ISA101TankComponent'
+import ISA101PumpComponent from './components/ISA101PumpComponent'
+import ISA101ValveComponent from './components/ISA101ValveComponent'
+import ISA101GaugeComponent from './components/ISA101GaugeComponent'
+import ISA101MotorComponent from './components/ISA101MotorComponent'
+import ISA101MixerComponent from './components/ISA101MixerComponent'
+import ISA101TextComponent from './components/ISA101TextComponent'
+import ISA101ButtonComponent from './components/ISA101ButtonComponent'
+import ISA101IndicatorComponent from './components/ISA101IndicatorComponent'
+import ISA101PipeComponent from './components/ISA101PipeComponent'
+import ISA101ShapeComponent from './components/ISA101ShapeComponent'
 import { usePetra } from '../../contexts/PetraContext'
 
 // ISA-101 Standard Colors
