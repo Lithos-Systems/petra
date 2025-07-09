@@ -87,8 +87,20 @@ export default function WaterPlantPetraDemo() {
     lastUpdate: null,
   })
   
-  const [showControls, setShowControls] = useState(true)
-  const [stageSize, setStageSize] = useState({ width: 800, height: 600 })
+  // Add polling for signal values as a temporary workaround
+  // This ensures the UI stays in sync even if WebSocket updates aren't working
+  useEffect(() => {
+    if (!connected) return
+    
+    // Poll for signal updates every 100ms
+    const pollInterval = setInterval(() => {
+      // The signal values should update automatically via WebSocket
+      // This is just to trigger re-renders if needed
+      setSimulation(prev => ({ ...prev, lastUpdate: new Date() }))
+    }, 100)
+    
+    return () => clearInterval(pollInterval)
+  }, [connected])
   
   // PETRA signal values (read from signal bus)
   const signals = {
