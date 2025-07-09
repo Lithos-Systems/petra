@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import ISA101Trend from '../ISA101Trend';
-import HOAComponent from '../HOAComponent';
+import ISA101Trend from './components/ISA101Trend';
+import HOAComponent from './components/HOAComponent';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { AlertTriangle, Activity, Droplet, Gauge } from 'lucide-react';
@@ -158,7 +158,7 @@ export default function HMIDashboard({ signals, connected, isISA101Mode = true }
                   id="pump_p101_hoa"
                   value={getSignalValue('well.hoa_mode', 'off')}
                   size="small"
-                  onModeChange={(mode, id) => {
+                  onModeChange={(mode: 'hand' | 'off' | 'auto', id: string) => {
                     console.log(`Setting ${id} to ${mode} mode`);
                     // Send command to PETRA
                   }}

@@ -149,9 +149,9 @@ const ISA101Toolbar = ({
 
 // Main Logic Designer Component
 export default function ISA101LogicDesigner() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<any>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<any>>([]);
+  const [selectedNode, setSelectedNode] = useState<Node<any> | null>(null);
   const [nodeId, setNodeId] = useState(1);
 
   const onConnect = useCallback(
@@ -164,7 +164,7 @@ export default function ISA101LogicDesigner() {
   }, []);
 
   const onAddBlock = useCallback((blockType: string) => {
-    const newNode: Node = {
+    const newNode: Node<any> = {
       id: `node_${nodeId}`,
       type: 'logicBlock',
       position: { x: 100 + (nodeId * 50) % 400, y: 100 + Math.floor(nodeId / 8) * 100 },
@@ -175,16 +175,16 @@ export default function ISA101LogicDesigner() {
         value: blockType === 'TIMER' ? '0.0s' : undefined
       },
     };
-    setNodes((nds) => nds.concat(newNode));
+    setNodes(nds => nds.concat(newNode));
     setNodeId(nodeId + 1);
   }, [nodeId, setNodes]);
 
   const onDelete = useCallback(() => {
     if (selectedNode) {
-      setNodes((nds) => nds.filter((node) => node.id !== selectedNode.id));
-      setEdges((eds) => eds.filter((edge) => 
-        edge.source !== selectedNode.id && edge.target !== selectedNode.id
-      ));
+      setNodes(nds => nds.filter(node => node.id !== selectedNode.id));
+      setEdges(eds =>
+        eds.filter(edge => edge.source !== selectedNode.id && edge.target !== selectedNode.id)
+      );
       setSelectedNode(null);
     }
   }, [selectedNode, setNodes, setEdges]);

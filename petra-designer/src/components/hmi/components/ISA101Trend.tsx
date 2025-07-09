@@ -149,7 +149,7 @@ export default function ISA101Trend({
 }
 
 // ISA-101 colors for trends
-const ISA_COLORS = {
+const ISA_COLORS: Record<string, string> = {
   text: '#000000',
   'trend-1': '#000080', // Dark blue
   'trend-2': '#008000', // Dark green
