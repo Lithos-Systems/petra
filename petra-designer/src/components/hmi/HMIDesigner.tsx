@@ -4,11 +4,21 @@ import { Stage, Layer, Rect, Line } from 'react-konva'
 import { 
   FaBars, FaTimes, FaIndustry, FaChartLine, FaFont, FaShapes,
   FaPalette, FaEye, FaEyeSlash, FaLock, FaUnlock, FaTrash,
-  FaCog, FaSave, FaFolder, FaPlay, FaPause, FaExclamationTriangle
+  FaCog, FaSave, FaFolder, FaPlay, FaPause, FaExclamationTriangle,
+  FaLink, FaUnlink
 } from 'react-icons/fa'
-import ISA101TankComponent from './components/ISA101TankComponent'
-import ISA101PumpComponent from './components/ISA101PumpComponent'
-import ISA101ValveComponent from './components/ISA101ValveComponent'
+import ISA101TankComponent from './ISA101TankComponent'
+import ISA101PumpComponent from './ISA101PumpComponent'
+import ISA101ValveComponent from './ISA101ValveComponent'
+import ISA101GaugeComponent from './ISA101GaugeComponent'
+import ISA101MotorComponent from './ISA101MotorComponent'
+import ISA101MixerComponent from './ISA101MixerComponent'
+import ISA101TextComponent from './ISA101TextComponent'
+import ISA101ButtonComponent from './ISA101ButtonComponent'
+import ISA101IndicatorComponent from './ISA101IndicatorComponent'
+import ISA101PipeComponent from './ISA101PipeComponent'
+import ISA101ShapeComponent from './ISA101ShapeComponent'
+import { usePetra } from '../../contexts/PetraContext'
 
 // ISA-101 Standard Colors
 const ISA101Colors = {
@@ -221,6 +231,7 @@ const componentCategories = [
 ]
 
 export default function ISA101HMIDesigner() {
+  const { connected, signals, subscribeSignal, unsubscribeSignal } = usePetra()
   const [components, setComponents] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [showGrid, setShowGrid] = useState(true)
@@ -230,8 +241,58 @@ export default function ISA101HMIDesigner() {
   const [activeCategory, setActiveCategory] = useState(0)
   const [stageSize, setStageSize] = useState({ width: 1200, height: 800 })
   const [isDragging, setIsDragging] = useState(false)
+  const [showBindingPanel, setShowBindingPanel] = useState(false)
+  const [availableSignals, setAvailableSignals] = useState([])
   const stageRef = useRef()
   const draggedComponent = useRef(null)
+
+  // Update component properties based on signal bindings
+  useEffect(() => {
+    if (!connected) return
+
+    // Update components when signals change
+    const updateComponentsFromSignals = () => {
+      setComponents(prevComponents => 
+        prevComponents.map(component => {
+          if (!component.bindings || component.bindings.length === 0) return component
+          
+          const updatedProperties = { ...component.properties }
+          let hasChanges = false
+
+          component.bindings.forEach(binding => {
+            const signalValue = signals.get(binding.signal)
+            if (signalValue !== undefined) {
+              let processedValue = signalValue
+              
+              // Apply transformation if specified
+              if (binding.transform) {
+                try {
+                  // Create a safe evaluation context
+                  const evalFunction = new Function('value', `return ${binding.transform}`)
+                  processedValue = evalFunction(signalValue)
+                } catch (e) {
+                  console.error(`Transform error for ${binding.signal}:`, e)
+                }
+              }
+              
+              // Update the property if it changed
+              if (updatedProperties[binding.property] !== processedValue) {
+                updatedProperties[binding.property] = processedValue
+                hasChanges = true
+              }
+            }
+          })
+
+          return hasChanges ? { ...component, properties: updatedProperties } : component
+        })
+      )
+    }
+
+    // Update on signal changes
+    const interval = setInterval(updateComponentsFromSignals, 100)
+    
+    return () => clearInterval(interval)
+  }, [connected, signals])
 
   // Update stage size on window resize
   useEffect(() => {
@@ -258,14 +319,27 @@ export default function ISA101HMIDesigner() {
     
     if (!componentDef) return
 
+    // Component-specific default sizes
+    const getDefaultSize = (type) => {
+      switch (type) {
+        case 'tank': return { width: 120, height: 150 }
+        case 'mixer': return { width: 100, height: 120 }
+        case 'gauge': return { width: 100, height: 100 }
+        case 'text':
+        case 'title': return { width: 200, height: 30 }
+        case 'button': return { width: 100, height: 40 }
+        case 'indicator': return { width: 40, height: 40 }
+        case 'pipe': return { width: 100, height: 20 }
+        case 'shape': return { width: 80, height: 80 }
+        default: return { width: 80, height: 80 }
+      }
+    }
+
     const newComponent = {
       id: `${componentType}-${Date.now()}`,
       type: componentType,
       position: { x: 100, y: 100 },
-      size: { 
-        width: componentType === 'tank' ? 120 : 80, 
-        height: componentType === 'tank' ? 150 : 80 
-      },
+      size: getDefaultSize(componentType),
       rotation: 0,
       properties: { ...componentDef.defaultProps },
       bindings: [],
@@ -298,7 +372,6 @@ export default function ISA101HMIDesigner() {
   // Render component based on type
   const renderComponent = (component) => {
     const commonProps = {
-      key: component.id,
       x: component.position.x,
       y: component.position.y,
       width: component.size.width,
@@ -332,12 +405,30 @@ export default function ISA101HMIDesigner() {
 
     switch (component.type) {
       case 'tank':
-        return <ISA101TankComponent {...commonProps} />
+        return <ISA101TankComponent key={component.id} {...commonProps} />
       case 'pump':
-        return <ISA101PumpComponent {...commonProps} />
+        return <ISA101PumpComponent key={component.id} {...commonProps} />
       case 'valve':
-        return <ISA101ValveComponent {...commonProps} />
+        return <ISA101ValveComponent key={component.id} {...commonProps} />
+      case 'gauge':
+        return <ISA101GaugeComponent key={component.id} {...commonProps} />
+      case 'motor':
+        return <ISA101MotorComponent key={component.id} {...commonProps} />
+      case 'mixer':
+        return <ISA101MixerComponent key={component.id} {...commonProps} />
+      case 'text':
+      case 'title':
+        return <ISA101TextComponent key={component.id} {...commonProps} />
+      case 'button':
+        return <ISA101ButtonComponent key={component.id} {...commonProps} />
+      case 'indicator':
+        return <ISA101IndicatorComponent key={component.id} {...commonProps} />
+      case 'pipe':
+        return <ISA101PipeComponent key={component.id} {...commonProps} />
+      case 'shape':
+        return <ISA101ShapeComponent key={component.id} {...commonProps} />
       default:
+        console.warn(`Unknown component type: ${component.type}`)
         return null
     }
   }
@@ -893,9 +984,204 @@ export default function ISA101HMIDesigner() {
                                   <option value="control">Control</option>
                                 </select>
                               </div>
-                            </>
-                          )}
-                        </div>
+                      {/* Signal Bindings */}
+                      <div>
+                        <h4 className="font-medium text-sm mb-2 flex items-center justify-between" 
+                          style={{ color: ISA101Colors.text }}>
+                          Signal Bindings
+                          <button
+                            onClick={() => setShowBindingPanel(!showBindingPanel)}
+                            className="p-1 rounded text-xs flex items-center gap-1"
+                            style={{ 
+                              backgroundColor: connected ? ISA101Colors.running : ISA101Colors.stopped,
+                              color: '#FFFFFF'
+                            }}
+                          >
+                            {connected ? <FaLink /> : <FaUnlink />}
+                            {connected ? 'Connected' : 'Disconnected'}
+                          </button>
+                        </h4>
+                        
+                        {showBindingPanel && connected && (
+                          <div className="space-y-2">
+                            {/* Add binding for currentLevel/value based on component type */}
+                            {(component.type === 'tank' || component.type === 'gauge') && (
+                              <div>
+                                <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                  {component.type === 'tank' ? 'Level Signal' : 'Value Signal'}
+                                </label>
+                                <select
+                                  value={component.bindings?.find(b => b.property === (component.type === 'tank' ? 'currentLevel' : 'currentValue'))?.signal || ''}
+                                  onChange={(e) => {
+                                    const newBindings = component.bindings?.filter(b => b.property !== (component.type === 'tank' ? 'currentLevel' : 'currentValue')) || []
+                                    if (e.target.value) {
+                                      newBindings.push({
+                                        property: component.type === 'tank' ? 'currentLevel' : 'currentValue',
+                                        signal: e.target.value
+                                      })
+                                    }
+                                    updateComponent(component.id, { bindings: newBindings })
+                                  }}
+                                  className="w-full px-2 py-1 text-sm border rounded"
+                                  style={{ 
+                                    backgroundColor: ISA101Colors.buttonBg,
+                                    borderColor: ISA101Colors.toolbarBorder 
+                                  }}
+                                >
+                                  <option value="">-- No Binding --</option>
+                                  {Array.from(signals.keys()).map(signal => (
+                                    <option key={signal} value={signal}>{signal}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            
+                            {(component.type === 'pump' || component.type === 'valve' || component.type === 'motor') && (
+                              <>
+                                <div>
+                                  <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                    Status Signal
+                                  </label>
+                                  <select
+                                    value={component.bindings?.find(b => b.property === 'status')?.signal || ''}
+                                    onChange={(e) => {
+                                      const newBindings = component.bindings?.filter(b => b.property !== 'status') || []
+                                      if (e.target.value) {
+                                        newBindings.push({
+                                          property: 'status',
+                                          signal: e.target.value,
+                                          transform: component.type === 'pump' ? 
+                                            "value ? 'running' : 'stopped'" : 
+                                            component.type === 'valve' ?
+                                            "value > 50 ? 'open' : 'closed'" :
+                                            "value ? 'running' : 'stopped'"
+                                        })
+                                      }
+                                      updateComponent(component.id, { bindings: newBindings })
+                                    }}
+                                    className="w-full px-2 py-1 text-sm border rounded"
+                                    style={{ 
+                                      backgroundColor: ISA101Colors.buttonBg,
+                                      borderColor: ISA101Colors.toolbarBorder 
+                                    }}
+                                  >
+                                    <option value="">-- No Binding --</option>
+                                    {Array.from(signals.keys()).map(signal => (
+                                      <option key={signal} value={signal}>{signal}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                
+                                {component.type === 'valve' && (
+                                  <div>
+                                    <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                      Position Signal
+                                    </label>
+                                    <select
+                                      value={component.bindings?.find(b => b.property === 'position')?.signal || ''}
+                                      onChange={(e) => {
+                                        const newBindings = component.bindings?.filter(b => b.property !== 'position') || []
+                                        if (e.target.value) {
+                                          newBindings.push({
+                                            property: 'position',
+                                            signal: e.target.value
+                                          })
+                                        }
+                                        updateComponent(component.id, { bindings: newBindings })
+                                      }}
+                                      className="w-full px-2 py-1 text-sm border rounded"
+                                      style={{ 
+                                        backgroundColor: ISA101Colors.buttonBg,
+                                        borderColor: ISA101Colors.toolbarBorder 
+                                      }}
+                                    >
+                                      <option value="">-- No Binding --</option>
+                                      {Array.from(signals.keys()).map(signal => (
+                                        <option key={signal} value={signal}>{signal}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {/* Alarm bindings for components that support them */}
+                            {(component.type === 'tank' || component.type === 'gauge') && (
+                              <div className="pt-2 border-t" style={{ borderColor: ISA101Colors.toolbarBorder }}>
+                                <label className="text-xs font-medium" style={{ color: ISA101Colors.textSecondary }}>
+                                  Alarm Signals
+                                </label>
+                                <div className="space-y-1 mt-1">
+                                  <div>
+                                    <label className="text-xs" style={{ color: ISA101Colors.textSecondary }}>
+                                      High Alarm
+                                    </label>
+                                    <select
+                                      value={component.bindings?.find(b => b.property === 'alarmHigh')?.signal || ''}
+                                      onChange={(e) => {
+                                        const newBindings = component.bindings?.filter(b => b.property !== 'alarmHigh') || []
+                                        if (e.target.value) {
+                                          newBindings.push({
+                                            property: 'alarmHigh',
+                                            signal: e.target.value
+                                          })
+                                        }
+                                        updateComponent(component.id, { bindings: newBindings })
+                                      }}
+                                      className="w-full px-2 py-1 text-sm border rounded"
+                                      style={{ 
+                                        backgroundColor: ISA101Colors.buttonBg,
+                                        borderColor: ISA101Colors.toolbarBorder 
+                                      }}
+                                    >
+                                      <option value="">-- No Binding --</option>
+                                      {Array.from(signals.keys()).map(signal => (
+                                        <option key={signal} value={signal}>{signal}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Current bindings list */}
+                            {component.bindings?.length > 0 && (
+                              <div className="pt-2 border-t" style={{ borderColor: ISA101Colors.toolbarBorder }}>
+                                <label className="text-xs font-medium" style={{ color: ISA101Colors.textSecondary }}>
+                                  Active Bindings
+                                </label>
+                                <div className="space-y-1 mt-1">
+                                  {component.bindings.map((binding, idx) => (
+                                    <div key={idx} className="flex items-center justify-between text-xs p-1 rounded"
+                                      style={{ backgroundColor: ISA101Colors.background }}>
+                                      <span>{binding.property} → {binding.signal}</span>
+                                      <button
+                                        onClick={() => {
+                                          updateComponent(component.id, {
+                                            bindings: component.bindings.filter((_, i) => i !== idx)
+                                          })
+                                        }}
+                                        className="text-red-600 hover:text-red-800"
+                                      >
+                                        <FaTimes />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {!connected && (
+                          <div className="text-xs p-2 rounded" 
+                            style={{ 
+                              backgroundColor: ISA101Colors.alarmLow + '20',
+                              color: ISA101Colors.textSecondary 
+                            }}>
+                            Connect to PETRA to enable signal bindings
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
