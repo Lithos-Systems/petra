@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Stage, Layer } from 'react-konva'
 import { FaTimes, FaExpand, FaCompress } from 'react-icons/fa'
-import { HMIComponentRenderer } from './components/HMIComponentRenderer'
+import ISA101ComponentRenderer from './components/ISA101ComponentRenderer'
 import { useHMIStore } from '@/store/hmiStore'
 import { usePetra } from '@/contexts/PetraContext'
 import type { HMIComponent } from '@/types/hmi'
@@ -127,7 +127,7 @@ export default function HMIPreviewModal({ isOpen, onClose }: HMIPreviewModalProp
         >
           <Layer>
             {components.map((component) => (
-              <HMIComponentRenderer
+              <ISA101ComponentRenderer
                 key={component.id}
                 component={component}
                 isSelected={false}
