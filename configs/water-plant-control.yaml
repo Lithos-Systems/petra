@@ -886,7 +886,85 @@ blocks:
       in_max: 25.0    # 25 feet tank height
       out_min: 0.0
       out_max: 100.0  # Percentage
+# Add this to the blocks section of configs/water-plant-control.yaml
+# After the existing blocks, add:
 
+  # --------------------------------------------------------------------------
+  # TANK LEVEL SIMULATION
+  # --------------------------------------------------------------------------
+  
+  # Calculate tank level based on well inflow and pump outflow
+  - name: "tank_level_simulation"
+    type: "TANK_SIMULATION"
+    inputs:
+      inflow: "well.flow_rate"      # Well pump flow into tank
+      outflow: "pumps.total_flow"   # Total pump flow out of tank
+    outputs:
+      tank_level: "tank.level_feet"
+    params:
+      capacity_gallons: 200000.0    # 200k gallon tank
+      height_feet: 25.0             # 25 feet tall tank
+      
+  # --------------------------------------------------------------------------
+  # SYSTEM PRESSURE SIMULATION
+  # --------------------------------------------------------------------------
+  
+  # Simple pressure calculation based on supply vs demand
+  # This would be replaced with a more sophisticated model in production
+  - name: "pressure_simulation"
+    type: "SCALE"
+    inputs:
+      in: "pumps.total_flow"    # Use total pump flow as proxy for pressure
+    outputs:
+      out: "system.pressure"
+    params:
+      in_min: 0.0      # No flow
+      in_max: 6000.0   # Max flow from 3 pumps + well
+      out_min: 0.0     # No pressure
+      out_max: 80.0    # Max system pressure
+      
+  # --------------------------------------------------------------------------
+  # PUMP EFFICIENCY CALCULATIONS
+  # --------------------------------------------------------------------------
+  
+  # Calculate pump efficiencies based on flow rates
+  # In reality, this would come from VFD data or pump curves
+  
+  - name: "pump1_efficiency_calc"
+    type: "SCALE"
+    inputs:
+      in: "pump1.flow_rate"
+    outputs:
+      out: "pump1.efficiency"
+    params:
+      in_min: 0.0
+      in_max: 1500.0   # Pump rated flow
+      out_min: 0.0
+      out_max: 85.0    # Peak efficiency
+      
+  - name: "pump2_efficiency_calc"
+    type: "SCALE"
+    inputs:
+      in: "pump2.flow_rate"
+    outputs:
+      out: "pump2.efficiency"
+    params:
+      in_min: 0.0
+      in_max: 1500.0
+      out_min: 0.0
+      out_max: 85.0
+      
+  - name: "pump3_efficiency_calc"
+    type: "SCALE"
+    inputs:
+      in: "pump3.flow_rate"
+    outputs:
+      out: "pump3.efficiency"
+    params:
+      in_min: 0.0
+      in_max: 1500.0
+      out_min: 0.0
+      out_max: 85.0
 # ============================================================================
 # MQTT CONFIGURATION (Optional)
 # ============================================================================
