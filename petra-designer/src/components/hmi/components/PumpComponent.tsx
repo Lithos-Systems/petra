@@ -8,8 +8,9 @@ interface PumpComponentProps {
   y: number
   width: number
   height: number
-  properties: PumpProperties
-  style: any
+  properties?: PumpProperties
+  style?: any
+  bindings?: any[]
   isSelected?: boolean
   draggable?: boolean
   onDragEnd?: (e: any) => void
@@ -21,8 +22,14 @@ export default function PumpComponent({
   y,
   width,
   height,
-  properties,
-  style,
+  properties = {
+    running: false,
+    fault: false,
+    speed: 0,
+    showStatus: true,
+    runAnimation: false
+  },
+  style = {},
   isSelected,
   draggable = true,
   onDragEnd,
@@ -41,6 +48,7 @@ export default function PumpComponent({
 
   const fillColor = style.fill || '#ffffff'
   const strokeColor = style.stroke || '#374151'
+  const strokeWidth = style.strokeWidth || 2
   const statusColor = getPumpColor()
 
   // IEC 60617 compliant pump symbol
@@ -76,7 +84,7 @@ export default function PumpComponent({
         radius={radius}
         fill={fillColor}
         stroke={strokeColor}
-        strokeWidth={2 * scale}
+        strokeWidth={strokeWidth * scale}
       />
 
       {/* Interior triangle (IEC pump symbol) */}
