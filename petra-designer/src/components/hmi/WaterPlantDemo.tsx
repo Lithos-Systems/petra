@@ -190,85 +190,8 @@ export default function WaterPlantPetraDemo() {
     return () => window.removeEventListener('resize', updateSize)
   }, [showControls])
   
-  // Simulation physics (updates PETRA signals)
-  useEffect(() => {
-    if (!simulation.running || !isConnected) return
-    
-    const interval = setInterval(() => {
-      try {
-        const timeStep = 1 / 60 * simulation.timeMultiplier
-        
-        // Read current values
-        const tankLevel = Number(getSignalValue('tank.level_feet', 12.5))
-        const wellFlow = Number(getSignalValue('well.flow_rate', 0))
-        const totalPumpFlow = Number(getSignalValue('pumps.total_flow', 0))
-        const systemDemand = Number(getSignalValue('system.demand', 2500))
-        
-        // Calculate net flow to tank
-        const netFlow = wellFlow - totalPumpFlow
-        
-        // Update tank level (1 foot = 8000 gallons for a 200k gallon, 25ft tank)
-        const gallonsPerFoot = 8000
-        const levelChange = (netFlow * timeStep) / gallonsPerFoot
-        const newLevel = Math.max(0, Math.min(25, tankLevel + levelChange))
-        
-        // Write updated tank level
-        setSignalValue('tank.level_feet', newLevel)
-        setSignalValue('tank.level_percent', (newLevel / 25) * 100)
-        
-        // Calculate system pressure based on pump flow vs demand
-        const currentPressure = Number(getSignalValue('system.pressure', 60))
-        let targetPressure = 0
-        
-        if (totalPumpFlow > 0) {
-          const basePressure = 60
-          const supplyDemandRatio = totalPumpFlow / Math.max(1, systemDemand)
-          
-          if (supplyDemandRatio >= 1) {
-            targetPressure = Math.min(100, basePressure + (supplyDemandRatio - 1) * 20)
-          } else {
-            targetPressure = basePressure * supplyDemandRatio
-          }
-        }
-        
-        // Apply pressure change with hydrotank dampening
-        const pressureChangeRate = 0.1
-        let newPressure = currentPressure
-        
-        if (targetPressure > currentPressure) {
-          newPressure = Math.min(targetPressure, currentPressure + (targetPressure - currentPressure) * pressureChangeRate)
-        } else {
-          newPressure = Math.max(targetPressure, currentPressure - (currentPressure - targetPressure) * pressureChangeRate)
-        }
-        
-        setSignalValue('system.pressure', Math.round(newPressure))
-        
-        // Update hydrotank levels based on net system flow
-        const netSystemFlow = totalPumpFlow - systemDemand
-        const htFlowShare = netSystemFlow * timeStep / 2 // Split between two tanks
-        
-        // Hydrotank 1
-        const ht1WaterLevel = Number(getSignalValue('hydrotank1.water_level', 50))
-        const ht1NewLevel = Math.max(0, Math.min(100, ht1WaterLevel + htFlowShare / 50))
-        setSignalValue('hydrotank1.water_level', ht1NewLevel)
-        setSignalValue('hydrotank1.air_blanket', 100 - ht1NewLevel)
-        
-        // Hydrotank 2
-        const ht2WaterLevel = Number(getSignalValue('hydrotank2.water_level', 50))
-        const ht2NewLevel = Math.max(0, Math.min(100, ht2WaterLevel + htFlowShare / 50))
-        setSignalValue('hydrotank2.water_level', ht2NewLevel)
-        setSignalValue('hydrotank2.air_blanket', 100 - ht2NewLevel)
-        
-        // Update timestamp
-        setSimulation(prev => ({ ...prev, lastUpdate: new Date() }))
-        
-      } catch (error) {
-        console.error('Simulation error:', error)
-      }
-    }, 100)
-    
-    return () => clearInterval(interval)
-  }, [simulation.running, simulation.timeMultiplier, isConnected, getSignalValue, setSignalValue])
+  // Remove the simulation physics - PETRA handles all logic
+  // The React component should only display values and handle user inputs
   
   // Write signal to PETRA
   const writeSignal = useCallback((signal: string, value: any) => {
@@ -333,44 +256,15 @@ export default function WaterPlantPetraDemo() {
                 {isConnected ? 'Connected' : 'Disconnected'}
               </span>
             </div>
-            {simulation.lastUpdate && (
-              <div className="text-xs text-gray-600 mt-1">
-                Last update: {simulation.lastUpdate.toLocaleTimeString()}
-              </div>
-            )}
+            <div className="text-xs text-gray-600 mt-1">
+              PETRA is handling all control logic
+            </div>
           </div>
           
-          {/* Simulation Control */}
+          {/* System Demand Control */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">Simulation</h3>
-              <button
-                onClick={() => setSimulation(prev => ({ ...prev, running: !prev.running }))}
-                className={`px-3 py-1 rounded flex items-center gap-2 text-white transition-colors ${
-                  simulation.running ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'
-                }`}
-                disabled={!isConnected}
-              >
-                {simulation.running ? <FaPause /> : <FaPlay />}
-                {simulation.running ? 'Pause' : 'Start'}
-              </button>
-            </div>
-            
+            <h3 className="font-semibold mb-3">System Controls</h3>
             <div>
-              <label className="text-sm text-gray-600">Speed Multiplier</label>
-              <input
-                type="range"
-                min="1"
-                max="60"
-                value={simulation.timeMultiplier}
-                onChange={(e) => setSimulation(prev => ({ ...prev, timeMultiplier: parseInt(e.target.value) }))}
-                className="w-full"
-              />
-              <span className="text-sm text-gray-500">{simulation.timeMultiplier}x</span>
-            </div>
-
-            {/* Demand Control */}
-            <div className="mt-4">
               <label className="text-sm text-gray-600">System Demand (gpm)</label>
               <input
                 type="range"
