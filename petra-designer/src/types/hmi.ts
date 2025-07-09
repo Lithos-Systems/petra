@@ -1,6 +1,6 @@
 // src/types/hmi.ts
 
-export type HMIComponentType = 
+export type HMIComponentType =
   | 'tank'
   | 'pump'
   | 'valve'
@@ -18,6 +18,15 @@ export type HMIComponentType =
   | 'heat-exchanger'
   | 'conveyor'
   | 'mixer'
+  
+export interface ConnectionInfo {
+  status: 'connected' | 'disconnected' | 'connecting' | 'error'
+  latency: number
+  uptime: number
+  lastError?: string
+  messageRate: number
+  reconnectAttempts: number
+}
 
 export interface HMIComponent {
   id: string
