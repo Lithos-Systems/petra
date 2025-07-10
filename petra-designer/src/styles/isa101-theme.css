@@ -1,367 +1,446 @@
-/* ISA-101 Theme Colors and Styles for Petra Designer */
-
+/* Modern ISA-101 Theme - Minimal and Clean */
 :root {
-  /* ISA-101 Base Colors */
-  --isa101-background: #C0C0C0;           /* Light gray background */
-  --isa101-background-dark: #808080;      /* Darker gray for panels */
-  --isa101-background-darker: #606060;    /* Even darker for headers */
+  /* Primary Colors - ISA-101 Compliant */
+  --isa101-background: #E5E5E5;
+  --isa101-background-alt: #F0F0F0;
+  --isa101-equipment-outline: #404040;
+  --isa101-equipment-fill: #D0D0D0;
+  --isa101-text-primary: #000000;
+  --isa101-text-secondary: #404040;
+  --isa101-border: #606060;
+  --isa101-border-light: #C0C0C0;
   
-  /* Equipment Colors */
-  --isa101-equipment-outline: #000000;    /* Black for equipment outlines */
-  --isa101-equipment-fill: #F0F0F0;       /* Light fill for equipment */
+  /* Process States */
+  --isa101-running: #00C800;
+  --isa101-stopped: #808080;
+  --isa101-transitioning: #FFD700;
   
-  /* Process State Colors */
-  --isa101-running: #00FF00;              /* Green - equipment running/valve open */
-  --isa101-stopped: #808080;              /* Gray - equipment stopped/valve closed */
-  --isa101-transitioning: #FFFF00;        /* Yellow - equipment changing state */
-  --isa101-fault: #FF0000;                /* Red - equipment fault */
+  /* Alarms per ISA-18.2 */
+  --isa101-alarm-critical: #FF0000;
+  --isa101-alarm-high: #FF8C00;
+  --isa101-alarm-medium: #FFD700;
+  --isa101-alarm-low: #00FFFF;
   
-  /* Alarm Priority Colors (ISA-18.2) */
-  --isa101-critical: #FF0000;             /* Red - Priority 1 (Critical) */
-  --isa101-high: #FF8C00;                 /* Orange - Priority 2 (High) */
-  --isa101-medium: #FFFF00;               /* Yellow - Priority 3 (Medium) */
-  --isa101-low: #00FFFF;                  /* Cyan - Priority 4 (Low) */
+  /* Special States */
+  --isa101-setpoint: #0000FF;
+  --isa101-interlock: #FF8C00;
+  --isa101-manual: #9370DB;
   
-  /* Special Indicators */
-  --isa101-setpoint: #0000FF;             /* Blue - setpoints and targets */
-  --isa101-interlock: #FF8C00;            /* Orange - interlocks */
-  --isa101-manual: #9370DB;               /* Purple - manual mode */
-  
-  /* Text Colors */
-  --isa101-text-primary: #000000;         /* Black primary text */
-  --isa101-text-secondary: #404040;       /* Dark gray secondary text */
-  --isa101-text-disabled: #808080;        /* Gray disabled text */
-  --isa101-text-alarm: #FFFFFF;           /* White text on colored alarm backgrounds */
-  
-  /* Navigation and UI */
-  --isa101-border: #404040;               /* Border color */
-  --isa101-selected: #0066CC;             /* Selection highlight */
-  --isa101-hover: #E0E0E0;                /* Hover state */
+  /* Modern Enhancements */
+  --isa101-shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --isa101-shadow-elevated: 0 2px 8px rgba(0, 0, 0, 0.15);
+  --isa101-radius-small: 2px;
+  --isa101-radius-medium: 4px;
+  --isa101-transition-fast: 0.15s ease;
 }
 
-/* ISA-101 Mode Base Styles */
+/* Base Styles */
 .isa101-mode {
   background-color: var(--isa101-background);
   color: var(--isa101-text-primary);
-  font-family: 'Arial', 'Helvetica', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Panel Styles */
+/* Modern Panels */
+.isa101-panel {
+  background-color: #FFFFFF;
+  border: 1px solid var(--isa101-border);
+  border-radius: var(--isa101-radius-medium);
+  box-shadow: var(--isa101-shadow-subtle);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.isa101-panel:hover {
+  box-shadow: var(--isa101-shadow-elevated);
+  transition: box-shadow var(--isa101-transition-fast);
+}
+
+/* Sidebar */
 .isa101-sidebar {
-  background-color: var(--isa101-background-dark);
+  background-color: var(--isa101-background-alt);
   border-left: 1px solid var(--isa101-border);
-  color: var(--isa101-text-primary);
-}
-
-.isa101-panel-header {
-  background-color: var(--isa101-background-darker);
-  color: var(--isa101-text-primary);
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--isa101-border);
-  font-weight: bold;
+  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.05);
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+}
+
+/* Panel Header */
+.isa101-panel-header {
+  background-color: #FFFFFF;
+  border-bottom: 2px solid var(--isa101-equipment-outline);
+  padding: 12px 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+/* Modern Inputs */
+.isa101-input {
+  background-color: #FFFFFF;
+  border: 1px solid var(--isa101-border);
+  border-radius: var(--isa101-radius-small);
+  padding: 6px 8px;
+  font-size: 12px;
+  transition: border-color var(--isa101-transition-fast);
+  width: 100%;
+  font-family: inherit;
+}
+
+.isa101-input:focus {
+  outline: none;
+  border-color: var(--isa101-equipment-outline);
+  box-shadow: 0 0 0 2px rgba(64, 64, 64, 0.1);
+}
+
+.isa101-input:disabled {
+  background-color: var(--isa101-background);
+  color: var(--isa101-text-secondary);
+  cursor: not-allowed;
+}
+
+/* Modern Buttons */
+.isa101-button {
+  background-color: #FFFFFF;
+  border: 1px solid var(--isa101-equipment-outline);
+  border-radius: var(--isa101-radius-small);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--isa101-transition-fast);
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.isa101-button:hover:not(:disabled) {
+  background-color: var(--isa101-equipment-fill);
+  transform: translateY(-1px);
+  box-shadow: var(--isa101-shadow-subtle);
+}
+
+.isa101-button:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.isa101-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Success Button Variant */
+.isa101-button-success {
+  background-color: var(--isa101-running);
+  color: white;
+  border-color: #008000;
+}
+
+.isa101-button-success:hover:not(:disabled) {
+  background-color: #00A000;
+}
+
+/* Modern Toolbar */
+.isa101-toolbar {
+  background-color: #FFFFFF;
+  border-bottom: 1px solid var(--isa101-border);
+  padding: 8px 16px;
+  display: flex;
+  gap: 16px;
   align-items: center;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-/* Equipment State Indicators */
-.isa101-running {
-  fill: var(--isa101-running);
-  color: var(--isa101-running);
+.isa101-toolbar-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: var(--isa101-radius-medium);
+  background-color: var(--isa101-background);
 }
 
-.isa101-stopped {
-  fill: var(--isa101-stopped);
-  color: var(--isa101-stopped);
+/* Connection Status */
+.isa101-connection-status {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  background-color: #FFFFFF;
+  border: 1px solid var(--isa101-border);
+  border-right: none;
+  border-bottom: none;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  box-shadow: var(--isa101-shadow-subtle);
+  z-index: 1000;
 }
 
-.isa101-transitioning {
-  fill: var(--isa101-transitioning);
-  color: var(--isa101-transitioning);
+.isa101-connection-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--isa101-equipment-outline);
 }
 
-.isa101-fault {
-  fill: var(--isa101-fault);
-  color: var(--isa101-fault);
+/* Block Nodes */
+.isa101-block-node {
+  background-color: #FFFFFF;
+  border: 2px solid var(--isa101-equipment-outline);
+  border-radius: var(--isa101-radius-medium);
+  padding: 12px;
+  min-width: 120px;
+  box-shadow: var(--isa101-shadow-subtle);
+  transition: all var(--isa101-transition-fast);
 }
 
-/* Alarm State Styles */
-.isa101-alarm-critical {
-  background-color: var(--isa101-critical);
-  color: var(--isa101-text-alarm);
-  border: 2px solid var(--isa101-critical);
+.isa101-block-node:hover {
+  box-shadow: var(--isa101-shadow-elevated);
+  transform: translateY(-1px);
 }
 
-.isa101-alarm-high {
-  background-color: var(--isa101-high);
-  color: var(--isa101-text-alarm);
-  border: 2px solid var(--isa101-high);
+.isa101-block-node.selected {
+  border-color: #000080;
+  border-width: 3px;
 }
 
-.isa101-alarm-medium {
-  background-color: var(--isa101-medium);
-  color: var(--isa101-text-primary);
-  border: 2px solid var(--isa101-medium);
-}
-
-.isa101-alarm-low {
-  background-color: var(--isa101-low);
-  color: var(--isa101-text-primary);
-  border: 2px solid var(--isa101-low);
-}
-
-/* Blinking animation for unacknowledged alarms */
-.isa101-blink {
-  animation: isa101-blink 1s infinite;
-}
-
+/* Modern Alarm Blink */
 @keyframes isa101-blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0.3; }
 }
 
-/* Equipment Symbols */
-.isa101-equipment {
+.isa101-alarm-active {
+  animation: isa101-blink 0.5s infinite;
+}
+
+/* ReactFlow Overrides */
+.react-flow {
+  background-color: var(--isa101-background);
+}
+
+.react-flow__renderer {
+  background-color: var(--isa101-background);
+}
+
+.react-flow__node {
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.react-flow__node.selected {
+  outline: none;
+}
+
+.react-flow__handle {
+  background: var(--isa101-equipment-outline);
+  border: 2px solid #FFFFFF;
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+}
+
+.react-flow__handle:hover {
+  background: var(--isa101-equipment-outline);
+  border-color: var(--isa101-running);
+}
+
+.react-flow__edge-path {
   stroke: var(--isa101-equipment-outline);
   stroke-width: 2;
-  fill: var(--isa101-equipment-fill);
 }
 
-.isa101-pipe {
-  stroke: var(--isa101-equipment-outline);
-  stroke-width: 3;
-  fill: none;
-}
-
-.isa101-valve {
-  stroke: var(--isa101-equipment-outline);
-  stroke-width: 2;
-  fill: var(--isa101-equipment-fill);
-}
-
-.isa101-valve.open {
-  fill: var(--isa101-running);
-}
-
-.isa101-valve.closed {
-  fill: var(--isa101-stopped);
-}
-
-.isa101-valve.transitioning {
-  fill: var(--isa101-transitioning);
-}
-
-/* Tank Styles */
-.isa101-tank {
-  stroke: var(--isa101-equipment-outline);
-  stroke-width: 2;
-  fill: var(--isa101-equipment-fill);
-}
-
-.isa101-tank-level {
-  fill: var(--isa101-running);
-  opacity: 0.7;
-}
-
-.isa101-tank-alarm {
-  stroke: var(--isa101-critical);
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #000080;
   stroke-width: 3;
 }
 
-/* Pump Styles */
-.isa101-pump {
-  stroke: var(--isa101-equipment-outline);
-  stroke-width: 2;
-  fill: var(--isa101-equipment-fill);
-}
-
-.isa101-pump.running {
-  fill: var(--isa101-running);
-}
-
-.isa101-pump.stopped {
-  fill: var(--isa101-stopped);
-}
-
-.isa101-pump.fault {
-  fill: var(--isa101-fault);
-  stroke: var(--isa101-fault);
-}
-
-/* Text and Labels */
-.isa101-label-primary {
-  font-size: 14px;
-  font-weight: bold;
+.react-flow__edge-text {
   fill: var(--isa101-text-primary);
+  font-size: 11px;
+  font-weight: 500;
 }
 
-.isa101-label-secondary {
-  font-size: 12px;
-  fill: var(--isa101-text-secondary);
-}
-
-.isa101-label-small {
-  font-size: 10px;
-  fill: var(--isa101-text-secondary);
-}
-
-.isa101-value {
-  font-size: 16px;
-  font-weight: bold;
-  font-family: 'Courier New', monospace;
-  fill: var(--isa101-text-primary);
-}
-
-.isa101-units {
-  font-size: 12px;
-  fill: var(--isa101-text-secondary);
-}
-
-/* Setpoints and Limits */
-.isa101-setpoint {
-  stroke: var(--isa101-setpoint);
-  stroke-width: 2;
-  stroke-dasharray: 5,5;
-}
-
-.isa101-alarm-limit {
-  stroke: var(--isa101-medium);
-  stroke-width: 1;
-  stroke-dasharray: 3,3;
-}
-
-.isa101-critical-limit {
-  stroke: var(--isa101-critical);
-  stroke-width: 1;
-  stroke-dasharray: 3,3;
-}
-
-/* Buttons and Controls */
-.isa101-button {
-  background-color: var(--isa101-equipment-fill);
+/* Modern Controls */
+.react-flow__controls {
+  background-color: #FFFFFF;
   border: 1px solid var(--isa101-border);
+  border-radius: var(--isa101-radius-medium);
+  box-shadow: var(--isa101-shadow-subtle);
+}
+
+.react-flow__controls-button {
+  background-color: #FFFFFF;
+  border-bottom: 1px solid var(--isa101-border-light);
   color: var(--isa101-text-primary);
-  padding: 8px 16px;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--isa101-background);
+}
+
+.react-flow__controls-button svg {
+  fill: var(--isa101-text-primary);
+}
+
+/* Modern Minimap */
+.react-flow__minimap {
+  background-color: var(--isa101-background);
+  border: 1px solid var(--isa101-border);
+  border-radius: var(--isa101-radius-medium);
+  box-shadow: var(--isa101-shadow-subtle);
+}
+
+/* Modern Scrollbars */
+.isa101-mode ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.isa101-mode ::-webkit-scrollbar-track {
+  background: var(--isa101-background);
+  border-radius: 4px;
+}
+
+.isa101-mode ::-webkit-scrollbar-thumb {
+  background: var(--isa101-equipment-fill);
+  border-radius: 4px;
+}
+
+.isa101-mode ::-webkit-scrollbar-thumb:hover {
+  background: var(--isa101-equipment-outline);
+}
+
+/* Toast Notifications - Keep subtle */
+.toast-notification {
+  background-color: #FFFFFF;
+  border: 1px solid var(--isa101-border);
+  border-radius: var(--isa101-radius-medium);
+  box-shadow: var(--isa101-shadow-elevated);
+  padding: 12px 16px;
   font-size: 12px;
+}
+
+/* Forms */
+select.isa101-input {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23404040' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px;
+  padding-right: 32px;
+}
+
+textarea.isa101-input {
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* Labels */
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--isa101-text-primary);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Checkbox and Radio */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--isa101-border);
+  background-color: #FFFFFF;
   cursor: pointer;
-  transition: background-color 0.2s;
 }
 
-.isa101-button:hover {
-  background-color: var(--isa101-hover);
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  background-color: var(--isa101-equipment-outline);
+  border-color: var(--isa101-equipment-outline);
 }
 
-.isa101-button:active {
-  background-color: var(--isa101-selected);
+/* Tooltips */
+.isa101-tooltip {
+  background-color: var(--isa101-equipment-outline);
+  color: #FFFFFF;
+  padding: 4px 8px;
+  border-radius: var(--isa101-radius-small);
+  font-size: 11px;
+  box-shadow: var(--isa101-shadow-subtle);
+}
+
+/* Status Badges */
+.isa101-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--isa101-radius-small);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.isa101-status-badge.running {
+  background-color: var(--isa101-running);
   color: white;
 }
 
-.isa101-button:disabled {
-  background-color: var(--isa101-background);
-  color: var(--isa101-text-disabled);
-  cursor: not-allowed;
+.isa101-status-badge.stopped {
+  background-color: var(--isa101-stopped);
+  color: white;
 }
 
-/* Manual Mode Indicator */
-.isa101-manual-mode {
-  background-color: var(--isa101-manual);
-  color: var(--isa101-text-alarm);
-  padding: 2px 6px;
-  font-size: 10px;
-  font-weight: bold;
-  border-radius: 3px;
+.isa101-status-badge.alarm {
+  background-color: var(--isa101-alarm-high);
+  color: white;
 }
 
-/* Interlock Indicator */
-.isa101-interlock {
-  fill: var(--isa101-interlock);
-  stroke: var(--isa101-equipment-outline);
-  stroke-width: 2;
+/* Dividers */
+.isa101-divider {
+  height: 1px;
+  background-color: var(--isa101-border-light);
+  margin: 16px 0;
 }
 
-/* Trend/Sparkline */
-.isa101-trend {
-  stroke: var(--isa101-text-primary);
-  stroke-width: 1;
-  fill: none;
+/* Grid Layout Support */
+.isa101-grid {
+  display: grid;
+  gap: 8px;
 }
 
-.isa101-trend.alarm {
-  stroke: var(--isa101-critical);
-  stroke-width: 2;
+.isa101-grid-2 {
+  grid-template-columns: repeat(2, 1fr);
 }
 
-/* Form Elements in ISA-101 Mode */
-.isa101-mode input,
-.isa101-mode select,
-.isa101-mode textarea {
-  background-color: var(--isa101-equipment-fill);
-  border: 1px solid var(--isa101-border);
-  color: var(--isa101-text-primary);
-}
-
-.isa101-mode input:focus,
-.isa101-mode select:focus,
-.isa101-mode textarea:focus {
-  outline: none;
-  border-color: var(--isa101-selected);
-  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
-}
-
-/* Override default React Flow styles when in ISA-101 mode */
-.isa101-mode .react-flow__background {
-  background-color: var(--isa101-background);
-}
-
-.isa101-mode .react-flow__node {
-  background-color: var(--isa101-equipment-fill);
-  border: 1px solid var(--isa101-equipment-outline);
-  color: var(--isa101-text-primary);
-}
-
-.isa101-mode .react-flow__node.selected {
-  border-color: var(--isa101-selected);
-  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.3);
-}
-
-.isa101-mode .react-flow__edge-path {
-  stroke: var(--isa101-equipment-outline);
-  stroke-width: 2;
-}
-
-.isa101-mode .react-flow__edge.selected .react-flow__edge-path {
-  stroke: var(--isa101-selected);
-  stroke-width: 3;
-}
-
-/* Utility Classes */
-.isa101-no-animation {
-  animation: none !important;
-  transition: none !important;
-}
-
-.isa101-high-contrast {
-  filter: contrast(1.2);
+.isa101-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 /* Responsive Design */
 @media (max-width: 768px) {
   .isa101-sidebar {
     width: 100%;
-    height: auto;
-    border-left: none;
-    border-top: 1px solid var(--isa101-border);
+    max-width: 300px;
   }
   
-  .isa101-label-primary {
-    font-size: 12px;
+  .isa101-toolbar {
+    padding: 4px 8px;
+    gap: 8px;
   }
   
-  .isa101-label-secondary {
-    font-size: 10px;
-  }
-  
-  .isa101-value {
-    font-size: 14px;
+  .isa101-connection-status {
+    font-size: 11px;
+    padding: 6px 12px;
   }
 }
