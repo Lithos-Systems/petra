@@ -1,48 +1,38 @@
-/* ISA-101 Compliant Theme for PETRA Designer */
-
+/* ISA-101 Color Variables */
 :root {
-  /* ISA-101 Primary Colors */
+  /* Background Colors (Gray scale as per ISA-101) */
   --isa101-background: #D3D3D3;              /* Light gray background */
-  --isa101-background-dark: #B8B8B8;         /* Darker gray for panels */
-  --isa101-background-darker: #A0A0A0;       /* Even darker for headers */
-  
-  /* Equipment and Process Colors */
-  --isa101-equipment-outline: #404040;        /* Dark gray for equipment outlines */
-  --isa101-equipment-fill: #E0E0E0;          /* Light gray for equipment fill */
-  --isa101-process-line: #000000;            /* Black for process lines */
-  --isa101-process-inactive: #808080;        /* Medium gray for inactive */
+  --isa101-background-dark: #C0C0C0;          /* Darker gray for panels */
+  --isa101-background-darker: #B0B0B0;        /* Even darker for headers */
   
   /* Text Colors */
-  --isa101-text-primary: #000000;            /* Black text on gray background */
-  --isa101-text-secondary: #404040;          /* Dark gray for secondary text */
-  --isa101-text-value: #000080;              /* Dark blue for process values */
+  --isa101-text-primary: #000000;             /* Black text */
+  --isa101-text-secondary: #404040;           /* Dark gray text */
+  --isa101-text-tertiary: #606060;            /* Medium gray text */
   
-  /* Alarm Colors (Only for abnormal situations) */
-  --isa101-alarm-critical: #FF0000;          /* Red - Critical alarms */
-  --isa101-alarm-high: #FF8C00;              /* Orange - High priority */
-  --isa101-alarm-medium: #FFD700;            /* Yellow - Medium priority */
-  --isa101-alarm-low: #0000FF;               /* Blue - Low priority */
-  --isa101-alarm-acknowledged: #808080;       /* Gray - Acknowledged */
+  /* Border Colors */
+  --isa101-border: #606060;                   /* Standard border color */
+  --isa101-border-light: #808080;             /* Lighter border */
+  
+  /* Equipment Colors (per ISA-101) */
+  --isa101-equipment-outline: #000000;        /* Black outlines */
+  --isa101-equipment-fill: #FFFFFF;           /* White fill for equipment */
   
   /* Status Colors */
-  --isa101-status-running: #00C800;          /* Green - Running/Active */
-  --isa101-status-stopped: #808080;          /* Gray - Stopped */
-  --isa101-status-manual: #FF00FF;           /* Magenta - Manual mode */
-  --isa101-status-auto: #00C800;             /* Green - Auto mode */
-  --isa101-status-fault: #FF0000;            /* Red - Fault condition */
+  --isa101-status-running: #00C800;           /* Green for running */
+  --isa101-status-stopped: #808080;           /* Gray for stopped */
+  --isa101-status-manual: #9370DB;            /* Purple for manual */
+  --isa101-status-auto: #0000FF;              /* Blue for auto */
+  --isa101-status-transitioning: #FFFF00;     /* Yellow for transitioning */
   
-  /* Interface Elements */
-  --isa101-border: #606060;                  /* Dark gray borders */
-  --isa101-shadow: rgba(0, 0, 0, 0.15);      /* Subtle shadows */
-  --isa101-hover: rgba(0, 0, 0, 0.05);       /* Hover effect */
-  --isa101-focus: #000080;                   /* Dark blue focus */
+  /* Alarm Colors (per ISA-18.2) */
+  --isa101-alarm-critical: #FF0000;           /* Red for critical */
+  --isa101-alarm-high: #FF8C00;               /* Orange for high */
+  --isa101-alarm-medium: #FFFF00;             /* Yellow for medium */
+  --isa101-alarm-low: #00FFFF;                /* Cyan for low */
   
-  /* Chart Colors (Muted) */
-  --isa101-trend-1: #000080;                 /* Dark blue */
-  --isa101-trend-2: #008000;                 /* Dark green */
-  --isa101-trend-3: #800000;                 /* Dark red */
-  --isa101-trend-4: #800080;                 /* Dark purple */
-  --isa101-trend-5: #008080;                 /* Dark cyan */
+  /* Shadow */
+  --isa101-shadow: rgba(0, 0, 0, 0.2);
   
   /* Button States */
   --isa101-button-normal: #C0C0C0;           /* Light gray */
@@ -60,12 +50,27 @@
   line-height: 1.4;
 }
 
+/* Remove all animations except critical alarms */
+.isa101-mode * {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+}
+
+.isa101-mode .isa101-alarm-critical {
+  animation: isa101-critical-blink 1s infinite;
+}
+
+@keyframes isa101-critical-blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
 /* Container Styles */
 .isa101-container {
   background-color: var(--isa101-background);
   border: 1px solid var(--isa101-border);
-  border-radius: 0; /* No rounded corners in ISA-101 */
-  box-shadow: 0 1px 3px var(--isa101-shadow);
+  border-radius: 0;
 }
 
 /* Panel Styles */
@@ -79,9 +84,10 @@
 .isa101-panel-header {
   background-color: var(--isa101-background-darker);
   color: var(--isa101-text-primary);
-  padding: 4px 8px;
+  padding: 6px 8px;
   font-weight: 500;
   border-bottom: 1px solid var(--isa101-border);
+  font-size: 12px;
 }
 
 /* Button Styles */
@@ -89,176 +95,61 @@
   background-color: var(--isa101-button-normal);
   color: var(--isa101-text-primary);
   border: 1px solid var(--isa101-border);
-  padding: 6px 12px;
-  font-size: 14px;
+  padding: 4px 8px;
+  font-size: 12px;
   cursor: pointer;
-  transition: background-color 0.1s;
   border-radius: 0;
-  box-shadow: 1px 1px 2px var(--isa101-shadow);
+  font-weight: normal;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
 }
 
-.isa101-button:hover {
+.isa101-button:hover:not(:disabled) {
   background-color: var(--isa101-button-hover);
 }
 
-.isa101-button:active {
+.isa101-button:active:not(:disabled) {
   background-color: var(--isa101-button-active);
-  box-shadow: inset 1px 1px 2px var(--isa101-shadow);
 }
 
 .isa101-button:disabled {
   background-color: var(--isa101-button-disabled);
-  color: var(--isa101-text-secondary);
+  color: var(--isa101-text-tertiary);
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 /* Input Styles */
 .isa101-input {
   background-color: #FFFFFF;
-  color: var(--isa101-text-primary);
   border: 1px solid var(--isa101-border);
-  padding: 4px 8px;
-  font-size: 14px;
+  color: var(--isa101-text-primary);
+  padding: 4px 6px;
+  font-size: 12px;
   border-radius: 0;
 }
 
 .isa101-input:focus {
-  outline: 2px solid var(--isa101-focus);
-  outline-offset: -1px;
-}
-
-/* Value Display */
-.isa101-value {
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--isa101-text-value);
-  background-color: #FFFFFF;
-  border: 1px solid var(--isa101-border);
-  padding: 2px 6px;
-  min-width: 80px;
-  text-align: right;
-}
-
-/* Alarm States */
-.isa101-alarm-critical {
-  background-color: var(--isa101-alarm-critical) !important;
-  color: #FFFFFF !important;
-  animation: isa101-blink 1s infinite;
-}
-
-.isa101-alarm-high {
-  background-color: var(--isa101-alarm-high) !important;
-  color: #000000 !important;
-}
-
-.isa101-alarm-medium {
-  background-color: var(--isa101-alarm-medium) !important;
-  color: #000000 !important;
-}
-
-.isa101-alarm-low {
-  background-color: var(--isa101-alarm-low) !important;
-  color: #FFFFFF !important;
-}
-
-/* Animation for critical alarms only */
-@keyframes isa101-blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0.7; }
-}
-
-/* Equipment Components */
-.isa101-equipment {
-  fill: var(--isa101-equipment-fill);
-  stroke: var(--isa101-equipment-outline);
-  stroke-width: 2px;
-}
-
-.isa101-process-line {
-  stroke: var(--isa101-process-line);
-  stroke-width: 3px;
-  fill: none;
-}
-
-/* Status Indicators */
-.isa101-status-running {
-  background-color: var(--isa101-status-running);
-}
-
-.isa101-status-stopped {
-  background-color: var(--isa101-status-stopped);
-}
-
-.isa101-status-manual {
-  background-color: var(--isa101-status-manual);
-}
-
-.isa101-status-fault {
-  background-color: var(--isa101-status-fault);
-}
-
-/* Trend Display */
-.isa101-trend {
-  background-color: #FFFFFF;
-  border: 1px solid var(--isa101-border);
-}
-
-.isa101-trend-grid {
-  stroke: #E0E0E0;
-  stroke-width: 1px;
-}
-
-/* H-O-A (Hand-Off-Auto) Component */
-.isa101-hoa {
-  display: inline-flex;
-  border: 1px solid var(--isa101-border);
-  background-color: var(--isa101-background-dark);
-}
-
-.isa101-hoa-button {
-  padding: 8px 16px;
-  border: none;
-  background-color: var(--isa101-button-normal);
-  color: var(--isa101-text-primary);
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.1s;
-}
-
-.isa101-hoa-button:not(:last-child) {
-  border-right: 1px solid var(--isa101-border);
-}
-
-.isa101-hoa-button.active {
-  background-color: var(--isa101-status-auto);
-  color: #FFFFFF;
-}
-
-.isa101-hoa-button.hand.active {
-  background-color: var(--isa101-status-manual);
-}
-
-.isa101-hoa-button.off.active {
-  background-color: var(--isa101-status-stopped);
-  color: #FFFFFF;
+  outline: none;
+  border-color: var(--isa101-text-primary);
 }
 
 /* Toolbar Styles */
 .isa101-toolbar {
   background-color: var(--isa101-background-darker);
   border-bottom: 1px solid var(--isa101-border);
-  padding: 4px;
+  padding: 4px 8px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  min-height: 40px;
 }
 
 .isa101-toolbar-group {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   padding: 0 8px;
   border-right: 1px solid var(--isa101-border);
 }
@@ -271,11 +162,12 @@
 .isa101-connection-status {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 4px 8px;
   background-color: var(--isa101-background-dark);
   border: 1px solid var(--isa101-border);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .isa101-connection-indicator {
@@ -283,6 +175,7 @@
   height: 8px;
   border-radius: 50%;
   background-color: var(--isa101-status-stopped);
+  border: 1px solid var(--isa101-border);
 }
 
 .isa101-connection-indicator.connected {
@@ -295,15 +188,209 @@
   border-right: 1px solid var(--isa101-border);
   height: 100%;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Remove all unnecessary animations and transitions */
+/* Block Item Styles */
+.isa101-block-item {
+  margin: 1px 2px;
+  border-radius: 0;
+}
+
+.isa101-block-item:hover {
+  background-color: var(--isa101-background);
+}
+
+/* Block Icon Styles */
+.isa101-block-icon {
+  display: block;
+  background-color: var(--isa101-equipment-fill);
+  border: 1px solid var(--isa101-equipment-outline);
+}
+
+/* ReactFlow ISA-101 Overrides */
+.isa101-mode .react-flow__background {
+  background-color: var(--isa101-background);
+}
+
+.isa101-mode .react-flow__controls {
+  background-color: var(--isa101-background-dark);
+  border: 1px solid var(--isa101-border);
+  border-radius: 0;
+}
+
+.isa101-mode .react-flow__controls-button {
+  background-color: var(--isa101-button-normal);
+  color: var(--isa101-text-primary);
+  border: 1px solid var(--isa101-border);
+  border-radius: 0;
+  width: 24px;
+  height: 24px;
+}
+
+.isa101-mode .react-flow__controls-button:hover {
+  background-color: var(--isa101-button-hover);
+}
+
+.isa101-mode .react-flow__minimap {
+  background-color: var(--isa101-background-dark);
+  border: 1px solid var(--isa101-border);
+  border-radius: 0;
+}
+
+/* Node Styles */
+.isa101-mode .react-flow__node {
+  background-color: var(--isa101-equipment-fill);
+  border: 2px solid var(--isa101-equipment-outline);
+  border-radius: 0;
+  color: var(--isa101-text-primary);
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.isa101-mode .react-flow__node.selected {
+  border-color: var(--isa101-status-auto);
+  box-shadow: 0 0 0 2px var(--isa101-status-auto);
+}
+
+.isa101-mode .react-flow__node[data-status="running"] {
+  background-color: #E8F5E8;
+  border-color: var(--isa101-status-running);
+}
+
+.isa101-mode .react-flow__node[data-status="stopped"] {
+  background-color: #F0F0F0;
+  border-color: var(--isa101-status-stopped);
+}
+
+/* Edge Styles */
+.isa101-mode .react-flow__edge-path {
+  stroke: var(--isa101-equipment-outline);
+  stroke-width: 2;
+}
+
+.isa101-mode .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--isa101-status-auto);
+  stroke-width: 3;
+}
+
+/* Handle Styles */
+.isa101-mode .react-flow__handle {
+  background-color: var(--isa101-equipment-outline);
+  border: 1px solid var(--isa101-equipment-fill);
+  width: 8px;
+  height: 8px;
+  border-radius: 0;
+}
+
+.isa101-mode .react-flow__handle-connecting {
+  background-color: var(--isa101-status-auto);
+}
+
+/* Properties Panel */
+.isa101-mode .properties-panel {
+  background-color: var(--isa101-background-dark);
+  border-left: 1px solid var(--isa101-border);
+}
+
+/* YAML Preview */
+.isa101-mode .yaml-preview {
+  background-color: var(--isa101-background-dark);
+  border-left: 1px solid var(--isa101-border);
+}
+
+.isa101-mode .yaml-preview code {
+  background-color: var(--isa101-equipment-fill);
+  color: var(--isa101-text-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+/* Scrollbar Styles for ISA-101 */
+.isa101-mode ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.isa101-mode ::-webkit-scrollbar-track {
+  background-color: var(--isa101-background);
+  border: 1px solid var(--isa101-border);
+}
+
+.isa101-mode ::-webkit-scrollbar-thumb {
+  background-color: var(--isa101-background-darker);
+  border: 1px solid var(--isa101-border);
+}
+
+.isa101-mode ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--isa101-button-hover);
+}
+
+/* Toast Notifications - ISA-101 Style */
+.isa101-mode .toast {
+  background-color: var(--isa101-background-darker) !important;
+  color: var(--isa101-text-primary) !important;
+  border: 1px solid var(--isa101-border) !important;
+  border-radius: 0 !important;
+  font-size: 12px !important;
+}
+
+/* Status Indicators */
+.isa101-status-running {
+  color: var(--isa101-status-running);
+}
+
+.isa101-status-stopped {
+  color: var(--isa101-status-stopped);
+}
+
+.isa101-status-manual {
+  color: var(--isa101-status-manual);
+}
+
+.isa101-status-auto {
+  color: var(--isa101-status-auto);
+}
+
+/* Alarm Indicators */
+.isa101-alarm-critical {
+  color: var(--isa101-alarm-critical);
+  font-weight: bold;
+}
+
+.isa101-alarm-high {
+  color: var(--isa101-alarm-high);
+  font-weight: bold;
+}
+
+.isa101-alarm-medium {
+  color: var(--isa101-alarm-medium);
+  font-weight: bold;
+}
+
+.isa101-alarm-low {
+  color: var(--isa101-alarm-low);
+  font-weight: bold;
+}
+
+/* Remove any modern styling artifacts */
+.isa101-mode .shadow-sm,
+.isa101-mode .shadow,
+.isa101-mode .shadow-md,
+.isa101-mode .shadow-lg {
+  box-shadow: none !important;
+}
+
+.isa101-mode .rounded,
+.isa101-mode .rounded-sm,
+.isa101-mode .rounded-md,
+.isa101-mode .rounded-lg {
+  border-radius: 0 !important;
+}
+
+/* Ensure crisp, industrial appearance */
 .isa101-mode * {
-  animation-duration: 0.1s !important;
-  transition-duration: 0.1s !important;
-}
-
-/* Only allow blinking for critical alarms */
-.isa101-mode .isa101-alarm-critical {
-  animation-duration: 1s !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
