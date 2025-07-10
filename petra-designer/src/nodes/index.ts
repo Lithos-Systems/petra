@@ -4,6 +4,7 @@ import BlockNode from './BlockNode'
 import TwilioNode from './TwilioNode'
 import MqttNode from './MqttNode'
 import S7Node from './S7Node'
+import ModbusNode from './ModbusNode'
 
 export const nodeTypes: NodeTypes = {
   signal: SignalNode,
@@ -11,4 +12,5 @@ export const nodeTypes: NodeTypes = {
   twilio: TwilioNode,
   mqtt: MqttNode,
   s7: S7Node,
+  modbus: ModbusNode,
 }
