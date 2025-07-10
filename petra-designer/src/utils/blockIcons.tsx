@@ -71,3 +71,44 @@ export const BLOCK_TYPES = [
   { value: 'DIVIDE',        label: 'Divide',          category: 'Math' },
   { value: 'DATA_GENERATOR',label: 'Data Generator',  category: 'Generator' },
 ] as const
+
+// Modern ISA-101 compliant block graphics
+export function renderBlockGraphic(blockType: string) {
+  const style = {
+    stroke: '#404040',
+    strokeWidth: 2,
+    fill: 'none'
+  }
+
+  switch (blockType) {
+    case 'AND':
+      return (
+        <svg width="40" height="30" viewBox="0 0 40 30">
+          <path d={
+            `M 5,5 L 20,5 Q 35,5 35,15 Q 35,25 20,25 L 5,25 Z`
+          } {...style} />
+          <text x="20" y="18" textAnchor="middle" fontSize="10" fill="#000">
+            &amp;
+          </text>
+        </svg>
+      )
+    case 'PID':
+      return (
+        <svg width="40" height="30" viewBox="0 0 40 30">
+          <rect x="5" y="5" width="30" height="20" rx="2" {...style} />
+          <text x="20" y="18" textAnchor="middle" fontSize="8" fill="#000">
+            PID
+          </text>
+        </svg>
+      )
+    default:
+      return (
+        <svg width="40" height="30" viewBox="0 0 40 30">
+          <rect x="5" y="5" width="30" height="20" rx="2" {...style} />
+          <text x="20" y="18" textAnchor="middle" fontSize="8" fill="#000">
+            {blockType}
+          </text>
+        </svg>
+      )
+  }
+}

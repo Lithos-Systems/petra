@@ -167,20 +167,14 @@
 
 /* Connection Status */
 .isa101-connection-status {
-  position: fixed;
-  bottom: 0;
-  right: 0;
   background-color: #FFFFFF;
   border: 1px solid var(--isa101-border);
-  border-right: none;
-  border-bottom: none;
   padding: 8px 16px;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
   box-shadow: var(--isa101-shadow-subtle);
-  z-index: 1000;
 }
 
 .isa101-connection-indicator {
