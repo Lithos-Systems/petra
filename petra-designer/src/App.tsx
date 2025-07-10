@@ -15,16 +15,15 @@ import toast from 'react-hot-toast'
 import { useFlowStore } from './store/flowStore'
 import { nodeTypes } from './nodes'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
-import Sidebar from './components/Sidebar'
+import ISA101Sidebar from './components/ISA101Sidebar'
 import PropertiesPanel from './components/PropertiesPanel'
 import YamlPreview from './components/YamlPreview'
-import Toolbar from './components/Toolbar'
+import ISA101Toolbar from './components/ISA101Toolbar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import HMIDesigner from './components/hmi/HMIDesigner'
 import ISA101WaterPlantDemo from './components/hmi/ISA101WaterPlantDemo'
 import { FaProjectDiagram, FaDesktop } from 'react-icons/fa'
 import { PetraProvider } from './contexts/PetraContext'
-import ConnectionStatusSidebar from './components/ConnectionStatusSidebar'
 import { usePetraConnection } from './hooks/usePetraConnection'
 import type { ConnectionInfo } from './types/hmi'
 import './styles/isa101-theme.css'
@@ -33,8 +32,6 @@ type DesignerMode = 'logic' | 'graphics'
 
 function Flow() {
   const [mode, setMode] = useState<DesignerMode>('logic')
-  const [isISA101Mode, setIsISA101Mode] = useState(true)
-  const [connectionSidebarOpen, setConnectionSidebarOpen] = useState(false)
   
   const {
     nodes,
@@ -64,27 +61,13 @@ function Flow() {
     },
   })
 
-  // Connection info for sidebar
-  const connectionInfo: ConnectionInfo = {
-    status: connectionState,
-    latency: performance.latency,
-    uptime: Math.floor((Date.now() - (performance.connectedAt ?? Date.now())) / 1000),
-    lastError: lastError ?? undefined,
-    messageRate: performance.messageRate,
-    reconnectAttempts: performance.reconnectAttempts
-  }
-
   // Add keyboard shortcuts
   useKeyboardShortcuts()
 
   // Apply ISA-101 mode class to body
   useEffect(() => {
-    if (isISA101Mode) {
-      document.body.classList.add('isa101-mode')
-    } else {
-      document.body.classList.remove('isa101-mode')
-    }
-  }, [isISA101Mode])
+    document.body.classList.add('isa101-mode')
+  }, [])
 
   useEffect(() => {
     console.log('ReactFlow mounted. nodes:', nodes.length, 'edges:', edges.length)
@@ -140,13 +123,13 @@ function Flow() {
   }, [setSelectedNode])
 
   return (
-    <div className={`h-screen flex flex-col ${isISA101Mode ? 'isa101-mode bg-[#D3D3D3]' : 'bg-gray-50'}`}>
+    <div className="h-screen flex flex-col isa101-mode bg-[#D3D3D3]">
       <Toaster 
         position="top-right"
         toastOptions={{
           duration: 3000,
           style: {
-            background: isISA101Mode ? '#404040' : '#363636',
+            background: '#404040',
             color: '#fff',
           },
           success: {
@@ -164,176 +147,109 @@ function Flow() {
         }}
       />
       
-      {/* Enhanced Toolbar with mode switcher */}
-      <div className={isISA101Mode ? "isa101-toolbar" : "bg-white border-b border-gray-200 shadow-sm"}>
+      {/* Minimal ISA-101 Toolbar */}
+      <div className="isa101-toolbar">
         <div className="flex items-center justify-between px-4 py-2">
-          {/* Left: Logo/Title and Toolbar */}
-          <div className="flex items-center gap-6">
-            <h1 className={`text-xl font-bold ${isISA101Mode ? 'text-black' : 'text-gray-800'}`}>
+          {/* Left: Logo/Title */}
+          <div className="flex items-center gap-4">
+            <h1 className="text-lg font-medium text-black">
               PETRA Designer
             </h1>
-            <div className={`h-6 w-px ${isISA101Mode ? 'bg-[#606060]' : 'bg-gray-300'}`} />
-            <Toolbar />
+            <div className="h-4 w-px bg-[#606060]" />
+            <ISA101Toolbar />
           </div>
           
-          {/* Center: Mode Switcher */}
-          <div className={`flex items-center ${isISA101Mode ? 'bg-[#B8B8B8]' : 'bg-gray-100'} rounded-lg p-1`}>
+          {/* Center: Mode Switcher - Minimal ISA-101 Style */}
+          <div className="flex items-center bg-[#B8B8B8] p-1">
             <button
               onClick={() => setMode('logic')}
-              className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
+              className={`flex items-center gap-2 px-3 py-1 transition-colors ${
                 mode === 'logic' 
-                  ? isISA101Mode ? 'bg-[#E0E0E0] text-black shadow-sm' : 'bg-white text-petra-600 shadow-sm'
-                  : isISA101Mode ? 'text-[#404040] hover:text-black' : 'text-gray-600 hover:text-gray-800'
+                  ? 'bg-[#E0E0E0] text-black' 
+                  : 'text-[#404040] hover:text-black'
               }`}
             >
-              <FaProjectDiagram className="w-4 h-4" />
-              <span className="text-sm font-medium">Logic Designer</span>
+              <FaProjectDiagram className="w-3 h-3" />
+              <span className="text-sm">Logic</span>
             </button>
             <button
               onClick={() => setMode('graphics')}
-              className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
+              className={`flex items-center gap-2 px-3 py-1 transition-colors ${
                 mode === 'graphics' 
-                  ? isISA101Mode ? 'bg-[#E0E0E0] text-black shadow-sm' : 'bg-white text-petra-600 shadow-sm'
-                  : isISA101Mode ? 'text-[#404040] hover:text-black' : 'text-gray-600 hover:text-gray-800'
+                  ? 'bg-[#E0E0E0] text-black' 
+                  : 'text-[#404040] hover:text-black'
               }`}
             >
-              <FaDesktop className="w-4 h-4" />
-              <span className="text-sm font-medium">HMI Graphics</span>
+              <FaDesktop className="w-3 h-3" />
+              <span className="text-sm">Graphics</span>
             </button>
           </div>
 
-          {/* Right: ISA-101 Toggle and Connection Status */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsISA101Mode(!isISA101Mode)}
-              className={isISA101Mode ? "isa101-button text-xs px-3 py-1" : "px-3 py-1 text-xs border rounded hover:bg-gray-100"}
-            >
-              {isISA101Mode ? 'ISA-101' : 'Modern'} Theme
-            </button>
-            <button
-              onClick={() => setConnectionSidebarOpen(!connectionSidebarOpen)}
-              className={isISA101Mode ? "isa101-button text-xs px-3 py-1" : "px-3 py-1 text-xs border rounded hover:bg-gray-100"}
-            >
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-                {connected ? 'Connected' : 'Disconnected'}
-              </div>
-            </button>
+          {/* Right: Connection Status - Simple Indicator */}
+          <div className="isa101-connection-status">
+            <div className={`isa101-connection-indicator ${connected ? 'connected' : ''}`} />
+            <span className="text-xs">{connected ? 'ONLINE' : 'OFFLINE'}</span>
           </div>
         </div>
       </div>
 
       {/* Conditional rendering based on mode */}
       {mode === 'logic' ? (
-        <div className="flex-1 flex">
-          <Sidebar />
-
-          <div className="flex-1 relative">
+        <div className="flex flex-1">
+          {/* Sidebar */}
+          <ISA101Sidebar />
+          
+          {/* Main Flow Area */}
+          <div className="flex-1 flex flex-col">
             <ReactFlow
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
-              onEdgeClick={onEdgeClick} 
-              onDragOver={onDragOver}
-              onDrop={onDrop}
+              onEdgeClick={onEdgeClick}
               nodeTypes={nodeTypes}
-              deleteKeyCode={null}
               fitView
-              fitViewOptions={{ padding: 0.2 }}
-              className={isISA101Mode ? "bg-[#D3D3D3]" : "bg-gray-50"}
-              defaultEdgeOptions={{
-                animated: !isISA101Mode, // No animation in ISA-101 mode
-                style: { 
-                  strokeWidth: 2,
-                  stroke: isISA101Mode ? '#000000' : undefined
-                },
-              }}
+              className="bg-[#D3D3D3]"
             >
-              <Background
-                variant={BackgroundVariant.Dots}
-                gap={20}
-                size={1}
-                className={isISA101Mode ? "bg-[#D3D3D3]" : "bg-gray-50"}
-                color={isISA101Mode ? "#A0A0A0" : undefined}
+              <Background 
+                variant={BackgroundVariant.Lines} 
+                gap={20} 
+                size={1} 
+                color="#B0B0B0"
               />
               <Controls 
-                style={isISA101Mode ? {
-                  backgroundColor: '#E0E0E0',
-                  border: '1px solid #606060',
-                  borderRadius: 0
-                } : undefined}
+                className="isa101-controls"
+                showZoom={true}
+                showFitView={true}
+                showInteractive={false}
               />
               <MiniMap 
-                className={isISA101Mode ? "bg-[#E0E0E0] border border-[#606060] rounded-none" : "bg-white"}
-                nodeStrokeColor={(n) => {
-                  if (isISA101Mode) return '#404040'
-                  if (n.type === 'signal') return '#3b82f6'
-                  if (n.type === 'block') return '#10b981'
-                  if (n.type === 'twilio') return '#9333ea'
-                  if (n.type === 'mqtt') return '#f97316'
-                  if (n.type === 's7') return '#ef4444'
-                  return '#6b7280'
-                }}
-                nodeColor={(n) => {
-                  if (isISA101Mode) return '#E0E0E0'
-                  if (n.type === 'signal') return '#dbeafe'
-                  if (n.type === 'block') return '#d1fae5'
-                  if (n.type === 'twilio') return '#f3e8ff'
-                  if (n.type === 'mqtt') return '#fed7aa'
-                  if (n.type === 's7') return '#fee2e2'
-                  return '#f3f4f6'
-                }}
+                className="isa101-minimap"
+                nodeColor="#404040"
+                maskColor="rgba(0, 0, 0, 0.1)"
               />
             </ReactFlow>
-
-            {/* Keyboard shortcuts help */}
-            <div className={`absolute bottom-4 left-4 p-3 rounded-lg shadow-md text-xs ${
-              isISA101Mode ? 'isa101-panel text-black' : 'bg-white text-gray-600'
-            }`}>
-              <div className="font-semibold mb-1">Keyboard Shortcuts:</div>
-              <div>Delete/Backspace - Delete selected</div>
-              <div>Ctrl/Cmd + S - Save flow</div>
-              <div>Ctrl/Cmd + Shift + D - Clear all</div>
-            </div>
           </div>
-
-          <div className="flex">
-            {selectedNode && <PropertiesPanel />}
-            <YamlPreview />
-          </div>
+          
+          {/* Properties Panel */}
+          <PropertiesPanel />
+          
+          {/* YAML Preview */}
+          <YamlPreview />
         </div>
       ) : (
         <HMIDesigner />
       )}
-
-      {/* Connection Status Sidebar */}
-      <ConnectionStatusSidebar
-        connectionInfo={connectionInfo}
-        isOpen={connectionSidebarOpen}
-        onToggle={() => setConnectionSidebarOpen(!connectionSidebarOpen)}
-      />
     </div>
   )
 }
 
-function App() {
-  // Check if we're loading a specific demo
-  const isWaterPlantDemo = window.location.hash === '#/water-plant-demo'
-  
-  if (isWaterPlantDemo) {
-    return (
-      <ErrorBoundary>
-        <PetraProvider>
-          <ISA101WaterPlantDemo />
-        </PetraProvider>
-      </ErrorBoundary>
-    )
-  }
-  
+export default function App() {
   return (
     <ErrorBoundary>
       <PetraProvider>
@@ -344,5 +260,3 @@ function App() {
     </ErrorBoundary>
   )
 }
-
-export default App
