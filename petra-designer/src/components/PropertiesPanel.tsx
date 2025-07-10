@@ -1,4 +1,3 @@
-// src/components/PropertiesPanel.tsx
 import { useFlowStore } from '@/store/flowStore'
 import { BLOCK_TYPES } from '@/utils/blockIcons'
 import type { Node } from '@xyflow/react'
@@ -34,7 +33,18 @@ const blockTypesByCategory: CategoryMap = BLOCK_TYPES.reduce((acc, t) => {
 export default function PropertiesPanel() {
   const { selectedNode, updateNodeData } = useFlowStore()
 
-  if (!selectedNode) return null
+  if (!selectedNode) {
+    return (
+      <div className="isa101-sidebar w-80 h-full">
+        <div className="isa101-panel-header">
+          <span className="text-sm font-medium">Properties</span>
+        </div>
+        <div className="p-4 text-center text-[#606060]">
+          <p className="text-sm">Select a block to edit properties</p>
+        </div>
+      </div>
+    )
+  }
   
   const node = selectedNode as Node
 
@@ -65,322 +75,318 @@ export default function PropertiesPanel() {
   }
 
   const renderInput = (label: string, field: string, type: string = 'text', placeholder?: string, props?: any) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <div className="mb-3">
+      <label className="block text-xs font-medium text-black mb-1">
+        {label}
+      </label>
       <input
         type={type}
-        value={String(node.data[field] || '')} // Fix: convert to string
+        value={node.data[field] || ''}
         onChange={createChangeHandler(field)}
         placeholder={placeholder}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+        className="isa101-input w-full text-xs"
         {...props}
       />
     </div>
   )
 
-  const renderSelect = (label: string, field: string, options: Array<{value: string, label: string}>) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+  const renderSelect = (label: string, field: string, options: Array<{ value: string; label: string }>) => (
+    <div className="mb-3">
+      <label className="block text-xs font-medium text-black mb-1">
+        {label}
+      </label>
       <select
-        value={String(node.data[field] || options[0]?.value || '')} // Fix: convert to string
+        value={node.data[field] || ''}
         onChange={createChangeHandler(field)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+        className="isa101-input w-full text-xs"
       >
-        {options.map(opt => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
         ))}
       </select>
     </div>
   )
 
-  return (
-    <div className="w-80 bg-white border-l border-gray-200 p-4 overflow-y-auto">
-      <h3 className="text-lg font-semibold mb-4">Properties</h3>
+  const renderTextArea = (label: string, field: string, placeholder?: string, rows: number = 3) => (
+    <div className="mb-3">
+      <label className="block text-xs font-medium text-black mb-1">
+        {label}
+      </label>
+      <textarea
+        value={node.data[field] || ''}
+        onChange={createChangeHandler(field)}
+        placeholder={placeholder}
+        rows={rows}
+        className="isa101-input w-full text-xs resize-none"
+      />
+    </div>
+  )
 
-      <div className="space-y-4">
-        {renderInput('Label', 'label')}
+  const renderCheckbox = (label: string, field: string) => (
+    <div className="mb-3 flex items-center">
+      <input
+        type="checkbox"
+        checked={Boolean(node.data[field])}
+        onChange={createChangeHandler(field)}
+        className="mr-2"
+        style={{ accentColor: '#404040' }}
+      />
+      <label className="text-xs font-medium text-black">
+        {label}
+      </label>
+    </div>
+  )
+
+  return (
+    <div className="isa101-sidebar w-80 h-full">
+      <div className="isa101-panel-header">
+        <span className="text-sm font-medium">Properties</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        {/* Common Properties */}
+        <div className="mb-4">
+          <h4 className="text-sm font-medium text-black mb-2 border-b border-[#606060] pb-1">
+            General
+          </h4>
+          {renderInput('Name', 'label', 'text', 'Block name')}
+        </div>
 
         {/* Signal node */}
         {isSignalNode(node) && (
-          <>
-            {renderSelect('Mode', 'mode', [
-              { value: 'write', label: 'Write' },
-              { value: 'read', label: 'Read' },
-            ])}
-
-            {renderSelect('Signal Type', 'signalType', [
-              { value: 'bool', label: 'Boolean' },
-              { value: 'int', label: 'Integer' },
-              { value: 'float', label: 'Float' }
-            ])}
-
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Initial Value
-              </label>
-              {(node.data as SignalNodeData).signalType === 'bool' ? (
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={Boolean((node.data as SignalNodeData).initial)}
-                    onChange={createChangeHandler('initial')}
-                    className="mr-2"
-                  />
-                  <span>{(node.data as SignalNodeData).initial ? 'True' : 'False'}</span>
+              <h4 className="text-sm font-medium text-black mb-2 border-b border-[#606060] pb-1">
+                Signal Configuration
+              </h4>
+              {renderSelect('Signal Type', 'signalType', [
+                { value: 'bool', label: 'Boolean' },
+                { value: 'int', label: 'Integer' },
+                { value: 'float', label: 'Float' }
+              ])}
+
+              {renderSelect('Mode', 'mode', [
+                { value: 'read', label: 'Read Only' },
+                { value: 'write', label: 'Write Only' }
+              ])}
+
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-black mb-1">
+                  Initial Value
                 </label>
-              ) : (
-                <input
-                  type="number"
-                  value={Number((node.data as SignalNodeData).initial) || 0}
-                  onChange={createNumberHandler('initial')}
-                  step={(node.data as SignalNodeData).signalType === 'float' ? '0.1' : '1'}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-                />
-              )}
+                {(node.data as SignalNodeData).signalType === 'bool' ? (
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={Boolean((node.data as SignalNodeData).initial)}
+                      onChange={(e) => updateNodeData(node.id, { initial: e.target.checked })}
+                      className="mr-2"
+                      style={{ accentColor: '#404040' }}
+                    />
+                    <span className="text-xs">{Boolean((node.data as SignalNodeData).initial) ? 'True' : 'False'}</span>
+                  </label>
+                ) : (
+                  <input
+                    type="number"
+                    value={Number((node.data as SignalNodeData).initial) || 0}
+                    onChange={createNumberHandler('initial')}
+                    step={(node.data as SignalNodeData).signalType === 'float' ? '0.1' : '1'}
+                    className="isa101-input w-full text-xs"
+                  />
+                )}
+              </div>
             </div>
-          </>
+          </div>
         )}
 
         {/* Block node */}
         {isBlockNode(node) && (
-          <>
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Block Type
-              </label>
-              <select
-                value={(node.data as BlockNodeData).blockType || 'AND'}
-                onChange={createChangeHandler('blockType')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              >
-                {Object.entries(blockTypesByCategory).map(([cat, types]) => (
-                  <optgroup key={cat} label={cat}>
-                    {types.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
+              <h4 className="text-sm font-medium text-black mb-2 border-b border-[#606060] pb-1">
+                Block Configuration
+              </h4>
+              <div className="mb-3">
+                <label className="block text-xs font-medium text-black mb-1">
+                  Block Type
+                </label>
+                <select
+                  value={(node.data as BlockNodeData).blockType || 'AND'}
+                  onChange={createChangeHandler('blockType')}
+                  className="isa101-input w-full text-xs"
+                >
+                  {Object.entries(blockTypesByCategory).map(([cat, types]) => (
+                    <optgroup key={cat} label={cat}>
+                      {types.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
 
-            {/* Block-specific parameters */}
-            {renderBlockParams(node.data as BlockNodeData, updateNodeData, node.id)}
-          </>
-        )}
-        {/* Alarm node properties */}
-        {node.type === 'alarm' && (
-          <>
-            {renderSelect('Condition', 'condition', [
-              { value: 'above', label: 'Above' },
-              { value: 'below', label: 'Below' },
-              { value: 'equals', label: 'Equals' },
-              { value: 'not_equals', label: 'Not Equals' },
-              { value: 'deadband', label: 'Outside Deadband' },
-            ])}
-            
-            {renderSelect('Severity', 'severity', [
-              { value: 'info', label: 'Info' },
-              { value: 'warning', label: 'Warning' },
-              { value: 'critical', label: 'Critical' },
-              { value: 'emergency', label: 'Emergency' },
-            ])}
-            
-            {renderInput('Delay (seconds)', 'delaySeconds', 'number')}
-            {renderInput('Repeat Interval (seconds)', 'repeatInterval', 'number')}
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Alarm Message
-              </label>
-              <textarea
-                value={String(node.data.message || '')}
-                onChange={createChangeHandler('message')}
-                rows={3}
-                placeholder="Use {name}, {value}, {setpoint}, {signal} as placeholders"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              />
+              {/* Block-specific parameters */}
+              {renderBlockParams(node.data as BlockNodeData, updateNodeData, node.id)}
             </div>
-            
-            <label className="flex items-center mt-2">
-              <input
-                type="checkbox"
-                checked={Boolean(node.data.requireAcknowledgment)}
-                onChange={createChangeHandler('requireAcknowledgment')}
-                className="mr-2"
-              />
-              <span className="text-sm">Require Acknowledgment</span>
-            </label>
-            
-            <label className="flex items-center mt-2">
-              <input
-                type="checkbox"
-                checked={Boolean(node.data.autoReset)}
-                onChange={createChangeHandler('autoReset')}
-                className="mr-2"
-              />
-              <span className="text-sm">Auto Reset</span>
-            </label>
-          </>
-        )}
-        
-        {/* Contact node properties */}
-        {node.type === 'contact' && (
-          <>
-            {renderInput('Name', 'name', 'text', 'John Doe')}
-            {renderInput('Email', 'email', 'email', 'john@example.com')}
-            {renderInput('Phone', 'phone', 'tel', '+1234567890')}
-            
-            {renderSelect('Preferred Method', 'preferredMethod', [
-              { value: 'email', label: 'Email' },
-              { value: 'sms', label: 'SMS' },
-              { value: 'call', label: 'Voice Call' },
-            ])}
-            
-            {renderInput('Priority', 'priority', 'number')}
-            {renderInput('Escalation Delay (seconds)', 'escalationDelay', 'number')}
-            
-            <label className="flex items-center mt-2">
-              <input
-                type="checkbox"
-                checked={Boolean(node.data.workHoursOnly)}
-                onChange={createChangeHandler('workHoursOnly')}
-                className="mr-2"
-              />
-              <span className="text-sm">Work Hours Only</span>
-            </label>
-            
-            {renderInput('Timezone', 'timezone', 'text', 'America/Chicago')}
-          </>
-        )}
-        {/* Twilio node */}
-        {isTwilioNode(node) && (
-          <>
-            {renderSelect('Action Type', 'actionType', [
-              { value: 'sms', label: 'SMS' },
-              { value: 'call', label: 'Voice Call' }
-            ])}
-            {renderInput('To Number', 'toNumber', 'tel', '+1234567890')}
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Content
-              </label>
-              <textarea
-                value={(node.data as TwilioNodeData).content || ''}
-                onChange={createChangeHandler('content')}
-                rows={4}
-                placeholder={
-                  (node.data as TwilioNodeData).actionType === 'call'
-                    ? 'Enter message or TwiML'
-                    : 'Enter SMS message'
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-              />
-            </div>
-
-            <button
-              onClick={validateConfiguration}
-              className="w-full px-3 py-2 bg-petra-500 text-white rounded hover:bg-petra-600 transition-colors"
-            >
-              Validate Configuration
-            </button>
-          </>
+          </div>
         )}
 
-        {/* Enhanced MQTT node with username/password */}
+        {/* MQTT node */}
         {isMqttNode(node) && (
-          <>
-            {renderInput('Broker Host', 'brokerHost', 'text', 'mqtt.lithos.systems')}
-            {renderInput('Broker Port', 'brokerPort', 'number')}
-            {renderInput('Client ID', 'clientId', 'text', 'petra-01')}
-            {renderInput('Topic Prefix', 'topicPrefix', 'text', 'petra/plc')}
-            
-            <div className="border-t pt-4 mt-4">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Authentication (Optional)</h4>
-              {renderInput('Username', 'username', 'text', 'Leave empty for anonymous')}
-              {renderInput('Password', 'password', 'password', 'Leave empty for anonymous')}
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-black mb-2 border-b border-[#606060] pb-1">
+                MQTT Configuration
+              </h4>
+              {renderInput('Broker Host', 'brokerHost', 'text', 'localhost')}
+              {renderInput('Broker Port', 'brokerPort', 'number', '1883', { min: 1, max: 65535 })}
+              {renderInput('Client ID', 'clientId', 'text', 'petra_client')}
+              {renderInput('Topic Prefix', 'topicPrefix', 'text', 'petra')}
+              {renderInput('Signal Name', 'signalName', 'text', 'sensor_data')}
+              
+              {renderSelect('Signal Type', 'signalType', [
+                { value: 'bool', label: 'Boolean' },
+                { value: 'int', label: 'Integer' },
+                { value: 'float', label: 'Float' }
+              ])}
+
+              {renderSelect('Mode', 'mode', [
+                { value: 'read', label: 'Read (Subscribe)' },
+                { value: 'write', label: 'Write (Publish)' },
+                { value: 'read_write', label: 'Read/Write' }
+              ])}
+
+              {renderInput('Username', 'username', 'text', 'Optional')}
+              {renderInput('Password', 'password', 'password', 'Optional')}
+              
+              {renderCheckbox('Publish on Change', 'publishOnChange')}
             </div>
-
-            {renderSelect('Mode', 'mode', [
-              { value: 'read_write', label: 'Read/Write' },
-              { value: 'read', label: 'Read Only' },
-              { value: 'write', label: 'Write Only' }
-            ])}
-
-            <label className="flex items-center mt-2">
-              <input
-                type="checkbox"
-                checked={Boolean((node.data as MqttNodeData).publishOnChange)}
-                onChange={createChangeHandler('publishOnChange')}
-                className="mr-2"
-              />
-              <span className="text-sm">Publish on change</span>
-            </label>
 
             <button
               onClick={validateConfiguration}
-              className="w-full px-3 py-2 bg-petra-500 text-white rounded hover:bg-petra-600 transition-colors"
+              className="isa101-button w-full text-xs py-2"
+              style={{ 
+                backgroundColor: '#00C800', 
+                color: 'white',
+                borderColor: '#008000'
+              }}
             >
-              Validate Configuration
+              Validate MQTT Configuration
             </button>
-          </>
+          </div>
         )}
 
-        {/* Enhanced S7 node with IP configuration */}
+        {/* S7 node */}
         {isS7Node(node) && (
-          <>
-            <div className="border-b pb-4 mb-4">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Connection Settings</h4>
-              {renderInput('IP Address', 'ip', 'text', '192.168.1.100')}
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                {renderInput('Rack', 'rack', 'number')}
-                {renderInput('Slot', 'slot', 'number')}
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-black mb-2 border-b border-[#606060] pb-1">
+                Siemens S7 Configuration
+              </h4>
+              
+              <div className="mb-4">
+                <h5 className="text-xs font-medium text-[#404040] mb-2">Connection Settings</h5>
+                {renderInput('IP Address', 'ip', 'text', '192.168.1.100')}
+                <div className="grid grid-cols-2 gap-2">
+                  {renderInput('Rack', 'rack', 'number', '0', { min: 0, max: 7 })}
+                  {renderInput('Slot', 'slot', 'number', '1', { min: 0, max: 31 })}
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <h5 className="text-xs font-medium text-[#404040] mb-2">Data Mapping</h5>
+                {renderInput('Signal Name', 'signal', 'text', 'motor_running')}
+                
+                {renderSelect('Memory Area', 'area', [
+                  { value: 'DB', label: 'DB – Data Block' },
+                  { value: 'I', label: 'I – Inputs' },
+                  { value: 'Q', label: 'Q – Outputs' },
+                  { value: 'M', label: 'M – Markers' }
+                ])}
+
+                {(node.data as S7NodeData).area === 'DB' && (
+                  renderInput('DB Number', 'dbNumber', 'number', '1', { min: 1, max: 65535 })
+                )}
+
+                {renderInput('Address', 'address', 'number', '0', { min: 0, max: 65535 })}
+
+                {renderSelect('Data Type', 'dataType', [
+                  { value: 'bool', label: 'Bool' },
+                  { value: 'byte', label: 'Byte' },
+                  { value: 'word', label: 'Word' },
+                  { value: 'int', label: 'Int' },
+                  { value: 'dint', label: 'DInt' },
+                  { value: 'real', label: 'Real' }
+                ])}
+
+                {(node.data as S7NodeData).dataType === 'bool' && (
+                  renderInput('Bit', 'bit', 'number', '0', { min: 0, max: 7 })
+                )}
+
+                {renderSelect('Direction', 'direction', [
+                  { value: 'read', label: 'Read from PLC' },
+                  { value: 'write', label: 'Write to PLC' },
+                  { value: 'read_write', label: 'Read/Write' }
+                ])}
               </div>
             </div>
 
-            {renderInput('Signal Name', 'signal', 'text', 'motor_running')}
-            
-            {renderSelect('Area', 'area', [
-              { value: 'DB', label: 'DB – Data Block' },
-              { value: 'I', label: 'I – Inputs' },
-              { value: 'Q', label: 'Q – Outputs' },
-              { value: 'M', label: 'M – Markers' }
-            ])}
+            <button
+              onClick={validateConfiguration}
+              className="isa101-button w-full text-xs py-2"
+              style={{ 
+                backgroundColor: '#00C800', 
+                color: 'white',
+                borderColor: '#008000'
+              }}
+            >
+              Validate S7 Configuration
+            </button>
+          </div>
+        )}
 
-            {(node.data as S7NodeData).area === 'DB' && (
-              renderInput('DB Number', 'dbNumber', 'number')
-            )}
+        {/* Twilio node */}
+        {isTwilioNode(node) && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-black mb-2 border-b border-[#606060] pb-1">
+                Twilio Configuration
+              </h4>
+              
+              {renderSelect('Action Type', 'actionType', [
+                { value: 'sms', label: 'SMS Message' },
+                { value: 'call', label: 'Voice Call' }
+              ])}
 
-            {renderInput('Address', 'address', 'number')}
+              {renderInput('To Phone Number', 'toNumber', 'tel', '+1234567890')}
+              
+              {renderTextArea('Message Content', 'content', 
+                (node.data as TwilioNodeData).actionType === 'call' 
+                  ? 'TwiML for voice call' 
+                  : 'SMS message text', 4)}
 
-            {renderSelect('Data Type', 'dataType', [
-              { value: 'bool', label: 'Bool' },
-              { value: 'byte', label: 'Byte' },
-              { value: 'word', label: 'Word' },
-              { value: 'int', label: 'Int' },
-              { value: 'dint', label: 'DInt' },
-              { value: 'real', label: 'Real' }
-            ])}
-
-            {(node.data as S7NodeData).dataType === 'bool' && (
-              renderInput('Bit', 'bit', 'number')
-            )}
-
-            {renderSelect('Direction', 'direction', [
-              { value: 'read', label: 'Read' },
-              { value: 'write', label: 'Write' },
-              { value: 'read_write', label: 'Read/Write' }
-            ])}
+              <div className="text-xs text-[#606060] p-2 border border-[#606060] bg-[#F0F0F0]">
+                <strong>Note:</strong> Phone numbers must be in E.164 format (e.g., +1234567890).
+                Account SID and Auth Token are configured in environment variables.
+              </div>
+            </div>
 
             <button
               onClick={validateConfiguration}
-              className="w-full px-3 py-2 bg-petra-500 text-white rounded hover:bg-petra-600 transition-colors"
+              className="isa101-button w-full text-xs py-2"
+              style={{ 
+                backgroundColor: '#00C800', 
+                color: 'white',
+                borderColor: '#008000'
+              }}
             >
-              Validate Configuration
+              Validate Twilio Configuration
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -403,76 +409,137 @@ function renderBlockParams(data: BlockNodeData, updateNodeData: any, nodeId: str
   const createParamHandler = (key: string, isFloat: boolean = false) => {
     return (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = isFloat ? parseFloat(e.target.value) || 0 : parseInt(e.target.value) || 0
-      updateNodeData(nodeId, { 
-        params: { ...params, [key]: value } 
+      updateNodeData(nodeId, {
+        params: { ...params, [key]: value }
+      })
+    }
+  }
+
+  const createParamSelectHandler = (key: string) => {
+    return (e: React.ChangeEvent<HTMLSelectElement>) => {
+      updateNodeData(nodeId, {
+        params: { ...params, [key]: e.target.value }
       })
     }
   }
 
   switch (blockType) {
-    case 'TON':
-    case 'TOF':
+    case 'timer':
+    case 'delay':
       return (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Timer Preset (ms)
-          </label>
-          <input
-            type="number"
-            value={getParamNumber('preset_ms', 1000)}
-            onChange={createParamHandler('preset_ms')}
-            min="0"
-            step="100"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-          />
-        </div>
-      )
-
-    case 'COUNTER':
-      return (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Increment Value
-          </label>
-          <input
-            type="number"
-            value={getParamNumber('increment', 1)}
-            onChange={createParamHandler('increment')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
-          />
-        </div>
-      )
-
-    case 'DATA_GENERATOR':
-      return (
-        <>
+        <div className="space-y-3">
+          <h5 className="text-xs font-medium text-[#404040] mb-2">Timer Parameters</h5>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Frequency (Hz)
-            </label>
+            <label className="block text-xs font-medium text-black mb-1">Preset Time</label>
             <input
               type="number"
-              value={getParamNumber('frequency', 1.0)}
-              onChange={createParamHandler('frequency', true)}
-              min="0"
+              value={getParamNumber('preset', 1.0)}
+              onChange={createParamHandler('preset', true)}
               step="0.1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              min="0"
+              className="isa101-input w-full text-xs"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Amplitude
-            </label>
+            <label className="block text-xs font-medium text-black mb-1">Time Units</label>
+            <select
+              value={params.units || 'seconds'}
+              onChange={createParamSelectHandler('units')}
+              className="isa101-input w-full text-xs"
+            >
+              <option value="seconds">Seconds</option>
+              <option value="minutes">Minutes</option>
+              <option value="hours">Hours</option>
+            </select>
+          </div>
+        </div>
+      )
+
+    case 'pid':
+      return (
+        <div className="space-y-3">
+          <h5 className="text-xs font-medium text-[#404040] mb-2">PID Parameters</h5>
+          <div>
+            <label className="block text-xs font-medium text-black mb-1">Proportional Gain (Kp)</label>
             <input
               type="number"
-              value={getParamNumber('amplitude', 10.0)}
-              onChange={createParamHandler('amplitude', true)}
-              min="0"
-              step="0.1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-petra-500"
+              value={getParamNumber('kp', 1.0)}
+              onChange={createParamHandler('kp', true)}
+              step="0.01"
+              className="isa101-input w-full text-xs"
             />
           </div>
-        </>
+          <div>
+            <label className="block text-xs font-medium text-black mb-1">Integral Gain (Ki)</label>
+            <input
+              type="number"
+              value={getParamNumber('ki', 0.1)}
+              onChange={createParamHandler('ki', true)}
+              step="0.01"
+              className="isa101-input w-full text-xs"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-black mb-1">Derivative Gain (Kd)</label>
+            <input
+              type="number"
+              value={getParamNumber('kd', 0.01)}
+              onChange={createParamHandler('kd', true)}
+              step="0.001"
+              className="isa101-input w-full text-xs"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-black mb-1">Output Min</label>
+              <input
+                type="number"
+                value={getParamNumber('output_min', 0.0)}
+                onChange={createParamHandler('output_min', true)}
+                className="isa101-input w-full text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-black mb-1">Output Max</label>
+              <input
+                type="number"
+                value={getParamNumber('output_max', 100.0)}
+                onChange={createParamHandler('output_max', true)}
+                className="isa101-input w-full text-xs"
+              />
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'greater_than':
+    case 'less_than':
+    case 'equal':
+      return (
+        <div className="space-y-3">
+          <h5 className="text-xs font-medium text-[#404040] mb-2">Comparison Parameters</h5>
+          <div>
+            <label className="block text-xs font-medium text-black mb-1">Threshold</label>
+            <input
+              type="number"
+              value={getParamNumber('threshold', 0.0)}
+              onChange={createParamHandler('threshold', true)}
+              step="0.1"
+              className="isa101-input w-full text-xs"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-black mb-1">Deadband</label>
+            <input
+              type="number"
+              value={getParamNumber('deadband', 0.1)}
+              onChange={createParamHandler('deadband', true)}
+              step="0.01"
+              min="0"
+              className="isa101-input w-full text-xs"
+            />
+          </div>
+        </div>
       )
 
     default:
