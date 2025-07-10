@@ -87,7 +87,7 @@ export function usePetraConnection(options: UsePetraConnectionOptions = {}) {
   // Refs
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectCountRef = useRef(0)
-  const pingIntervalRef = useRef<NodeJS.Timeout>()
+  const pingIntervalRef = useRef<number>()
   const messageRateRef = useRef<number[]>([])
   const subscribedSignalsRef = useRef<Set<string>>(new Set())
   const subscribedTopicsRef = useRef<Set<string>>(new Set())
