@@ -207,6 +207,11 @@
   display: block;
   background-color: var(--isa101-equipment-fill);
   border: 1px solid var(--isa101-equipment-outline);
+  margin: 0 auto;
+}
+
+.isa101-block-icon svg {
+  display: block;
 }
 
 /* ReactFlow ISA-101 Overrides */
