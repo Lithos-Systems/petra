@@ -20,6 +20,15 @@ import {
 import { validateNodeConfiguration } from '@/utils/validation'
 import toast from 'react-hot-toast'
 
+const getStringValue = (value: any): string => {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return String(value)
+  if (typeof value === 'boolean') return String(value)
+  if (typeof value === 'object') return JSON.stringify(value)
+  return ''
+}
+
 type CategoryMap = Record<string, Array<{
   value: string
   label: string
@@ -280,7 +289,7 @@ function renderBlockParams(
                 </label>
                 <input
                   type="text"
-                  value={value || ''}
+                  value={getStringValue(value)}
                   onChange={(e) => updateParam(param.name, e.target.value)}
                   className="isa101-input w-full text-xs"
                 />
@@ -345,7 +354,7 @@ export default function PropertiesPanel() {
       </label>
       <input
         type={type}
-        value={(node.data as any)[field] || ''}
+        value={getStringValue((node.data as any)[field])}
         onChange={createChangeHandler(field)}
         className="isa101-input w-full text-xs"
         placeholder={placeholder}
@@ -360,7 +369,7 @@ export default function PropertiesPanel() {
         {label}
       </label>
       <select
-        value={(node.data as any)[field] || options[0]?.value}
+        value={getStringValue((node.data as any)[field]) || options[0]?.value}
         onChange={createChangeHandler(field)}
         className="isa101-input w-full text-xs"
       >
@@ -409,7 +418,7 @@ export default function PropertiesPanel() {
           </label>
           <input
             type="text"
-            value={node.data.label || ''}
+            value={getStringValue(node.data.label)}
             onChange={createChangeHandler('label')}
             className="isa101-input w-full text-xs"
             placeholder="Enter name"
@@ -700,7 +709,7 @@ export default function PropertiesPanel() {
                     Message Content
                   </label>
                   <textarea
-                    value={(node.data as TwilioNodeData).content || ''}
+                    value={getStringValue((node.data as TwilioNodeData).content)}
                     onChange={createChangeHandler('content')}
                     className="isa101-input w-full text-xs"
                     rows={3}
