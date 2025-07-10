@@ -267,8 +267,8 @@ function getDefaultNodeData(type: string): any {
         label: 'New Twilio',
         configured: false,
         actionType: 'sms',
-        toNumber: '',
-        content: '',
+        toNumber: '+1234567890',
+        content: 'Alert from PETRA',
       }
     case 'mqtt':
       return {
@@ -280,6 +280,8 @@ function getDefaultNodeData(type: string): any {
         topicPrefix: 'petra',
         mode: 'read_write',
         publishOnChange: true,
+        signalName: 'sensor_data',
+        signalType: 'float',
       }
     case 's7':
       return {
@@ -293,7 +295,7 @@ function getDefaultNodeData(type: string): any {
         address: 0,
         dataType: 'real',
         direction: 'read',
-        signal: '',
+        signal: 'plc_data',
       }
     default:
       return {
