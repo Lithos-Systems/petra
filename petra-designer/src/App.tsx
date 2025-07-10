@@ -15,10 +15,10 @@ import toast from 'react-hot-toast'
 import { useFlowStore } from './store/flowStore'
 import { nodeTypes } from './nodes'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
-import ISA101Sidebar from './components/ISA101Sidebar'
+import Sidebar from './components/Sidebar'
 import PropertiesPanel from './components/PropertiesPanel'
 import YamlPreview from './components/YamlPreview'
-import ISA101Toolbar from './components/ISA101Toolbar'
+import Toolbar from './components/Toolbar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import HMIDesigner from './components/hmi/HMIDesigner'
 import ISA101WaterPlantDemo from './components/hmi/ISA101WaterPlantDemo'
@@ -156,7 +156,7 @@ function Flow() {
               PETRA Designer
             </h1>
             <div className="h-4 w-px bg-[#606060]" />
-            <ISA101Toolbar />
+            <Toolbar />
           </div>
           
           {/* Center: Mode Switcher - Minimal ISA-101 Style */}
@@ -197,7 +197,7 @@ function Flow() {
       {mode === 'logic' ? (
         <div className="flex flex-1">
           {/* Sidebar */}
-          <ISA101Sidebar />
+          <Sidebar />
           
           {/* Main Flow Area */}
           <div className="flex-1 flex flex-col">
