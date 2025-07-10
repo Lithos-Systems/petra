@@ -7,6 +7,7 @@ import type {
   TwilioNodeData,
   MqttNodeData,
   S7NodeData,
+  ModbusNodeData,
 } from '@/types/nodes'
 import {
   isSignalNode,
@@ -14,6 +15,7 @@ import {
   isTwilioNode,
   isMqttNode,
   isS7Node,
+  isModbusNode,
 } from '@/types/nodes'
 import { validateNodeConfiguration } from '@/utils/validation'
 import toast from 'react-hot-toast'
@@ -345,6 +347,56 @@ export default function PropertiesPanel() {
               }}
             >
               Validate S7 Configuration
+            </button>
+          </div>
+        )}
+
+        {/* Modbus node */}
+        {isModbusNode(node) && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-black mb-2 border-b border-[#606060] pb-1">
+                Modbus Configuration
+              </h4>
+              
+              <div className="mb-4">
+                <h5 className="text-xs font-medium text-[#404040] mb-2">Connection Settings</h5>
+                {renderInput('Host/IP Address', 'host', 'text', 'localhost')}
+                {renderInput('Port', 'port', 'number', '502', { min: 1, max: 65535 })}
+                {renderInput('Unit ID', 'unitId', 'number', '1', { min: 1, max: 247 })}
+              </div>
+
+              <div className="mb-4">
+                <h5 className="text-xs font-medium text-[#404040] mb-2">Data Mapping</h5>
+                {renderInput('Signal Name', 'signal', 'text', 'modbus_data')}
+                
+                {renderSelect('Register Type', 'dataType', [
+                  { value: 'coil', label: 'Coil (0x)' },
+                  { value: 'discrete_input', label: 'Discrete Input (1x)' },
+                  { value: 'holding_register', label: 'Holding Register (4x)' },
+                  { value: 'input_register', label: 'Input Register (3x)' }
+                ])}
+
+                {renderInput('Register Address', 'address', 'number', '0', { min: 0, max: 65535 })}
+
+                {renderSelect('Direction', 'direction', [
+                  { value: 'read', label: 'Read from Device' },
+                  { value: 'write', label: 'Write to Device' },
+                  { value: 'read_write', label: 'Read/Write' }
+                ])}
+              </div>
+            </div>
+
+            <button
+              onClick={validateConfiguration}
+              className="isa101-button w-full text-xs py-2"
+              style={{ 
+                backgroundColor: '#00C800', 
+                color: 'white',
+                borderColor: '#008000'
+              }}
+            >
+              Validate Modbus Configuration
             </button>
           </div>
         )}
