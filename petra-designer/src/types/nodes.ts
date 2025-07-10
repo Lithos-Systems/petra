@@ -54,6 +54,18 @@ export interface S7NodeData extends BaseNodeData {
   direction: 'read' | 'write' | 'read_write'
   signal: string
 }
+
+export interface ModbusNodeData extends BaseNodeData {
+  configured: boolean
+  host: string
+  port: number
+  unitId: number
+  address: number
+  dataType: 'coil' | 'discrete_input' | 'holding_register' | 'input_register'
+  direction: 'read' | 'write' | 'read_write'
+  signal: string
+}
+
 export interface ContactNodeData extends BaseNodeData {
   configured: boolean
   name: string
@@ -112,4 +124,8 @@ export function isMqttNode(node: Node): node is Node & { data: MqttNodeData } {
 
 export function isS7Node(node: Node): node is Node & { data: S7NodeData } {
   return node.type === 's7'
+}
+
+export function isModbusNode(node: Node): node is Node & { data: ModbusNodeData } {
+  return node.type === 'modbus'
 }
