@@ -57,7 +57,7 @@ function Flow() {
       toast.success('Connected to PETRA')
     },
     onDisconnect: () => {
-      toast.error('Disconnected from PETRA')
+      // Removed the disconnect toast to avoid popup nuisance
     },
   })
 
@@ -123,7 +123,7 @@ function Flow() {
   }, [setSelectedNode])
 
   return (
-    <div className="h-screen flex flex-col isa101-mode bg-[#D3D3D3]">
+    <div className="h-screen flex flex-col isa101-mode bg-[#E8E8E8]">
       <Toaster 
         position="top-right"
         toastOptions={{
