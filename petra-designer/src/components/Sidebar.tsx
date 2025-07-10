@@ -1,348 +1,302 @@
-// File: petra-designer/src/components/EnhancedSidebar.tsx
-// Enhanced PETRA Designer Sidebar with modern UI and search functionality
-import { useState, useMemo } from 'react'
-import {
-  FaSearch,
-  FaTimes,
-  FaChevronDown,
-  FaChevronRight,
-  FaStar,
-  FaHistory,
-  FaFilter,
-  FaIndustry,
-  FaTachometerAlt,
-  FaMousePointer,
-  FaWater,
-  FaSquare,
-  FaDatabase,
-  FaNetworkWired,
-  FaShieldAlt,
-  FaBell,
-  FaChartLine,
-  FaCog,
-  FaPlug,
-  FaCode,
-  FaExclamationTriangle,
-  FaInfoCircle,
-  FaQuestionCircle
-} from 'react-icons/fa'
+import React, { useState, useMemo } from 'react'
+import { FaSearch, FaChevronRight, FaChevronDown } from 'react-icons/fa'
 
-interface ComponentItem {
-  id: string
-  type: string
-  label: string
-  icon: React.ReactNode
-  description?: string
-  category: string
-  tags?: string[]
-  complexity?: 'basic' | 'intermediate' | 'advanced'
-  isNew?: boolean
-  isBeta?: boolean
+// ISA-101 Compliant Block Graphics Components
+const ISA101BlockGraphics = {
+  // Logic Blocks
+  AND: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <path d="M2 2 L10 2 A6 6 0 0 1 10 14 L2 14 Z" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="6" y="10" fontSize="8" textAnchor="middle" fill="#000">AND</text>
+    </svg>
+  ),
+  
+  OR: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <path d="M2 2 Q8 2 10 8 Q8 14 2 14 Q6 8 2 2" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="6" y="10" fontSize="8" textAnchor="middle" fill="#000">OR</text>
+    </svg>
+  ),
+  
+  NOT: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <path d="M2 2 L2 14 L12 8 Z" fill="none" stroke="#000" strokeWidth="1"/>
+      <circle cx="14" cy="8" r="2" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="6" y="10" fontSize="6" textAnchor="middle" fill="#000">NOT</text>
+    </svg>
+  ),
+  
+  XOR: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <path d="M2 2 Q8 2 10 8 Q8 14 2 14" fill="none" stroke="#000" strokeWidth="1"/>
+      <path d="M1 2 Q7 2 9 8 Q7 14 1 14" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="6" y="10" fontSize="7" textAnchor="middle" fill="#000">XOR</text>
+    </svg>
+  ),
+
+  // Comparison Blocks
+  GT: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">{">"}</text>
+    </svg>
+  ),
+  
+  LT: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">{"<"}</text>
+    </svg>
+  ),
+  
+  EQ: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">=</text>
+    </svg>
+  ),
+
+  // Math Blocks
+  ADD: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">+</text>
+    </svg>
+  ),
+  
+  SUB: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">-</text>
+    </svg>
+  ),
+  
+  MUL: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">×</text>
+    </svg>
+  ),
+  
+  DIV: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">÷</text>
+    </svg>
+  ),
+
+  // Timer Blocks
+  TIMER: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <circle cx="10" cy="8" r="4" fill="none" stroke="#000" strokeWidth="1"/>
+      <path d="M10 6 L10 8 L12 8" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="13" fontSize="5" textAnchor="middle" fill="#000">TMR</text>
+    </svg>
+  ),
+  
+  DELAY: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="6" fontSize="6" textAnchor="middle" fill="#000">DELAY</text>
+      <text x="10" y="12" fontSize="5" textAnchor="middle" fill="#000">T#10s</text>
+    </svg>
+  ),
+
+  // Control Blocks
+  PID: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="7" fontSize="7" textAnchor="middle" fill="#000">PID</text>
+      <text x="10" y="13" fontSize="4" textAnchor="middle" fill="#000">CTRL</text>
+    </svg>
+  ),
+  
+  CONTROLLER: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="6" textAnchor="middle" fill="#000">CTRL</text>
+    </svg>
+  ),
+
+  // I/O Blocks
+  INPUT: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <path d="M2 8 L8 2 L8 5 L18 5 L18 11 L8 11 L8 14 Z" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="13" y="9" fontSize="5" textAnchor="middle" fill="#000">IN</text>
+    </svg>
+  ),
+  
+  OUTPUT: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <path d="M18 8 L12 2 L12 5 L2 5 L2 11 L12 11 L12 14 Z" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="7" y="9" fontSize="5" textAnchor="middle" fill="#000">OUT</text>
+    </svg>
+  ),
+
+  // Memory Blocks
+  MEMORY: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <rect x="4" y="4" width="12" height="2" fill="#000"/>
+      <rect x="4" y="7" width="12" height="2" fill="#000"/>
+      <rect x="4" y="10" width="12" height="2" fill="#000"/>
+    </svg>
+  ),
+  
+  REGISTER: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="6" textAnchor="middle" fill="#000">REG</text>
+    </svg>
+  ),
+
+  // Communication Blocks
+  MODBUS: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="8" fontSize="5" textAnchor="middle" fill="#000">MODBUS</text>
+      <text x="10" y="12" fontSize="4" textAnchor="middle" fill="#000">TCP/RTU</text>
+    </svg>
+  ),
+  
+  S7: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="9" fontSize="6" textAnchor="middle" fill="#000">S7</text>
+      <text x="10" y="13" fontSize="4" textAnchor="middle" fill="#000">SIEMENS</text>
+    </svg>
+  ),
+  
+  MQTT: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="9" fontSize="6" textAnchor="middle" fill="#000">MQTT</text>
+      <circle cx="6" cy="6" r="1" fill="#000"/>
+      <circle cx="10" cy="6" r="1" fill="#000"/>
+      <circle cx="14" cy="6" r="1" fill="#000"/>
+    </svg>
+  ),
+
+  // Signal Blocks
+  SIGNAL: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <circle cx="10" cy="8" r="6" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="10" y="10" fontSize="6" textAnchor="middle" fill="#000">SIG</text>
+    </svg>
+  ),
+  
+  ANALOG: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <path d="M4 10 L6 6 L8 10 L10 6 L12 10 L14 6 L16 10" fill="none" stroke="#000" strokeWidth="1"/>
+    </svg>
+  ),
+  
+  DIGITAL: () => (
+    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
+      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <path d="M4 10 L4 6 L6 6 L6 10 L8 10 L8 6 L10 6 L10 10 L12 10 L12 6 L14 6 L14 10 L16 10" 
+            fill="none" stroke="#000" strokeWidth="1"/>
+    </svg>
+  )
 }
 
-interface ComponentCategory {
-  id: string
-  name: string
-  icon: React.ReactNode
-  color: string
-  components: ComponentItem[]
-}
-
-const componentCategories: ComponentCategory[] = [
-  {
-    id: 'equipment',
-    name: 'Process Equipment',
-    icon: <FaIndustry className="w-4 h-4" />,
-    color: 'blue',
-    components: [
-      {
-        id: 'tank',
-        type: 'tank',
-        label: 'Tank',
-        icon: (
-          <div className="w-8 h-10 relative">
-            <div className="absolute inset-0 border-2 border-gray-600 rounded-sm bg-gradient-to-b from-gray-100 to-gray-300">
-              <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-blue-500 opacity-60 rounded-b-sm" />
-            </div>
-          </div>
-        ),
-        description: 'Storage tank with level monitoring',
-        category: 'equipment',
-        tags: ['storage', 'vessel', 'liquid'],
-        complexity: 'basic'
-      },
-      {
-        id: 'pump',
-        type: 'pump',
-        label: 'Pump',
-        icon: (
-          <div className="w-8 h-8 relative">
-            <div className="absolute inset-0 bg-green-600 rounded-full flex items-center justify-center">
-              <div className="w-4 h-4 bg-white rounded-full" />
-            </div>
-          </div>
-        ),
-        description: 'Centrifugal pump with VFD control',
-        category: 'equipment',
-        tags: ['pump', 'motor', 'flow'],
-        complexity: 'intermediate'
-      },
-      {
-        id: 'valve',
-        type: 'valve',
-        label: 'Control Valve',
-        icon: (
-          <div className="w-8 h-8 relative flex items-center justify-center">
-            <div className="w-6 h-3 bg-gray-600 rounded-sm" />
-            <div className="absolute w-0 h-0 border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-gray-600" />
-          </div>
-        ),
-        description: 'Modulating control valve',
-        category: 'equipment',
-        tags: ['valve', 'control', 'flow'],
-        complexity: 'intermediate'
-      },
-      {
-        id: 'heat-exchanger',
-        type: 'heat-exchanger',
-        label: 'Heat Exchanger',
-        icon: (
-          <div className="w-10 h-6 relative flex items-center justify-center">
-            <div className="w-full h-4 border-2 border-gray-600 bg-gradient-to-r from-red-400 to-blue-400">
-              <div className="absolute inset-y-0 left-1/2 w-px bg-gray-600" />
-            </div>
-          </div>
-        ),
-        description: 'Plate & frame heat exchanger',
-        category: 'equipment',
-        tags: ['heat', 'temperature', 'exchanger'],
-        complexity: 'advanced',
-        isNew: true
-      },
-      {
-        id: 'mixer',
-        type: 'mixer',
-        label: 'Mixer/Agitator',
-        icon: (
-          <div className="w-8 h-8 relative">
-            <div className="absolute inset-0 border-2 border-gray-600 rounded-full">
-              <div className="absolute inset-2 border-t-2 border-gray-600 rounded-full animate-spin" />
-            </div>
-          </div>
-        ),
-        description: 'Mixing vessel with agitator',
-        category: 'equipment',
-        tags: ['mixer', 'agitator', 'blend'],
-        complexity: 'intermediate',
-        isBeta: true
-      }
-    ]
-  },
-  {
-    id: 'instrumentation',
-    name: 'Instrumentation',
-    icon: <FaTachometerAlt className="w-4 h-4" />,
-    color: 'purple',
-    components: [
-      {
-        id: 'gauge',
-        type: 'gauge',
-        label: 'Gauge',
-        icon: <FaTachometerAlt className="w-6 h-6 text-blue-500" />,
-        description: 'Analog gauge display',
-        category: 'instrumentation',
-        tags: ['gauge', 'analog', 'display'],
-        complexity: 'basic'
-      },
-      {
-        id: 'trend',
-        type: 'trend',
-        label: 'Trend Chart',
-        icon: <FaChartLine className="w-6 h-6 text-purple-500" />,
-        description: 'Real-time trend display',
-        category: 'instrumentation',
-        tags: ['trend', 'chart', 'graph'],
-        complexity: 'intermediate'
-      },
-      {
-        id: 'digital-display',
-        type: 'digital-display',
-        label: 'Digital Display',
-        icon: (
-          <div className="w-8 h-6 bg-black rounded flex items-center justify-center">
-            <span className="text-green-400 font-mono text-xs">88.8</span>
-          </div>
-        ),
-        description: 'LED/LCD numeric display',
-        category: 'instrumentation',
-        tags: ['digital', 'display', 'numeric'],
-        complexity: 'basic',
-        isNew: true
-      }
-    ]
-  },
-  {
-    id: 'controls',
-    name: 'Controls',
-    icon: <FaMousePointer className="w-4 h-4" />,
-    color: 'green',
-    components: [
-      {
-        id: 'button',
-        type: 'button',
-        label: 'Push Button',
-        icon: (
-          <div className="w-8 h-6 bg-blue-500 rounded shadow-md flex items-center justify-center">
-            <div className="w-2 h-2 bg-white rounded-full" />
-          </div>
-        ),
-        description: 'Interactive push button',
-        category: 'controls',
-        tags: ['button', 'control', 'input'],
-        complexity: 'basic'
-      },
-      {
-        id: 'switch',
-        type: 'switch',
-        label: 'Toggle Switch',
-        icon: (
-          <div className="w-8 h-4 bg-gray-300 rounded-full relative">
-            <div className="absolute left-0 top-0 w-4 h-4 bg-green-500 rounded-full shadow" />
-          </div>
-        ),
-        description: 'ON/OFF toggle switch',
-        category: 'controls',
-        tags: ['switch', 'toggle', 'boolean'],
-        complexity: 'basic'
-      },
-      {
-        id: 'slider',
-        type: 'slider',
-        label: 'Slider',
-        icon: (
-          <div className="w-8 h-2 bg-gray-300 rounded-full relative">
-            <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full shadow" />
-          </div>
-        ),
-        description: 'Analog value slider',
-        category: 'controls',
-        tags: ['slider', 'analog', 'input'],
-        complexity: 'basic'
-      }
-    ]
-  },
+// Block categories following ISA-101 organization
+const blockCategories = [
   {
     id: 'logic',
-    name: 'Logic Blocks',
-    icon: <FaCode className="w-4 h-4" />,
-    color: 'orange',
-    components: [
-      {
-        id: 'and-gate',
-        type: 'AND',
-        label: 'AND Gate',
-        icon: (
-          <div className="w-8 h-6 border-2 border-gray-600 rounded-r-full flex items-center justify-center bg-white">
-            <span className="text-xs font-bold">&</span>
-          </div>
-        ),
-        description: 'Logical AND operation',
-        category: 'logic',
-        tags: ['logic', 'and', 'boolean'],
-        complexity: 'basic'
-      },
-      {
-        id: 'pid',
-        type: 'PID',
-        label: 'PID Controller',
-        icon: (
-          <div className="w-8 h-6 bg-orange-500 rounded flex items-center justify-center">
-            <span className="text-white text-xs font-bold">PID</span>
-          </div>
-        ),
-        description: 'PID control block',
-        category: 'logic',
-        tags: ['pid', 'control', 'loop'],
-        complexity: 'advanced'
-      }
+    name: 'Logic',
+    collapsed: false,
+    blocks: [
+      { id: 'AND', type: 'and', label: 'AND Gate', description: 'Logical AND operation' },
+      { id: 'OR', type: 'or', label: 'OR Gate', description: 'Logical OR operation' },
+      { id: 'NOT', type: 'not', label: 'NOT Gate', description: 'Logical NOT operation' },
+      { id: 'XOR', type: 'xor', label: 'XOR Gate', description: 'Exclusive OR operation' },
     ]
   },
   {
-    id: 'connectivity',
-    name: 'Connectivity',
-    icon: <FaNetworkWired className="w-4 h-4" />,
-    color: 'teal',
-    components: [
-      {
-        id: 'mqtt',
-        type: 'mqtt',
-        label: 'MQTT Client',
-        icon: <FaPlug className="w-6 h-6 text-teal-600" />,
-        description: 'MQTT broker connection',
-        category: 'connectivity',
-        tags: ['mqtt', 'protocol', 'network'],
-        complexity: 'intermediate'
-      },
-      {
-        id: 's7',
-        type: 's7',
-        label: 'S7 Driver',
-        icon: (
-          <div className="w-8 h-6 bg-gray-700 rounded flex items-center justify-center">
-            <span className="text-white text-xs font-bold">S7</span>
-          </div>
-        ),
-        description: 'Siemens S7 protocol',
-        category: 'connectivity',
-        tags: ['s7', 'siemens', 'plc'],
-        complexity: 'advanced'
-      }
+    id: 'compare',
+    name: 'Compare',
+    collapsed: false,
+    blocks: [
+      { id: 'GT', type: 'greater_than', label: 'Greater Than', description: 'A > B comparison' },
+      { id: 'LT', type: 'less_than', label: 'Less Than', description: 'A < B comparison' },
+      { id: 'EQ', type: 'equal', label: 'Equal', description: 'A = B comparison' },
+    ]
+  },
+  {
+    id: 'math',
+    name: 'Math',
+    collapsed: false,
+    blocks: [
+      { id: 'ADD', type: 'add', label: 'Add', description: 'Addition: A + B' },
+      { id: 'SUB', type: 'subtract', label: 'Subtract', description: 'Subtraction: A - B' },
+      { id: 'MUL', type: 'multiply', label: 'Multiply', description: 'Multiplication: A × B' },
+      { id: 'DIV', type: 'divide', label: 'Divide', description: 'Division: A ÷ B' },
+    ]
+  },
+  {
+    id: 'timer',
+    name: 'Timers',
+    collapsed: false,
+    blocks: [
+      { id: 'TIMER', type: 'timer', label: 'Timer', description: 'Time delay on/off' },
+      { id: 'DELAY', type: 'delay', label: 'Delay', description: 'Signal delay block' },
+    ]
+  },
+  {
+    id: 'control',
+    name: 'Control',
+    collapsed: false,
+    blocks: [
+      { id: 'PID', type: 'pid', label: 'PID Controller', description: 'Proportional-Integral-Derivative control' },
+      { id: 'CONTROLLER', type: 'controller', label: 'Controller', description: 'Generic controller block' },
+    ]
+  },
+  {
+    id: 'io',
+    name: 'I/O',
+    collapsed: false,
+    blocks: [
+      { id: 'INPUT', type: 'input', label: 'Input', description: 'Digital/Analog input' },
+      { id: 'OUTPUT', type: 'output', label: 'Output', description: 'Digital/Analog output' },
+      { id: 'ANALOG', type: 'analog_input', label: 'Analog Input', description: '4-20mA, 0-10V input' },
+      { id: 'DIGITAL', type: 'digital_input', label: 'Digital Input', description: 'Discrete input signal' },
+    ]
+  },
+  {
+    id: 'memory',
+    name: 'Memory',
+    collapsed: false,
+    blocks: [
+      { id: 'MEMORY', type: 'memory', label: 'Memory', description: 'Data storage block' },
+      { id: 'REGISTER', type: 'register', label: 'Register', description: 'Value register' },
+    ]
+  },
+  {
+    id: 'communication',
+    name: 'Communication',
+    collapsed: false,
+    blocks: [
+      { id: 'MODBUS', type: 'modbus', label: 'Modbus', description: 'Modbus TCP/RTU communication' },
+      { id: 'S7', type: 's7', label: 'Siemens S7', description: 'Siemens S7 communication' },
+      { id: 'MQTT', type: 'mqtt', label: 'MQTT', description: 'MQTT publish/subscribe' },
     ]
   }
 ]
 
-export default function EnhancedSidebar() {
+interface ISA101SidebarProps {
+  className?: string
+}
+
+export default function ISA101Sidebar({ className = '' }: ISA101SidebarProps) {
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
-  const [favoriteComponents, setFavoriteComponents] = useState<Set<string>>(new Set())
-  const [recentComponents, setRecentComponents] = useState<string[]>([])
-  const [showFavorites, setShowFavorites] = useState(false)
-  const [showRecent, setShowRecent] = useState(false)
-  const [complexityFilter, setComplexityFilter] = useState<string | null>(null)
 
-  // Filter components based on search and filters
-  const filteredCategories = useMemo(() => {
-    return componentCategories.map(category => ({
-      ...category,
-      components: category.components.filter(component => {
-        const matchesSearch = searchTerm === '' || 
-          component.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          component.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          component.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-        
-        const matchesCategory = !selectedCategory || category.id === selectedCategory
-        
-        const matchesComplexity = !complexityFilter || component.complexity === complexityFilter
-        
-        const matchesFavorites = !showFavorites || favoriteComponents.has(component.id)
-        
-        const matchesRecent = !showRecent || recentComponents.includes(component.id)
-        
-        return matchesSearch && matchesCategory && matchesComplexity && matchesFavorites && matchesRecent
-      })
-    })).filter(category => category.components.length > 0)
-  }, [searchTerm, selectedCategory, complexityFilter, showFavorites, showRecent, favoriteComponents, recentComponents])
-
-  const handleDragStart = (e: React.DragEvent, componentType: string, componentId: string) => {
-    e.dataTransfer.setData('application/reactflow', componentType)
+  const handleDragStart = (e: React.DragEvent, blockType: string) => {
+    e.dataTransfer.setData('application/reactflow', blockType)
     e.dataTransfer.effectAllowed = 'move'
-    
-    // Add to recent components
-    setRecentComponents(prev => {
-      const updated = [componentId, ...prev.filter(id => id !== componentId)].slice(0, 5)
-      return updated
-    })
   }
 
   const toggleCategory = (categoryId: string) => {
@@ -357,200 +311,101 @@ export default function EnhancedSidebar() {
     })
   }
 
-  const toggleFavorite = (componentId: string) => {
-    setFavoriteComponents(prev => {
-      const updated = new Set(prev)
-      if (updated.has(componentId)) {
-        updated.delete(componentId)
-      } else {
-        updated.add(componentId)
-      }
-      return updated
-    })
-  }
+  const filteredCategories = useMemo(() => {
+    return blockCategories.map(category => ({
+      ...category,
+      blocks: category.blocks.filter(block =>
+        searchTerm === '' || 
+        block.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        block.description.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    })).filter(category => category.blocks.length > 0)
+  }, [searchTerm])
 
   return (
-    <div className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
+    <div className={`isa101-sidebar w-64 h-full ${className}`}>
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">Components</h2>
-        
-        {/* Search Bar */}
+      <div className="isa101-panel-header">
+        <span className="text-sm font-medium">Block Library</span>
+      </div>
+
+      {/* Search */}
+      <div className="p-3 border-b border-[#606060]">
         <div className="relative">
-          <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <FaSearch className="absolute left-2 top-2.5 w-3 h-3 text-[#606060]" />
           <input
             type="text"
-            placeholder="Search components..."
+            placeholder="Search blocks..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-10 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-petra-primary-500 text-sm"
+            className="isa101-input w-full pl-7 pr-3 py-2 text-xs"
+            style={{
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #606060',
+              color: '#000000'
+            }}
           />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <FaTimes className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-        
-        {/* Filter Buttons */}
-        <div className="flex flex-wrap gap-2 mt-3">
-          <button
-            onClick={() => setShowFavorites(!showFavorites)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              showFavorites 
-                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' 
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-            }`}
-          >
-            <FaStar className="inline w-3 h-3 mr-1" />
-            Favorites
-          </button>
-          <button
-            onClick={() => setShowRecent(!showRecent)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              showRecent 
-                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' 
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-            }`}
-          >
-            <FaHistory className="inline w-3 h-3 mr-1" />
-            Recent
-          </button>
-          <select
-            value={complexityFilter || ''}
-            onChange={(e) => setComplexityFilter(e.target.value || null)}
-            className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 border-none focus:outline-none focus:ring-2 focus:ring-petra-primary-500"
-          >
-            <option value="">All Levels</option>
-            <option value="basic">Basic</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
-          </select>
         </div>
       </div>
-      
-      {/* Component Categories */}
-      <div className="flex-1 overflow-y-auto petra-scrollbar">
+
+      {/* Block Categories */}
+      <div className="flex-1 overflow-y-auto">
         {filteredCategories.map(category => (
-          <div key={category.id} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+          <div key={category.id} className="border-b border-[#606060]">
             {/* Category Header */}
             <button
               onClick={() => toggleCategory(category.id)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              className="w-full px-3 py-2 flex items-center justify-between hover:bg-[#C8C8C8] transition-colors"
             >
+              <span className="text-xs font-medium text-black">{category.name}</span>
               <div className="flex items-center gap-2">
-                <div className={`p-1.5 rounded bg-${category.color}-100 dark:bg-${category.color}-900`}>
-                  {category.icon}
-                </div>
-                <span className="font-medium text-gray-700 dark:text-gray-300">{category.name}</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">({category.components.length})</span>
+                <span className="text-xs text-[#606060]">{category.blocks.length}</span>
+                {collapsedCategories.has(category.id) ? (
+                  <FaChevronRight className="w-2 h-2 text-[#606060]" />
+                ) : (
+                  <FaChevronDown className="w-2 h-2 text-[#606060]" />
+                )}
               </div>
-              {collapsedCategories.has(category.id) ? (
-                <FaChevronRight className="w-3 h-3 text-gray-400" />
-              ) : (
-                <FaChevronDown className="w-3 h-3 text-gray-400" />
-              )}
             </button>
-            
-            {/* Category Components */}
+
+            {/* Category Blocks */}
             {!collapsedCategories.has(category.id) && (
-              <div className="px-2 pb-2">
-                {category.components.map(component => (
-                  <div
-                    key={component.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, component.type, component.id)}
-                    className="petra-component-item group relative"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0">{component.icon}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm text-gray-700 dark:text-gray-300">
-                            {component.label}
-                          </span>
-                          {component.isNew && (
-                            <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 rounded">
-                              NEW
-                            </span>
-                          )}
-                          {component.isBeta && (
-                            <span className="px-1.5 py-0.5 text-xs bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300 rounded">
-                              BETA
-                            </span>
+              <div className="px-1 pb-2">
+                {category.blocks.map(block => {
+                  const BlockIcon = ISA101BlockGraphics[block.id as keyof typeof ISA101BlockGraphics]
+                  return (
+                    <div
+                      key={block.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, block.type)}
+                      className="isa101-block-item group"
+                    >
+                      <div className="flex items-center gap-2 p-2 hover:bg-[#C8C8C8] cursor-move transition-colors">
+                        <div className="flex-shrink-0">
+                          {BlockIcon ? <BlockIcon /> : (
+                            <div className="w-6 h-4 bg-[#E0E0E0] border border-[#606060] flex items-center justify-center">
+                              <span className="text-xs font-mono">{block.id.slice(0, 2)}</span>
+                            </div>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {component.description}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-black">{block.label}</div>
+                          <div className="text-xs text-[#606060] truncate">{block.description}</div>
+                        </div>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleFavorite(component.id)
-                        }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <FaStar
-                          className={`w-4 h-4 ${
-                            favoriteComponents.has(component.id)
-                              ? 'text-yellow-500'
-                              : 'text-gray-400 hover:text-yellow-500'
-                          }`}
-                        />
-                      </button>
                     </div>
-                    
-                    {/* Complexity indicator */}
-                    {component.complexity && (
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {component.complexity === 'basic' && (
-                          <div className="w-1 h-3 bg-green-500 rounded" title="Basic" />
-                        )}
-                        {component.complexity === 'intermediate' && (
-                          <div className="flex gap-0.5">
-                            <div className="w-1 h-3 bg-yellow-500 rounded" title="Intermediate" />
-                            <div className="w-1 h-3 bg-yellow-500 rounded" />
-                          </div>
-                        )}
-                        {component.complexity === 'advanced' && (
-                          <div className="flex gap-0.5">
-                            <div className="w-1 h-3 bg-red-500 rounded" title="Advanced" />
-                            <div className="w-1 h-3 bg-red-500 rounded" />
-                            <div className="w-1 h-3 bg-red-500 rounded" />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
         ))}
-        
-        {filteredCategories.length === 0 && (
-          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-            <FaSearch className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-            <p className="text-sm">No components found</p>
-            <p className="text-xs mt-1">Try adjusting your search or filters</p>
-          </div>
-        )}
       </div>
-      
-      {/* Footer Help */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
-        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-          <div className="flex items-center gap-1">
-            <FaInfoCircle className="w-3 h-3" />
-            <span>Drag components to canvas</span>
-          </div>
-          <button className="hover:text-gray-700 dark:hover:text-gray-300">
-            <FaQuestionCircle className="w-4 h-4" />
-          </button>
+
+      {/* Footer */}
+      <div className="isa101-panel-header border-t border-[#606060]">
+        <div className="text-xs text-[#606060]">
+          Drag blocks to canvas
         </div>
       </div>
     </div>
