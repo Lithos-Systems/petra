@@ -432,14 +432,14 @@ const componentCategories = [
     color: 'indigo',
     components: [
       {
-        id: 'modbus',
-        type: 'modbus',
-        label: 'Modbus',
-        icon: <ISA101BlockGraphics.MODBUS />,
-        description: 'Modbus TCP/RTU communication',
+        id: 'mqtt',
+        type: 'mqtt',
+        label: 'MQTT',
+        icon: <ISA101BlockGraphics.MQTT />,
+        description: 'MQTT publish/subscribe',
         category: 'communication',
-        tags: ['modbus', 'protocol', 'tcp', 'rtu'],
-        complexity: 'advanced'
+        tags: ['mqtt', 'publish', 'subscribe'],
+        complexity: 'intermediate'
       },
       {
         id: 's7',
@@ -452,13 +452,31 @@ const componentCategories = [
         complexity: 'advanced'
       },
       {
-        id: 'mqtt',
-        type: 'mqtt',
-        label: 'MQTT',
-        icon: <ISA101BlockGraphics.MQTT />,
-        description: 'MQTT publish/subscribe',
+        id: 'modbus',
+        type: 'modbus',
+        label: 'Modbus',
+        icon: <ISA101BlockGraphics.MODBUS />,
+        description: 'Modbus TCP/RTU communication',
         category: 'communication',
-        tags: ['mqtt', 'publish', 'subscribe'],
+        tags: ['modbus', 'protocol', 'tcp', 'rtu'],
+        complexity: 'advanced'
+      }
+    ]
+  },
+  {
+    id: 'notifications',
+    name: 'Notifications',
+    icon: <span>📢</span>,
+    color: 'red',
+    components: [
+      {
+        id: 'twilio',
+        type: 'twilio',
+        label: 'Twilio',
+        icon: <ISA101BlockGraphics.SIGNAL />, // Using signal icon for now
+        description: 'SMS and voice notifications',
+        category: 'notifications',
+        tags: ['twilio', 'sms', 'voice', 'alert'],
         complexity: 'intermediate'
       }
     ]
