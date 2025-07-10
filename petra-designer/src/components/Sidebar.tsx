@@ -466,7 +466,7 @@ const componentCategories = [
   {
     id: 'notifications',
     name: 'Notifications',
-    icon: <span>📢</span>,
+    icon: <span>!</span>,
     color: 'red',
     components: [
       {
