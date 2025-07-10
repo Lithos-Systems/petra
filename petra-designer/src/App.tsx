@@ -26,6 +26,7 @@ import { FaProjectDiagram, FaDesktop } from 'react-icons/fa'
 import { PetraProvider } from './contexts/PetraContext'
 import { usePetraConnection } from './hooks/usePetraConnection'
 import type { ConnectionInfo } from './types/hmi'
+import ConnectionStatus from './components/ConnectionStatus'
 import './styles/isa101-theme.css'
 
 type DesignerMode = 'logic' | 'graphics'
@@ -185,11 +186,8 @@ function Flow() {
             </button>
           </div>
 
-          {/* Right: Connection Status - Simple Indicator */}
-          <div className="isa101-connection-status">
-            <div className={`isa101-connection-indicator ${connected ? 'connected' : ''}`} />
-            <span className="text-xs">{connected ? 'ONLINE' : 'OFFLINE'}</span>
-          </div>
+          {/* Right: Spacer */}
+          <div className="flex-1" />
         </div>
       </div>
 
@@ -245,6 +243,7 @@ function Flow() {
       ) : (
         <HMIDesigner />
       )}
+      <ConnectionStatus />
     </div>
   )
 }
