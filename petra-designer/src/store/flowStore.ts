@@ -216,6 +216,7 @@ function getDefaultBlockParams(blockType: string) {
 function getDefaultNodeData(type: string): any {
   // Handle legacy type mappings - map sidebar types to node types
   const nodeTypeMap: Record<string, string> = {
+    // Logic blocks -> block node type
     'and': 'block',
     'or': 'block', 
     'not': 'block',
@@ -235,9 +236,12 @@ function getDefaultNodeData(type: string): any {
     'output': 'block',
     'analog_input': 'block',
     'digital_input': 'block',
-    'modbus': 'block',
-    's7': 'block',
-    'mqtt': 'block',
+    // Communication blocks -> their specific node types
+    'modbus': 'modbus',
+    's7': 's7',
+    'mqtt': 'mqtt', 
+    'twilio': 'twilio',
+    // Signals -> signal node type
     'signal': 'signal'
   }
 
@@ -296,6 +300,18 @@ function getDefaultNodeData(type: string): any {
         dataType: 'real',
         direction: 'read',
         signal: 'plc_data',
+      }
+    case 'modbus':
+      return {
+        label: 'New Modbus',
+        configured: false,
+        host: 'localhost',
+        port: 502,
+        unitId: 1,
+        address: 0,
+        dataType: 'holding_register',
+        direction: 'read',
+        signal: 'modbus_data',
       }
     default:
       return {
