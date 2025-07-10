@@ -205,8 +205,7 @@
 /* Block Icon Styles */
 .isa101-block-icon {
   display: block;
-  background-color: var(--isa101-equipment-fill);
-  border: 1px solid var(--isa101-equipment-outline);
+  background-color: transparent;
   margin: 0 auto;
 }
 
