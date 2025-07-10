@@ -1,9 +1,9 @@
 /* ISA-101 Color Variables */
 :root {
   /* Background Colors (Gray scale as per ISA-101) */
-  --isa101-background: #D3D3D3;              /* Light gray background */
-  --isa101-background-dark: #C0C0C0;          /* Darker gray for panels */
-  --isa101-background-darker: #B0B0B0;        /* Even darker for headers */
+  --isa101-background: #E8E8E8;              /* Lighter gray background */
+  --isa101-background-dark: #D0D0D0;          /* Darker gray for panels */
+  --isa101-background-darker: #C0C0C0;        /* Even darker for headers */
   
   /* Text Colors */
   --isa101-text-primary: #000000;             /* Black text */
