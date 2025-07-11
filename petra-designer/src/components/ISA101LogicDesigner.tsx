@@ -1,4 +1,4 @@
-// petra-designer/src/components/LogicDesigner.tsx
+// petra-designer/src/components/ISA101LogicDesigner.tsx
 import React, { useState, useCallback } from 'react';
 import { ReactFlow,
   Node,
@@ -18,6 +18,16 @@ import { ReactFlow,
   NodeProps
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
+// Define proper types for our node data
+interface BlockNodeData {
+  label: string;
+  blockType: string;
+  status?: 'running' | 'stopped';
+}
+
+type BlockNode = Node<BlockNodeData>;
+type BlockEdge = Edge;
 
 // Keep the ISA-101 colors simple
 const ISA_COLORS = {
@@ -49,7 +59,7 @@ const BLOCK_CONFIGS = {
 };
 
 // Simple, fast block node component
-const SimpleBlockNode = ({ data, selected }: NodeProps) => {
+const SimpleBlockNode = ({ data, selected }: NodeProps<BlockNodeData>) => {
   const config = BLOCK_CONFIGS[data.blockType as keyof typeof BLOCK_CONFIGS];
   
   if (!config) return null;
@@ -64,7 +74,7 @@ const SimpleBlockNode = ({ data, selected }: NodeProps) => {
     >
       {/* Block symbol */}
       <div className="text-lg font-bold">{config.symbol}</div>
-      <div className="text-xs">{data.label}</div>
+      <div className="text-xs">{String(data.label)}</div>
 
       {/* Input handles */}
       {config.inputs.map((input, idx) => (
@@ -122,7 +132,7 @@ const SimpleToolbar = ({
   onDelete: () => void;
   onValidate: () => void;
   onDeploy: () => void;
-  selectedNode: Node | null;
+  selectedNode: BlockNode | null;
 }) => {
   const blockTypes = [
     { type: 'AND', category: 'Logic' },
@@ -193,7 +203,7 @@ const SimpleToolbar = ({
 };
 
 // Generate simple PETRA YAML - fixed to match your backend exactly
-const generateSimpleYaml = (nodes: Node[], edges: Edge[]): string => {
+const generateSimpleYaml = (nodes: BlockNode[], edges: BlockEdge[]): string => {
   const signals: any[] = [];
   const blocks: any[] = [];
   const signalMap = new Map<string, string>();
@@ -264,9 +274,9 @@ scan_time_ms: 100
 
 // Main component - keep it simple and fast
 export default function SimpleFixedLogicDesigner() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<BlockNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedNode, setSelectedNode] = useState<BlockNode | null>(null);
   const [nodeId, setNodeId] = useState(1);
 
   const onConnect = useCallback(
@@ -274,12 +284,12 @@ export default function SimpleFixedLogicDesigner() {
     [setEdges]
   );
 
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+  const onNodeClick = useCallback((event: React.MouseEvent, node: BlockNode) => {
     setSelectedNode(node);
   }, []);
 
   const onAddBlock = useCallback((blockType: string) => {
-    const newNode: Node = {
+    const newNode: BlockNode = {
       id: `node_${nodeId}`,
       type: 'block',
       position: { 
@@ -292,7 +302,7 @@ export default function SimpleFixedLogicDesigner() {
       }
     };
 
-    setNodes(nds => nds.concat(newNode));
+    setNodes(nds => [...nds, newNode]);
     setNodeId(nodeId + 1);
   }, [nodeId, setNodes]);
 
@@ -393,7 +403,7 @@ export default function SimpleFixedLogicDesigner() {
         }}
       >
         <div>Nodes: {nodes.length} | Connections: {edges.length}</div>
-        <div>Selected: {selectedNode ? selectedNode.data.label : 'None'}</div>
+        <div>Selected: {selectedNode ? String(selectedNode.data.label) : 'None'}</div>
       </div>
     </div>
   );
