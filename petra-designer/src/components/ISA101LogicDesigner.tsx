@@ -1,6 +1,7 @@
-// petra-designer/src/components/ISA101LogicDesigner.tsx
+// petra-designer/src/components/CleanLogicDesigner.tsx
 import React, { useState, useCallback } from 'react';
-import { ReactFlow,
+import { 
+  ReactFlow,
   Node,
   Edge,
   Controls,
@@ -19,17 +20,7 @@ import { ReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-// Define proper types for our node data
-interface BlockNodeData {
-  label: string;
-  blockType: string;
-  status?: 'running' | 'stopped';
-}
-
-type BlockNode = Node<BlockNodeData>;
-type BlockEdge = Edge;
-
-// Keep the ISA-101 colors simple
+// ISA-101 compliant colors
 const ISA_COLORS = {
   background: '#D3D3D3',
   node: '#E0E0E0',
@@ -40,7 +31,7 @@ const ISA_COLORS = {
   stopped: '#808080'
 };
 
-// Simple block configurations - just what we need for the UI
+// Block configurations matching PETRA backend exactly
 const BLOCK_CONFIGS = {
   'AND': { inputs: ['a', 'b'], outputs: ['out'], symbol: '&' },
   'OR': { inputs: ['a', 'b'], outputs: ['out'], symbol: '≥1' },
@@ -58,9 +49,13 @@ const BLOCK_CONFIGS = {
   'PID': { inputs: ['pv', 'sp'], outputs: ['out'], symbol: 'PID' }
 };
 
-// Simple, fast block node component
-const SimpleBlockNode = ({ data, selected }: NodeProps<BlockNodeData>) => {
-  const config = BLOCK_CONFIGS[data.blockType as keyof typeof BLOCK_CONFIGS];
+// Block node component with proper typing
+const BlockNode = ({ data, selected }: NodeProps) => {
+  // Safely access data properties
+  const blockType = data?.blockType as string;
+  const label = data?.label as string;
+  
+  const config = BLOCK_CONFIGS[blockType as keyof typeof BLOCK_CONFIGS];
   
   if (!config) return null;
 
@@ -74,7 +69,7 @@ const SimpleBlockNode = ({ data, selected }: NodeProps<BlockNodeData>) => {
     >
       {/* Block symbol */}
       <div className="text-lg font-bold">{config.symbol}</div>
-      <div className="text-xs">{String(data.label)}</div>
+      <div className="text-xs">{label || 'Block'}</div>
 
       {/* Input handles */}
       {config.inputs.map((input, idx) => (
@@ -115,13 +110,13 @@ const SimpleBlockNode = ({ data, selected }: NodeProps<BlockNodeData>) => {
   );
 };
 
-// Define node types once
+// Define node types
 const nodeTypes: NodeTypes = {
-  block: SimpleBlockNode,
+  block: BlockNode,
 };
 
-// Simple toolbar
-const SimpleToolbar = ({ 
+// Toolbar component
+const Toolbar = ({ 
   onAddBlock, 
   onDelete, 
   onValidate, 
@@ -132,7 +127,7 @@ const SimpleToolbar = ({
   onDelete: () => void;
   onValidate: () => void;
   onDeploy: () => void;
-  selectedNode: BlockNode | null;
+  selectedNode: Node | null;
 }) => {
   const blockTypes = [
     { type: 'AND', category: 'Logic' },
@@ -202,8 +197,8 @@ const SimpleToolbar = ({
   );
 };
 
-// Generate simple PETRA YAML - fixed to match your backend exactly
-const generateSimpleYaml = (nodes: BlockNode[], edges: BlockEdge[]): string => {
+// Generate PETRA YAML configuration
+const generatePetraYaml = (nodes: Node[], edges: Edge[]): string => {
   const signals: any[] = [];
   const blocks: any[] = [];
   const signalMap = new Map<string, string>();
@@ -217,14 +212,17 @@ const generateSimpleYaml = (nodes: BlockNode[], edges: BlockEdge[]): string => {
     
     signals.push({
       name: signalName,
-      type: 'bool', // Keep it simple for now
+      type: 'bool',
       initial: false
     });
   });
 
   // Create blocks
   nodes.forEach((node, index) => {
-    const config = BLOCK_CONFIGS[node.data.blockType as keyof typeof BLOCK_CONFIGS];
+    const blockType = node.data?.blockType as string;
+    const label = node.data?.label as string;
+    
+    const config = BLOCK_CONFIGS[blockType as keyof typeof BLOCK_CONFIGS];
     if (!config) return;
 
     const inputs: Record<string, string> = {};
@@ -247,8 +245,8 @@ const generateSimpleYaml = (nodes: BlockNode[], edges: BlockEdge[]): string => {
     });
 
     blocks.push({
-      name: node.data.label || `${node.data.blockType}_${index + 1}`,
-      type: node.data.blockType,
+      name: label || `${blockType}_${index + 1}`,
+      type: blockType,
       inputs,
       outputs
     });
@@ -272,11 +270,11 @@ scan_time_ms: 100
 `;
 };
 
-// Main component - keep it simple and fast
-export default function SimpleFixedLogicDesigner() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<BlockNodeData>([]);
+// Main component
+export default function CleanLogicDesigner() {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [selectedNode, setSelectedNode] = useState<BlockNode | null>(null);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [nodeId, setNodeId] = useState(1);
 
   const onConnect = useCallback(
@@ -284,12 +282,12 @@ export default function SimpleFixedLogicDesigner() {
     [setEdges]
   );
 
-  const onNodeClick = useCallback((event: React.MouseEvent, node: BlockNode) => {
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
   }, []);
 
   const onAddBlock = useCallback((blockType: string) => {
-    const newNode: BlockNode = {
+    const newNode: Node = {
       id: `node_${nodeId}`,
       type: 'block',
       position: { 
@@ -325,7 +323,9 @@ export default function SimpleFixedLogicDesigner() {
 
     // Check for unconnected inputs
     nodes.forEach(node => {
-      const config = BLOCK_CONFIGS[node.data.blockType as keyof typeof BLOCK_CONFIGS];
+      const blockType = node.data?.blockType as string;
+      const label = node.data?.label as string;
+      const config = BLOCK_CONFIGS[blockType as keyof typeof BLOCK_CONFIGS];
       if (!config) return;
 
       config.inputs.forEach(input => {
@@ -333,7 +333,7 @@ export default function SimpleFixedLogicDesigner() {
           edge.target === node.id && edge.targetHandle === input
         );
         if (!hasConnection) {
-          errors.push(`${node.data.label}: Input '${input}' not connected`);
+          errors.push(`${label || node.id}: Input '${input}' not connected`);
         }
       });
     });
@@ -346,7 +346,7 @@ export default function SimpleFixedLogicDesigner() {
   }, [nodes, edges]);
 
   const onDeploy = useCallback(() => {
-    const yamlConfig = generateSimpleYaml(nodes, edges);
+    const yamlConfig = generatePetraYaml(nodes, edges);
     console.log('Generated PETRA YAML:');
     console.log(yamlConfig);
     
@@ -364,7 +364,7 @@ export default function SimpleFixedLogicDesigner() {
 
   return (
     <div className="flex flex-col h-screen" style={{ backgroundColor: ISA_COLORS.background }}>
-      <SimpleToolbar
+      <Toolbar
         onAddBlock={onAddBlock}
         onDelete={onDelete}
         onValidate={onValidate}
@@ -403,17 +403,17 @@ export default function SimpleFixedLogicDesigner() {
         }}
       >
         <div>Nodes: {nodes.length} | Connections: {edges.length}</div>
-        <div>Selected: {selectedNode ? String(selectedNode.data.label) : 'None'}</div>
+        <div>Selected: {selectedNode ? (selectedNode.data?.label as string || 'Block') : 'None'}</div>
       </div>
     </div>
   );
 }
 
 // Wrapper component
-export function SimpleFixedLogicDesignerWrapper() {
+export function CleanLogicDesignerWrapper() {
   return (
     <ReactFlowProvider>
-      <SimpleFixedLogicDesigner />
+      <CleanLogicDesigner />
     </ReactFlowProvider>
   );
 }
