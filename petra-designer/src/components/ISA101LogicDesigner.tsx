@@ -1,4 +1,4 @@
-// petra-designer/src/components/CleanLogicDesigner.tsx
+// petra-designer/src/components/ISA101LogicDesigner.tsx
 import React, { useState, useCallback } from 'react';
 import { 
   ReactFlow,
@@ -53,7 +53,7 @@ const BLOCK_CONFIGS = {
 const BlockNode = ({ data, selected }: NodeProps) => {
   // Safely access data properties
   const blockType = data?.blockType as string;
-  const label = data?.label as string;
+  const label = String(data?.label ?? '');
   
   const config = BLOCK_CONFIGS[blockType as keyof typeof BLOCK_CONFIGS];
   
@@ -271,9 +271,9 @@ scan_time_ms: 100
 };
 
 // Main component
-export default function CleanLogicDesigner() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+export default function ISA101LogicDesigner() {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [nodeId, setNodeId] = useState(1);
 
@@ -403,17 +403,17 @@ export default function CleanLogicDesigner() {
         }}
       >
         <div>Nodes: {nodes.length} | Connections: {edges.length}</div>
-        <div>Selected: {selectedNode ? (selectedNode.data?.label as string || 'Block') : 'None'}</div>
+        <div>Selected: {selectedNode ? String(selectedNode.data?.label ?? 'Block') : 'None'}</div>
       </div>
     </div>
   );
 }
 
 // Wrapper component
-export function CleanLogicDesignerWrapper() {
+export function ISA101LogicDesignerWrapper() {
   return (
     <ReactFlowProvider>
-      <CleanLogicDesigner />
+      <ISA101LogicDesigner />
     </ReactFlowProvider>
   );
 }
