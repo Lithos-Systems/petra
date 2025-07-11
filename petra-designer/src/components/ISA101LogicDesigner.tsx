@@ -292,8 +292,8 @@ scan_time_ms: 100
 
 // Main Logic Designer Component
 export default function ISA101LogicDesigner() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [nodeId, setNodeId] = useState(1);
 
