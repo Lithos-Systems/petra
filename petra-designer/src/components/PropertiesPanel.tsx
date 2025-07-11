@@ -1,4 +1,4 @@
-import { useFlowStore } from '@/store/flowStore'
+import { useOptimizedFlowStore } from '@/store/optimizedFlowStore'
 import { BLOCK_TYPES } from '@/utils/blockIcons'
 import type { Node } from '@xyflow/react'
 import type {
@@ -305,7 +305,7 @@ function renderBlockParams(
 }
 
 export default function PropertiesPanel() {
-  const { selectedNode, updateNodeData } = useFlowStore()
+  const { selectedNode, updateNodeData } = useOptimizedFlowStore()
 
   if (!selectedNode) {
     return (

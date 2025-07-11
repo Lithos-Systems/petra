@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { FaTrash, FaLock, FaUnlock, FaEye, FaEyeSlash, FaPlus, FaTimes } from 'react-icons/fa'
 import { SketchPicker, ColorResult } from 'react-color'
 import type { HMIComponent, SignalBinding, Animation } from '@/types/hmi'
-import { useFlowStore } from '@/store/flowStore'
+import { useOptimizedFlowStore } from '@/store/optimizedFlowStore'
 
 interface HMIPropertiesPanelProps {
   component: HMIComponent
@@ -19,7 +19,7 @@ export default function HMIPropertiesPanel({
   const [showColorPicker, setShowColorPicker] = useState<string | null>(null)
 
   // Get available signals from the logic designer
-  const { nodes } = useFlowStore()
+  const { nodes } = useOptimizedFlowStore()
   const signals = nodes.filter(n => n.type === 'signal').map(n => n.data.label || n.id)
 
   // Animation helpers

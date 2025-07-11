@@ -1,10 +1,10 @@
 // src/hooks/useKeyboardShortcuts.ts
 import { useEffect } from 'react'
-import { useFlowStore } from '@/store/flowStore'
+import { useOptimizedFlowStore } from '@/store/optimizedFlowStore'
 import toast from 'react-hot-toast'
 
 export function useKeyboardShortcuts() {
-  const { selectedNode, deleteNode, clearFlow, nodes, edges } = useFlowStore()
+  const { selectedNode, deleteNode, clearFlow, nodes, edges } = useOptimizedFlowStore()
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
