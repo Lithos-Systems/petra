@@ -5,13 +5,13 @@ import { highlight, languages } from 'prismjs'
 import 'prismjs/components/prism-yaml'
 import 'prismjs/themes/prism-tomorrow.css'
 
-import { useFlowStore } from '../store/flowStore'
+import { useOptimizedFlowStore } from '../store/optimizedFlowStore'
 import { generateYaml } from '../utils/yamlGenerator'
 import { FaCopy, FaDownload } from 'react-icons/fa'
 import toast from 'react-hot-toast'
 
 export default function YamlPreview() {
-  const { nodes, edges } = useFlowStore()
+  const { nodes, edges } = useOptimizedFlowStore()
   
   const yaml = useMemo(() => {
     return generateYaml(nodes, edges)

@@ -1,10 +1,5 @@
 import { useCallback, useEffect, DragEvent, MouseEvent, useState } from 'react'
 import {
-  ReactFlow,
-  Background,
-  BackgroundVariant,
-  Controls,
-  MiniMap,
   ReactFlowProvider,
   type Node,
   useKeyPress,
@@ -12,13 +7,13 @@ import {
 
 import { Toaster } from 'react-hot-toast'
 import toast from 'react-hot-toast'
-import { useFlowStore } from './store/flowStore'
-import { nodeTypes } from './nodes'
+import { useOptimizedFlowStore } from './store/optimizedFlowStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import Sidebar from './components/Sidebar'
 import PropertiesPanel from './components/PropertiesPanel'
 import YamlPreview from './components/YamlPreview'
 import Toolbar from './components/Toolbar'
+import { OptimizedReactFlow } from './components/OptimizedReactFlow'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import HMIDesigner from './components/hmi/HMIDesigner'
 import ISA101WaterPlantDemo from './components/hmi/ISA101WaterPlantDemo'
@@ -44,7 +39,7 @@ function Flow() {
     addNode,
     setSelectedNode,
     deleteEdge, 
-  } = useFlowStore()
+  } = useOptimizedFlowStore()
 
   // PETRA connection
   const {
@@ -199,7 +194,7 @@ function Flow() {
           
           {/* Main Flow Area */}
           <div className="flex-1 flex flex-col">
-            <ReactFlow
+            <OptimizedReactFlow
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
@@ -210,28 +205,8 @@ function Flow() {
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               onEdgeClick={onEdgeClick}
-              nodeTypes={nodeTypes}
-              fitView
               className="bg-[#D3D3D3]"
-            >
-              <Background 
-                variant={BackgroundVariant.Lines} 
-                gap={20} 
-                size={1} 
-                color="#B0B0B0"
-              />
-              <Controls 
-                className="isa101-controls"
-                showZoom={true}
-                showFitView={true}
-                showInteractive={false}
-              />
-              <MiniMap 
-                className="isa101-minimap"
-                nodeColor="#404040"
-                maskColor="rgba(0, 0, 0, 0.1)"
-              />
-            </ReactFlow>
+            />
           </div>
           
           {/* Properties Panel */}

@@ -1,6 +1,6 @@
 import React from 'react'
 import { FaSave, FaFolderOpen, FaPlay, FaStop, FaCheckCircle, FaTrash } from 'react-icons/fa'
-import { useFlowStore } from '../store/flowStore'
+import { useOptimizedFlowStore } from '../store/optimizedFlowStore'
 import toast from 'react-hot-toast'
 
 interface ISA101ToolbarProps {
@@ -15,7 +15,7 @@ export default function ISA101Toolbar({ className = '' }: ISA101ToolbarProps) {
     deleteSelectedNode, 
     exportToYAML,
     validateLogic 
-  } = useFlowStore()
+  } = useOptimizedFlowStore()
 
   const handleSave = () => {
     try {
