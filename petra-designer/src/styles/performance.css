@@ -1,0 +1,27 @@
+/* Disable smooth scrolling and transitions to avoid extra repaints */
+* {
+  scroll-behavior: auto !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+.react-flow__edge-updating,
+.react-flow__edge-path {
+  transition: none !important;
+}
+
+.react-flow__node,
+.react-flow__edge {
+  transition: none !important;
+}
+
+.react-flow__renderer {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.react-flow__minimap,
+.react-flow__controls {
+  will-change: auto;
+}

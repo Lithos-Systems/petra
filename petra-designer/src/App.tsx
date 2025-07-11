@@ -23,13 +23,14 @@ import { usePetraConnection } from './hooks/usePetraConnection'
 import type { ConnectionInfo } from './types/hmi'
 import ConnectionStatus from './components/ConnectionStatus'
 import './styles/isa101-theme.css'
+import './styles/performance.css'
 
 type DesignerMode = 'logic' | 'graphics'
 
 function Flow() {
   const [mode, setMode] = useState<DesignerMode>('logic')
   
-  const {
+  const {     
     nodes,
     edges,
     onNodesChange,
@@ -59,6 +60,21 @@ function Flow() {
 
   // Add keyboard shortcuts
   useKeyboardShortcuts()
+
+  // Clean up any queued timers/listeners to avoid memory leaks
+  useEffect(() => {
+    const cleanup = () => {
+      const highestId = window.setTimeout(() => {}, 0)
+      for (let i = 0; i <= highestId; i++) {
+        window.clearTimeout(i)
+      }
+    }
+    window.addEventListener('beforeunload', cleanup)
+    return () => {
+      window.removeEventListener('beforeunload', cleanup)
+      cleanup()
+    }
+  }, [])
 
   // Apply ISA-101 mode class to body
   useEffect(() => {
