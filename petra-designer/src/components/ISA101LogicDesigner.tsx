@@ -26,9 +26,11 @@ const ISA_COLORS = {
   node: '#E0E0E0',
   nodeBorder: '#404040',
   nodeSelected: '#000080',
+  edge: '#000000',
   text: '#000000',
   running: '#00C800',
-  stopped: '#808080'
+  stopped: '#808080',
+  alarm: '#FF0000'
 };
 
 // Block configurations matching PETRA backend exactly
@@ -49,11 +51,12 @@ const BLOCK_CONFIGS = {
   'PID': { inputs: ['pv', 'sp'], outputs: ['out'], symbol: 'PID' }
 };
 
-// Block node component with proper typing
-const BlockNode = ({ data, selected }: NodeProps) => {
-  // Safely access data properties
+// Custom Node Component - Fixed typing
+const LogicBlockNode = ({ data, selected }: NodeProps) => {
   const blockType = data?.blockType as string;
-  const label = String(data?.label ?? '');
+  const label = data?.label as string;
+  const status = data?.status as string;
+  const value = data?.value;
   
   const config = BLOCK_CONFIGS[blockType as keyof typeof BLOCK_CONFIGS];
   
@@ -64,12 +67,21 @@ const BlockNode = ({ data, selected }: NodeProps) => {
       className="relative bg-white border-2 min-w-[80px] min-h-[60px] flex flex-col items-center justify-center"
       style={{
         borderColor: selected ? ISA_COLORS.nodeSelected : ISA_COLORS.nodeBorder,
-        backgroundColor: ISA_COLORS.node,
+        backgroundColor: status === 'running' ? '#E8F5E8' : ISA_COLORS.node,
       }}
     >
       {/* Block symbol */}
-      <div className="text-lg font-bold">{config.symbol}</div>
-      <div className="text-xs">{label || 'Block'}</div>
+      <div className="text-lg font-bold" style={{ color: ISA_COLORS.text }}>
+        {config.symbol}
+      </div>
+      <div className="text-xs" style={{ color: ISA_COLORS.text }}>
+        {label || 'Block'}
+      </div>
+      {value !== undefined && (
+        <div className="text-xs mt-1 font-mono bg-white px-1 border border-gray-600">
+          {String(value)}
+        </div>
+      )}
 
       {/* Input handles */}
       {config.inputs.map((input, idx) => (
@@ -110,13 +122,12 @@ const BlockNode = ({ data, selected }: NodeProps) => {
   );
 };
 
-// Define node types
 const nodeTypes: NodeTypes = {
-  block: BlockNode,
+  logicBlock: LogicBlockNode,
 };
 
-// Toolbar component
-const Toolbar = ({ 
+// Toolbar Component - Fixed typing
+const ISA101Toolbar = ({ 
   onAddBlock, 
   onDelete, 
   onValidate, 
@@ -133,7 +144,6 @@ const Toolbar = ({
     { type: 'AND', category: 'Logic' },
     { type: 'OR', category: 'Logic' },
     { type: 'NOT', category: 'Logic' },
-    { type: 'XOR', category: 'Logic' },
     { type: 'GT', category: 'Compare' },
     { type: 'LT', category: 'Compare' },
     { type: 'EQ', category: 'Compare' },
@@ -141,7 +151,7 @@ const Toolbar = ({
     { type: 'SUB', category: 'Math' },
     { type: 'MUL', category: 'Math' },
     { type: 'ON_DELAY', category: 'Timer' },
-    { type: 'PID', category: 'Control' }
+    { type: 'PID', category: 'Control' },
   ];
 
   const categories = ['Logic', 'Compare', 'Math', 'Timer', 'Control'];
@@ -154,6 +164,7 @@ const Toolbar = ({
         borderColor: ISA_COLORS.nodeBorder 
       }}
     >
+      {/* Block Categories */}
       {categories.map(category => (
         <div key={category} className="flex items-center gap-1">
           <span className="text-xs font-medium mr-1">{category}:</span>
@@ -164,6 +175,7 @@ const Toolbar = ({
                 key={block.type}
                 onClick={() => onAddBlock(block.type)}
                 className="px-2 py-1 text-xs border border-gray-700 bg-white hover:bg-gray-100"
+                title={`Add ${block.type} block`}
               >
                 {block.type}
               </button>
@@ -171,24 +183,32 @@ const Toolbar = ({
         </div>
       ))}
       
+      {/* Actions */}
       <div className="flex items-center gap-2 ml-auto">
         <button
           onClick={onDelete}
           disabled={!selectedNode}
           className="px-3 py-1 text-xs border border-gray-700 bg-white hover:bg-gray-100 disabled:opacity-50"
+          title="Delete selected block"
         >
           Delete
         </button>
         <button
           onClick={onValidate}
           className="px-3 py-1 text-xs border border-gray-700 bg-white hover:bg-gray-100"
+          title="Validate logic"
         >
           Validate
         </button>
         <button
           onClick={onDeploy}
           className="px-3 py-1 text-xs font-bold text-white"
-          style={{ backgroundColor: ISA_COLORS.running }}
+          style={{ 
+            backgroundColor: ISA_COLORS.running,
+            borderColor: '#008000',
+            border: '1px solid'
+          }}
+          title="Deploy to PETRA"
         >
           Deploy
         </button>
@@ -270,10 +290,10 @@ scan_time_ms: 100
 `;
 };
 
-// Main component
+// Main Logic Designer Component
 export default function ISA101LogicDesigner() {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [nodeId, setNodeId] = useState(1);
 
@@ -287,16 +307,23 @@ export default function ISA101LogicDesigner() {
   }, []);
 
   const onAddBlock = useCallback((blockType: string) => {
+    const config = BLOCK_CONFIGS[blockType as keyof typeof BLOCK_CONFIGS];
+    if (!config) {
+      console.error(`Unknown block type: ${blockType}`);
+      return;
+    }
+
     const newNode: Node = {
       id: `node_${nodeId}`,
-      type: 'block',
+      type: 'logicBlock',
       position: { 
         x: 100 + (nodeId * 50) % 400, 
         y: 100 + Math.floor(nodeId / 8) * 100 
       },
       data: { 
         label: `${blockType}_${nodeId}`,
-        blockType: blockType
+        blockType: blockType,
+        status: 'stopped'
       }
     };
 
@@ -339,7 +366,7 @@ export default function ISA101LogicDesigner() {
     });
 
     if (errors.length === 0) {
-      alert('Validation passed!');
+      alert('Logic validation passed!');
     } else {
       alert(`Validation warnings:\n${errors.join('\n')}`);
     }
@@ -359,12 +386,12 @@ export default function ISA101LogicDesigner() {
     a.click();
     URL.revokeObjectURL(url);
     
-    alert('Configuration exported!');
+    alert('Logic deployed successfully!');
   }, [nodes, edges]);
 
   return (
-    <div className="flex flex-col h-screen" style={{ backgroundColor: ISA_COLORS.background }}>
-      <Toolbar
+    <div className="flex flex-col h-screen isa101-mode">
+      <ISA101Toolbar
         onAddBlock={onAddBlock}
         onDelete={onDelete}
         onValidate={onValidate}
@@ -372,7 +399,7 @@ export default function ISA101LogicDesigner() {
         selectedNode={selectedNode}
       />
       
-      <div className="flex-1">
+      <div className="flex-1" style={{ backgroundColor: ISA_COLORS.background }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -390,26 +417,45 @@ export default function ISA101LogicDesigner() {
             size={1}
             color="#A0A0A0"
           />
-          <Controls />
-          <MiniMap />
+          <Controls 
+            style={{
+              backgroundColor: ISA_COLORS.node,
+              border: `1px solid ${ISA_COLORS.nodeBorder}`,
+              borderRadius: 0
+            }}
+          />
+          <MiniMap 
+            style={{
+              backgroundColor: ISA_COLORS.node,
+              border: `1px solid ${ISA_COLORS.nodeBorder}`,
+              borderRadius: 0
+            }}
+            nodeColor={node => (node.data as any)?.status === 'running' ? ISA_COLORS.running : ISA_COLORS.stopped}
+          />
         </ReactFlow>
       </div>
       
+      {/* Status Bar */}
       <div 
         className="flex items-center justify-between p-2 text-xs border-t-2"
         style={{ 
           backgroundColor: ISA_COLORS.node,
-          borderColor: ISA_COLORS.nodeBorder
+          borderColor: ISA_COLORS.nodeBorder,
+          color: ISA_COLORS.text
         }}
       >
-        <div>Nodes: {nodes.length} | Connections: {edges.length}</div>
-        <div>Selected: {selectedNode ? String(selectedNode.data?.label ?? 'Block') : 'None'}</div>
+        <div>
+          Nodes: {nodes.length} | Connections: {edges.length}
+        </div>
+        <div>
+          Selected: {selectedNode ? String((selectedNode.data as any)?.label || 'Block') : 'None'}
+        </div>
       </div>
     </div>
   );
 }
 
-// Wrapper component
+// Wrapper with ReactFlowProvider
 export function ISA101LogicDesignerWrapper() {
   return (
     <ReactFlowProvider>
