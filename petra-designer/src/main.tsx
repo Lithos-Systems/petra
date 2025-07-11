@@ -5,7 +5,7 @@ import App from './App'
 import './styles/index.css'
 import '@xyflow/react/dist/style.css'
 
-// Remove React.StrictMode for better React Flow performance
+// REMOVED React.StrictMode - this was causing the memory issues
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <App />
 )
