@@ -43,7 +43,8 @@ function saveHistory(get: () => FlowState, set: (s: Partial<FlowState>) => void)
   }
   const newHistory = state.history.slice(0, state.historyIndex + 1)
   newHistory.push(snap)
-  if (newHistory.length > 20) newHistory.shift()
+  // Only keep a small history buffer to prevent memory leaks
+  if (newHistory.length > 10) newHistory.shift()
   set({ history: newHistory, historyIndex: newHistory.length - 1 })
 }
 

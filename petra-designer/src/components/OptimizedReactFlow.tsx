@@ -35,19 +35,23 @@ export const OptimizedReactFlow = React.memo(({
     snapGrid: [10, 10] as [number, number],
     defaultEdgeOptions: {
       type: 'straight',
+      animated: false,
       style: { strokeWidth: 2, stroke: '#000000' }
     },
     elementsSelectable: true,
     nodesConnectable: true,
     nodesDraggable: true,
     panOnDrag: true,
+    panOnScroll: false,
     zoomOnScroll: true,
     zoomOnPinch: true,
+    selectNodesOnDrag: false,
     deleteKeyCode: ['Delete', 'Backspace'],
-    maxZoom: 2,
-    minZoom: 0.1,
+    maxZoom: 1.5,
+    minZoom: 0.5,
     panOnScrollSpeed: 0.5,
-    zoomOnScrollSpeed: 0.5
+    zoomOnScrollSpeed: 0.5,
+    viewport: { x: 0, y: 0, zoom: 1 }
   }), [nodes, edges, onNodesChange, onEdgesChange, onConnect, onNodeClick, onPaneClick, onDrop, onDragOver, onEdgeClick])
 
   return (

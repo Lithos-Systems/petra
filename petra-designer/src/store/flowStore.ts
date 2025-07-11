@@ -54,7 +54,8 @@ const saveHistory = (get: () => FlowStore, set: (state: Partial<FlowStore>) => v
   }
   const newHistory = state.history.slice(0, state.historyIndex + 1)
   newHistory.push(snapshot)
-  if (newHistory.length > 50) newHistory.shift()
+  // Limit history size to reduce memory usage
+  if (newHistory.length > 10) newHistory.shift()
   set({ history: newHistory, historyIndex: newHistory.length - 1 })
 }
 
