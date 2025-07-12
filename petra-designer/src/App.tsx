@@ -14,7 +14,7 @@ import '@xyflow/react/dist/style.css'
 
 import { Toaster } from 'react-hot-toast'
 import toast from 'react-hot-toast'
-import { useOptimizedFlowStore } from './store/optimizedFlowStore'
+import { useFlowStore } from './store/flowStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import Sidebar from './components/Sidebar'
 import PropertiesPanel from './components/PropertiesPanel'
@@ -45,7 +45,7 @@ function Flow() {
     addNode,
     setSelectedNode,
     deleteEdge, 
-  } = useOptimizedFlowStore()
+  } = useFlowStore()
 
   // PETRA connection
   const {
