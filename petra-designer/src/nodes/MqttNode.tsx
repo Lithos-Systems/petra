@@ -1,152 +1,151 @@
-import { memo } from 'react'
-import { Handle, Position, NodeProps } from '@xyflow/react'
-import { FaServer, FaCheckCircle, FaWifi, FaExclamationTriangle } from 'react-icons/fa'
+// petra-designer/src/nodes/MqttNode.tsx
+import React from 'react'
+import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { MqttNodeData } from '@/types/nodes'
+import { FaWifi, FaExclamationTriangle } from 'react-icons/fa'
 
-function MqttNode({ data, selected }: NodeProps) {
-  const mqttData = data as MqttNodeData
-
-  // Show different handles based on mode
-  const showInput = mqttData.mode === 'write' || mqttData.mode === 'read_write'
-  const showOutput = mqttData.mode === 'read' || mqttData.mode === 'read_write'
-
-  // Status indicator
-  const getStatusColor = () => {
-    if (!mqttData.configured) return '#808080' // Gray - not configured
-    if (mqttData.brokerHost && mqttData.brokerPort && mqttData.clientId) {
-      return '#00C800' // Green - configured
-    }
-    return '#FF8C00' // Orange - partially configured
-  }
-
-  const statusColor = getStatusColor()
-
+export default function MqttNode({ data, selected }: NodeProps<MqttNodeData>) {
+  const isConfigured = data.configured && data.brokerHost && data.brokerPort
+  
   return (
     <div
-      className="relative bg-white min-w-[200px] min-h-[100px] flex flex-col"
-      style={{
-        border: selected ? '3px solid #000080' : '2px solid #404040',
-        backgroundColor: '#FFFFFF'
-      }}
+      className={`
+        relative bg-white border-2 rounded-md min-w-[160px] min-h-[120px] p-4
+        ${selected ? 'border-blue-600 shadow-lg' : 'border-gray-700'}
+        ${!isConfigured ? 'border-orange-500' : ''}
+      `}
     >
-      {/* Header Section */}
-      <div 
-        className="flex items-center justify-between px-3 py-2 border-b border-gray-400"
-        style={{ backgroundColor: '#E0E0E0' }}
-      >
-        <div className="flex items-center gap-2">
-          <FaServer className="w-4 h-4" style={{ color: '#404040' }} />
-          <span className="text-sm font-medium text-black">MQTT</span>
-        </div>
-        <div className="flex items-center gap-1">
-          {mqttData.configured ? (
-            <FaCheckCircle className="w-3 h-3" style={{ color: '#00C800' }} />
-          ) : (
-            <FaExclamationTriangle className="w-3 h-3" style={{ color: '#FF8C00' }} />
-          )}
-          <FaWifi className="w-3 h-3" style={{ color: statusColor }} />
-        </div>
+      {/* Status indicator */}
+      <div className="absolute top-2 right-2">
+        {isConfigured ? (
+          <FaWifi className="w-4 h-4 text-green-500" title="Configured" />
+        ) : (
+          <FaExclamationTriangle className="w-4 h-4 text-orange-500" title="Not configured" />
+        )}
       </div>
-
-      {/* Content Section */}
-      <div className="flex-1 px-3 py-2">
-        {/* Node Label */}
-        <div className="text-sm font-medium text-black mb-2">
-          {mqttData.label}
+      
+      {/* Input handle for triggering/data */}
+      <Handle
+        id="trigger"
+        type="target"
+        position={Position.Left}
+        style={{
+          top: '30%',
+          left: '-10px',
+          width: '20px',
+          height: '20px',
+          background: '#404040',
+          border: '2px solid #000',
+          borderRadius: '50%',
+          cursor: 'crosshair',
+        }}
+        className="hover:bg-blue-500 hover:scale-125 transition-all duration-200"
+        title="Trigger/Data Input"
+      />
+      
+      {/* Value input for publish */}
+      <Handle
+        id="value"
+        type="target"
+        position={Position.Left}
+        style={{
+          top: '70%',
+          left: '-10px',
+          width: '20px',
+          height: '20px',
+          background: '#404040',
+          border: '2px solid #000',
+          borderRadius: '50%',
+          cursor: 'crosshair',
+        }}
+        className="hover:bg-blue-500 hover:scale-125 transition-all duration-200"
+        title="Value to Publish"
+      />
+      
+      {/* Node content */}
+      <div className="space-y-2">
+        <div className="text-center">
+          <div className="text-lg font-bold text-gray-800">MQTT</div>
+          <div className="text-xs text-gray-600">{data.label}</div>
         </div>
-
-        {/* Configuration Display */}
-        <div className="space-y-1 text-xs text-gray-700">
+        
+        {/* Configuration display */}
+        <div className="text-xs space-y-1">
           <div className="flex justify-between">
-            <span>Broker:</span>
-            <span className="font-mono">
-              {mqttData.brokerHost || 'localhost'}:{mqttData.brokerPort || 1883}
+            <span className="text-gray-500">Broker:</span>
+            <span className="text-gray-700 font-mono">
+              {data.brokerHost || 'not set'}:{data.brokerPort || '1883'}
             </span>
           </div>
-          
           <div className="flex justify-between">
-            <span>Client ID:</span>
-            <span className="font-mono truncate max-w-[100px]">
-              {mqttData.clientId || 'petra_client'}
+            <span className="text-gray-500">Topic:</span>
+            <span className="text-gray-700 font-mono truncate max-w-[100px]" title={data.topicPrefix}>
+              {data.topicPrefix || 'not set'}
             </span>
           </div>
-
           <div className="flex justify-between">
-            <span>Topic:</span>
-            <span className="font-mono truncate max-w-[100px]">
-              {mqttData.topicPrefix || 'petra'}/{mqttData.signalName || '?'}
+            <span className="text-gray-500">Mode:</span>
+            <span className="text-gray-700">
+              {data.mode === 'read' && '📥 Sub'}
+              {data.mode === 'write' && '📤 Pub'}
+              {data.mode === 'read_write' && '🔄 Both'}
             </span>
           </div>
-
-          <div className="flex justify-between">
-            <span>Mode:</span>
-            <span className="font-medium" style={{ 
-              color: mqttData.mode === 'read_write' ? '#000080' : 
-                     mqttData.mode === 'write' ? '#800080' : '#008000'
-            }}>
-              {mqttData.mode?.toUpperCase() || 'READ_WRITE'}
-            </span>
-          </div>
-
-          {mqttData.username && (
-            <div className="flex justify-between">
-              <span>User:</span>
-              <span className="font-mono truncate max-w-[100px]">{mqttData.username}</span>
-            </div>
-          )}
-
-          {mqttData.publishOnChange && (
-            <div className="text-xs" style={{ color: '#008000' }}>
-              ✓ Publish on Change
-            </div>
-          )}
         </div>
+        
+        {/* Subscription/Publication info */}
+        {data.subscriptions && data.subscriptions.length > 0 && (
+          <div className="text-xs">
+            <div className="text-gray-500">Subscriptions:</div>
+            {data.subscriptions.slice(0, 2).map((sub, i) => (
+              <div key={i} className="text-gray-600 font-mono truncate" title={sub.topic}>
+                {sub.topic}
+              </div>
+            ))}
+            {data.subscriptions.length > 2 && (
+              <div className="text-gray-400">+{data.subscriptions.length - 2} more</div>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Input Handle for writing to MQTT */}
-      {showInput && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="value"
-          style={{ 
-            background: '#404040',
-            border: '1px solid #FFFFFF',
-            width: '10px',
-            height: '10px',
-            borderRadius: '0',
-            top: '50%'
-          }}
-          className="handle-input"
-        />
-      )}
-
-      {/* Output Handle for reading from MQTT */}
-      {showOutput && (
-        <Handle
-          type="source"
-          position={Position.Right}
-          id="value"
-          style={{ 
-            background: '#404040',
-            border: '1px solid #FFFFFF',
-            width: '10px',
-            height: '10px',
-            borderRadius: '0',
-            top: '50%'
-          }}
-          className="handle-output"
-        />
-      )}
-
-      {/* Status Indicator */}
-      <div 
-        className="absolute top-2 right-2 w-3 h-3 border border-black"
-        style={{ backgroundColor: statusColor }}
-        title={mqttData.configured ? 'Configured' : 'Not Configured'}
+      
+      {/* Output handle for received data */}
+      <Handle
+        id="data"
+        type="source"
+        position={Position.Right}
+        style={{
+          top: '30%',
+          right: '-10px',
+          width: '20px',
+          height: '20px',
+          background: '#404040',
+          border: '2px solid #000',
+          borderRadius: '50%',
+          cursor: 'crosshair',
+        }}
+        className="hover:bg-green-500 hover:scale-125 transition-all duration-200"
+        title="Received Data Output"
+      />
+      
+      {/* Status output */}
+      <Handle
+        id="status"
+        type="source"
+        position={Position.Right}
+        style={{
+          top: '70%',
+          right: '-10px',
+          width: '20px',
+          height: '20px',
+          background: '#404040',
+          border: '2px solid #000',
+          borderRadius: '50%',
+          cursor: 'crosshair',
+        }}
+        className="hover:bg-green-500 hover:scale-125 transition-all duration-200"
+        title="Connection Status"
       />
     </div>
   )
 }
-
-export default memo(MqttNode)
