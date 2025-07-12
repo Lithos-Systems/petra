@@ -1,5 +1,5 @@
 // petra-designer/src/components/PropertiesPanel.tsx
-import { useOptimizedFlowStore } from '@/store/optimizedFlowStore'
+import { useFlowStore } from '@/store/flowStore'
 import { PETRA_BLOCKS } from '@/nodes/BlockNode'
 import type { Node } from '@xyflow/react'
 import type {
@@ -337,7 +337,7 @@ function renderBlockParams(blockData: BlockNodeData, updateNodeData: any, nodeId
 }
 
 export default function PropertiesPanel() {
-  const { selectedNode, updateNodeData, validateLogic } = useOptimizedFlowStore()
+  const { selectedNode, updateNodeData, validateLogic } = useFlowStore()
   
   if (!selectedNode) return null
   
@@ -819,7 +819,9 @@ export default function PropertiesPanel() {
       </div>
     </div>
   )
-} w-full text-xs"
+}
+
+export { BLOCK_PARAMETERS } w-full text-xs"
               />
             </div>
             <div>
