@@ -1,4 +1,4 @@
-// src/types/nodes.ts
+// petra-designer/src/types/nodes.ts
 import type { Node } from '@xyflow/react'
 
 /* ---------- Base data interfaces ---------- */
@@ -8,9 +8,11 @@ export interface BaseNodeData {
 }
 
 export interface SignalNodeData extends BaseNodeData {
+  signalName: string
   signalType: 'bool' | 'int' | 'float'
   initial: boolean | number
   mode: 'read' | 'write'
+  value?: boolean | number // Current value for display
 }
 
 export interface BlockNodeData extends BaseNodeData {
@@ -18,6 +20,20 @@ export interface BlockNodeData extends BaseNodeData {
   inputs: { name: string; type: string }[]
   outputs: { name: string; type: string }[]
   params?: Record<string, unknown>
+  status?: 'running' | 'stopped' | 'error'
+  inputCount?: number // For dynamic inputs (AND/OR gates)
+}
+
+export interface ProtocolNodeData extends BaseNodeData {
+  protocolType: 'MQTT' | 'MODBUS' | 'S7'
+  configured: boolean
+  config: {
+    broker?: string
+    port?: number
+    topic?: string
+    direction?: 'subscribe' | 'publish' | 'both'
+    [key: string]: any
+  }
 }
 
 export interface TwilioNodeData extends BaseNodeData {
@@ -39,6 +55,17 @@ export interface MqttNodeData extends BaseNodeData {
   publishOnChange: boolean
   signalName?: string  // The specific signal to read/write
   signalType?: 'bool' | 'int' | 'float'  // Type of the signal
+  subscriptions?: Array<{
+    topic: string
+    signal: string
+    qos: number
+  }>
+  publications?: Array<{
+    topic: string
+    signal: string
+    qos: number
+    retain: boolean
+  }>
 }
 
 export interface S7NodeData extends BaseNodeData {
@@ -111,7 +138,11 @@ export function isSignalNode(node: Node): node is Node & { data: SignalNodeData 
 }
 
 export function isBlockNode(node: Node): node is Node & { data: BlockNodeData } {
-  return node.type === 'block'
+  return node.type === 'block' || node.type === 'logicBlock'
+}
+
+export function isProtocolNode(node: Node): node is Node & { data: ProtocolNodeData } {
+  return node.type === 'protocol'
 }
 
 export function isTwilioNode(node: Node): node is Node & { data: TwilioNodeData } {
