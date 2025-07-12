@@ -287,7 +287,7 @@ function saveHistory(get: () => FlowState, set: (state: Partial<FlowState>) => v
 }
 
 // Create the flow store
-export const useFlowStore = create<FlowState>()(
+const useFlowStoreInternal = create<FlowState>()(
   subscribeWithSelector((set, get) => ({
     nodes: [],
     edges: [],
@@ -527,5 +527,6 @@ export const useFlowStore = create<FlowState>()(
   }))
 )
 
-// Export compatibility with optimizedFlowStore
-export const useOptimizedFlowStore = useFlowStore
+// Export with proper aliases
+export const useFlowStore = useFlowStoreInternal
+export const useOptimizedFlowStore = useFlowStoreInternal
