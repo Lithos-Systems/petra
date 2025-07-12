@@ -16,4 +16,9 @@ export default defineConfig({
   optimizeDeps: {
     include: ['@xyflow/react'],
   },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts'
+  },
 })
