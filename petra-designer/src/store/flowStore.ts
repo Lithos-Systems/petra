@@ -1,4 +1,4 @@
-// petra-designer/src/store/optimizedFlowStore.ts
+// petra-designer/src/store/flowStore.ts
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import {
@@ -11,15 +11,8 @@ import {
   applyEdgeChanges,
   addEdge
 } from '@xyflow/react'
-import { nanoid } from 'nanoid'
 import { validateConnection } from '@/utils/validation'
 import { generateYaml } from '@/utils/yamlGenerator'
-import { 
-  getDefaultNodeData, 
-  getBlockInputsOutputs, 
-  getDefaultBlockParams,
-  BLOCK_CONFIGS 
-} from '@/utils/nodeUtils'
 import type { BlockNodeData } from '@/types/nodes'
 import toast from 'react-hot-toast'
 
@@ -32,7 +25,7 @@ interface FlowState {
   historyIndex: number
   // Performance optimizations
   updateQueued: boolean
-  updateTimer: NodeJS.Timeout | null
+  updateTimer: ReturnType<typeof setTimeout> | null
   
   onNodesChange: (changes: NodeChange[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
@@ -52,6 +45,210 @@ interface FlowState {
   canRedo: () => boolean
   exportToYAML: () => string
   validateLogic: () => { valid: boolean; nodeCount: number; connectionCount: number; errors: string[] }
+}
+
+// Block configurations matching PETRA backend
+interface BlockConfig {
+  inputs: string[]
+  outputs: string[]
+  symbol: string
+  minInputs?: number
+  maxInputs?: number
+  defaultInputCount?: number
+}
+
+export const BLOCK_CONFIGS: Record<string, BlockConfig> = {
+  // Logic blocks
+  AND: { symbol: '&', inputs: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], outputs: ['out'], minInputs: 2, maxInputs: 8, defaultInputCount: 2 },
+  OR: { symbol: '≥1', inputs: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], outputs: ['out'], minInputs: 2, maxInputs: 8, defaultInputCount: 2 },
+  NOT: { symbol: '1', inputs: ['in'], outputs: ['out'] },
+  XOR: { symbol: '=1', inputs: ['a', 'b'], outputs: ['out'] },
+  
+  // Comparison blocks
+  GT: { symbol: '>', inputs: ['a', 'b'], outputs: ['out'] },
+  LT: { symbol: '<', inputs: ['a', 'b'], outputs: ['out'] },
+  GTE: { symbol: '≥', inputs: ['a', 'b'], outputs: ['out'] },
+  LTE: { symbol: '≤', inputs: ['a', 'b'], outputs: ['out'] },
+  EQ: { symbol: '=', inputs: ['a', 'b'], outputs: ['out'] },
+  NEQ: { symbol: '≠', inputs: ['a', 'b'], outputs: ['out'] },
+  
+  // Math blocks
+  ADD: { symbol: '+', inputs: ['a', 'b'], outputs: ['out'] },
+  SUB: { symbol: '-', inputs: ['a', 'b'], outputs: ['out'] },
+  MUL: { symbol: '×', inputs: ['a', 'b'], outputs: ['out'] },
+  DIV: { symbol: '÷', inputs: ['a', 'b'], outputs: ['out'] },
+  ABS: { symbol: '|x|', inputs: ['in'], outputs: ['out'] },
+  SQRT: { symbol: '√', inputs: ['in'], outputs: ['out'] },
+  
+  // Timer blocks
+  ON_DELAY: { symbol: 'TON', inputs: ['in', 'reset'], outputs: ['out', 'elapsed'] },
+  OFF_DELAY: { symbol: 'TOF', inputs: ['in', 'reset'], outputs: ['out', 'elapsed'] },
+  PULSE: { symbol: 'TP', inputs: ['trigger'], outputs: ['out'] },
+  
+  // Edge detection
+  RISING_EDGE: { symbol: '↑', inputs: ['in'], outputs: ['out'] },
+  FALLING_EDGE: { symbol: '↓', inputs: ['in'], outputs: ['out'] },
+  
+  // Counter blocks
+  UP_COUNTER: { symbol: 'CTU', inputs: ['count_up', 'reset'], outputs: ['count', 'done'] },
+  DOWN_COUNTER: { symbol: 'CTD', inputs: ['count_down', 'reset'], outputs: ['count', 'done'] },
+  
+  // Advanced blocks
+  PID: { symbol: 'PID', inputs: ['setpoint', 'feedback', 'enable'], outputs: ['output'] },
+  SELECT: { symbol: 'SEL', inputs: ['selector', 'a', 'b'], outputs: ['out'] },
+  LIMIT: { symbol: 'LIM', inputs: ['min', 'in', 'max'], outputs: ['out'] },
+  SCALE: { symbol: 'SCL', inputs: ['in'], outputs: ['out'] },
+}
+
+// Get input/output configuration for a block type
+function getBlockInputsOutputs(blockType: string, inputCount?: number) {
+  const config = BLOCK_CONFIGS[blockType]
+  if (!config) {
+    return { inputs: [], outputs: [] }
+  }
+  
+  // For AND/OR gates, use dynamic input count
+  if ((blockType === 'AND' || blockType === 'OR') && inputCount && config.maxInputs) {
+    const actualCount = Math.min(inputCount, config.maxInputs)
+    return {
+      inputs: config.inputs.slice(0, actualCount).map(name => ({ name, type: 'bool' })),
+      outputs: config.outputs.map(name => ({ name, type: 'bool' }))
+    }
+  }
+  
+  // Default behavior for other blocks
+  return {
+    inputs: config.inputs.map(name => ({ name, type: 'float' })),
+    outputs: config.outputs.map(name => ({ name, type: 'float' }))
+  }
+}
+
+// Get default parameters for block types
+function getDefaultBlockParams(blockType: string) {
+  switch (blockType) {
+    case 'ON_DELAY':
+    case 'OFF_DELAY':
+    case 'PULSE':
+      return { preset: 1.0, units: 'seconds' }
+    case 'PID':
+      return { 
+        kp: 1.0, 
+        ki: 0.1, 
+        kd: 0.01, 
+        output_min: 0.0, 
+        output_max: 100.0 
+      }
+    case 'GT':
+    case 'LT':
+    case 'EQ':
+    case 'GTE':
+    case 'LTE':
+    case 'NEQ':
+      return { threshold: 0.0, deadband: 0.1 }
+    default:
+      return {}
+  }
+}
+
+// Get default node data based on type
+function getDefaultNodeData(type: string, customData?: any): any {
+  // For block types with custom data
+  if (type === 'block' && customData?.blockType) {
+    const blockType = customData.blockType
+    const config = BLOCK_CONFIGS[blockType]
+    
+    // Generate inputs based on block type
+    let inputs: { name: string; type: string }[] = []
+    if ((blockType === 'AND' || blockType === 'OR') && config?.maxInputs) {
+      // Variable inputs for AND/OR
+      const inputCount = customData.inputCount || config.defaultInputCount || 2
+      for (let i = 0; i < inputCount; i++) {
+        inputs.push({ name: String.fromCharCode(97 + i), type: 'bool' })
+      }
+    } else if (config?.inputs) {
+      // Fixed inputs for other blocks
+      inputs = config.inputs.map(name => ({ name, type: 'float' }))
+    }
+    
+    const outputs = config?.outputs?.map(name => ({ name, type: 'float' })) || []
+    const params = getDefaultBlockParams(blockType)
+    
+    return {
+      label: customData.label || `${blockType}_${Date.now()}`,
+      blockType,
+      inputs,
+      outputs,
+      params,
+      inputCount: customData.inputCount,
+      status: 'stopped',
+      ...customData
+    } as BlockNodeData
+  }
+  
+  // Default node data for other types
+  switch (type) {
+    case 'signal':
+      return {
+        label: customData?.label || 'New Signal',
+        signalName: customData?.signalName || `signal_${Date.now()}`,
+        signalType: customData?.signalType || 'float',
+        initial: customData?.initial || 0,
+        mode: customData?.mode || 'write',
+        value: undefined,
+        ...customData
+      }
+      
+    case 'mqtt':
+      return {
+        label: customData?.label || `MQTT_${Date.now()}`,
+        configured: false,
+        brokerHost: customData?.brokerHost || 'localhost',
+        brokerPort: customData?.brokerPort || 1883,
+        clientId: customData?.clientId || `petra_${Date.now()}`,
+        topicPrefix: customData?.topicPrefix || 'petra',
+        mode: customData?.mode || 'read_write',
+        publishOnChange: true,
+        subscriptions: [],
+        publications: [],
+        ...customData
+      }
+      
+    case 's7':
+      return {
+        label: customData?.label || `S7_${Date.now()}`,
+        configured: false,
+        ip: '192.168.0.1',
+        rack: 0,
+        slot: 2,
+        area: 'DB',
+        dbNumber: 1,
+        address: 0,
+        dataType: 'real',
+        direction: 'read',
+        signal: '',
+        ...customData
+      }
+      
+    case 'modbus':
+      return {
+        label: customData?.label || `Modbus_${Date.now()}`,
+        configured: false,
+        host: '192.168.0.1',
+        port: 502,
+        unitId: 1,
+        address: 0,
+        dataType: 'holding_register',
+        direction: 'read',
+        signal: '',
+        ...customData
+      }
+      
+    default:
+      return {
+        label: customData?.label || `${type}_${Date.now()}`,
+        ...customData
+      }
+  }
 }
 
 // Debounced history save to prevent excessive updates
@@ -140,12 +337,12 @@ const useFlowStoreInternal = create<FlowState>()(
         return
       }
       
-      const newEdge = {
+      const newEdge: Edge = {
         ...connection,
         id: `${connection.source}_${connection.sourceHandle}-${connection.target}_${connection.targetHandle}`,
         type: 'default',
         animated: false,
-      }
+      } as Edge
       
       set(state => ({
         edges: addEdge(newEdge, state.edges)
