@@ -134,6 +134,7 @@ function Flow() {
       event.preventDefault()
 
       const type = event.dataTransfer.getData('application/reactflow')
+      const customDataStr = event.dataTransfer.getData('custom-data')
       
       if (!type) return
 
@@ -142,7 +143,17 @@ function Flow() {
         y: event.clientY - 50,
       }
 
-      addNode(type, position)
+      // Parse custom data if available
+      let customData = {}
+      if (customDataStr) {
+        try {
+          customData = JSON.parse(customDataStr)
+        } catch (e) {
+          console.error('Failed to parse custom data:', e)
+        }
+      }
+
+      addNode(type, position, customData)
     },
     [addNode]
   )
