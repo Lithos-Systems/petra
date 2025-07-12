@@ -1,6 +1,6 @@
 // petra-designer/src/nodes/BlockNode.tsx
 import React from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import type { BlockNodeData } from '@/types/nodes'
 
 // PETRA backend block configurations
@@ -154,7 +154,7 @@ const PETRA_BLOCKS = {
   }
 }
 
-export default function BlockNode({ data, selected }: NodeProps<BlockNodeData>) {
+export default function BlockNode({ data, selected }: NodeProps<Node<BlockNodeData>>) {
   const blockType = data.blockType
   const config = PETRA_BLOCKS[blockType as keyof typeof PETRA_BLOCKS]
   
@@ -165,18 +165,18 @@ export default function BlockNode({ data, selected }: NodeProps<BlockNodeData>) 
     // For AND/OR gates with variable inputs
     if ((blockType === 'AND' || blockType === 'OR') && 'minInputs' in config) {
       const inputCount = data.inputCount || config.minInputs
-      const inputs = []
+      const inputs: string[] = []
       for (let i = 0; i < inputCount; i++) {
         inputs.push(String.fromCharCode(97 + i)) // a, b, c, d...
       }
       return inputs
     }
     // For fixed input blocks
-    return config.inputs || []
+    return (config as any).inputs || []
   }
   
   const inputs = getInputs()
-  const outputs = config.outputs || []
+  const outputs = (config as any).outputs || []
   
   // Calculate handle spacing
   const inputSpacing = 100 / (inputs.length + 1)
@@ -192,7 +192,7 @@ export default function BlockNode({ data, selected }: NodeProps<BlockNodeData>) 
       `}
     >
       {/* Input handles - larger and more visible */}
-      {inputs.map((input, index) => (
+      {inputs.map((input: string, index: number) => (
         <Handle
           key={`input-${input}`}
           id={input}
@@ -217,13 +217,13 @@ export default function BlockNode({ data, selected }: NodeProps<BlockNodeData>) 
       <div className="text-center">
         <div className="text-2xl font-bold text-gray-800">{config.symbol}</div>
         <div className="text-xs text-gray-600 mt-1">{data.label}</div>
-        {config.description && (
-          <div className="text-xs text-gray-500 mt-1 italic">{config.description}</div>
+        {(config as any).description && (
+          <div className="text-xs text-gray-500 mt-1 italic">{(config as any).description}</div>
         )}
       </div>
       
       {/* Output handles - larger and more visible */}
-      {outputs.map((output, index) => (
+      {outputs.map((output: string, index: number) => (
         <Handle
           key={`output-${output}`}
           id={output}

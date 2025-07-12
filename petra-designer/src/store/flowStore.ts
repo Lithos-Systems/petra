@@ -38,6 +38,7 @@ interface FlowState {
   updateNode: (nodeId: string, data: any) => void
   updateNodeData: (nodeId: string, updates: any) => void
   deleteNode: (nodeId: string) => void
+  deleteEdge: (edgeId: string) => void
   deleteSelectedNode: () => void
   setSelectedNode: (node: Node | null) => void
   
@@ -170,7 +171,7 @@ function getDefaultNodeData(type: string, customData?: any): any {
     const config = BLOCK_CONFIGS[blockType]
     
     // Generate inputs based on block type
-    let inputs = []
+    let inputs: { name: string; type: string }[] = []
     if ((blockType === 'AND' || blockType === 'OR') && config?.maxInputs) {
       // Variable inputs for AND/OR
       const inputCount = customData.inputCount || config.defaultInputCount || 2
@@ -414,6 +415,13 @@ const useFlowStoreInternal = create<FlowState>()(
         nodes: get().nodes.filter((n) => n.id !== nodeId),
         edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
         selectedNode: get().selectedNode?.id === nodeId ? null : get().selectedNode,
+      })
+      saveHistory(get, set)
+    },
+
+    deleteEdge: (edgeId: string) => {
+      set({
+        edges: get().edges.filter(e => e.id !== edgeId),
       })
       saveHistory(get, set)
     },

@@ -18,8 +18,25 @@ import {
 } from 'react-icons/fa'
 import { PETRA_BLOCKS } from '@/nodes/BlockNode'
 
+interface ComponentEntry {
+  id: string
+  type: string
+  label: string
+  description: string
+  tags: string[]
+  complexity: string
+  blockType?: keyof typeof PETRA_BLOCKS
+}
+
+interface Category {
+  id: string
+  name: string
+  icon: JSX.Element
+  components: ComponentEntry[]
+}
+
 // Complete PETRA block library
-const componentCategories = [
+const componentCategories: Category[] = [
   {
     id: 'logic',
     name: 'Logic Gates',
