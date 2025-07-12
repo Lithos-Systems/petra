@@ -1,27 +1,89 @@
-/* Disable smooth scrolling and transitions to avoid extra repaints */
-* {
-  scroll-behavior: auto !important;
-  transition: none !important;
-  animation: none !important;
-}
+/* petra-designer/src/styles/performance.css */
 
-.react-flow__edge-updating,
-.react-flow__edge-path {
+/* Disable expensive animations and transitions */
+.react-flow__node {
   transition: none !important;
 }
 
-.react-flow__node,
 .react-flow__edge {
   transition: none !important;
 }
 
+.react-flow__handle {
+  transition: none !important;
+}
+
+/* Optimize rendering performance */
 .react-flow__renderer {
+  will-change: auto !important;
+}
+
+.react-flow__nodes {
+  will-change: auto !important;
+}
+
+.react-flow__edges {
+  will-change: auto !important;
+}
+
+/* Reduce repaints during drag */
+.react-flow__node.dragging {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Optimize minimap performance */
+.react-flow__minimap {
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
 }
 
-.react-flow__minimap,
-.react-flow__controls {
-  will-change: auto;
+/* Disable hover effects during interactions */
+.react-flow__pane.dragging .react-flow__node:hover,
+.react-flow__pane.dragging .react-flow__edge:hover,
+.react-flow__pane.connecting .react-flow__node:hover,
+.react-flow__pane.connecting .react-flow__edge:hover {
+  cursor: default !important;
+}
+
+/* Optimize block node rendering */
+.block-node {
+  contain: layout style paint;
+  transform: translateZ(0);
+}
+
+/* Reduce memory footprint of hidden elements */
+.react-flow__node.hidden,
+.react-flow__edge.hidden {
+  display: none !important;
+}
+
+/* Optimize handle rendering */
+.handle-input,
+.handle-output {
+  contain: layout style paint size;
+}
+
+/* Disable expensive filters and effects */
+.react-flow__background pattern {
+  shape-rendering: optimizeSpeed;
+}
+
+/* Memory optimization for large flows */
+@media (min-width: 1920px) {
+  .react-flow__viewport {
+    transform-style: flat !important;
+  }
+}
+
+/* Reduce render complexity */
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* Optimize selection rendering */
+.react-flow__nodesselection-rect {
+  pointer-events: none;
+  contain: layout size;
 }
