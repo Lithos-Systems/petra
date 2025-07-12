@@ -1,42 +1,34 @@
+// petra-designer/src/components/ConnectionStatus.tsx
 import React from 'react'
-import { usePetraConnection } from '@/hooks/usePetraConnection'
 
-export default function ConnectionStatus() {
-  const { connected, connectionState, performance } = usePetraConnection()
+interface ConnectionStatusProps {
+  connected: boolean
+  connectionState: string
+  signals: Map<string, any>
+  performance: any
+  lastError: string | null
+}
 
-  const getStatusColor = () => {
-    switch (connectionState) {
-      case 'connected':
-        return '#00C800'
-      case 'connecting':
-        return '#FFD700'
-      case 'error':
-        return '#FF0000'
-      default:
-        return '#808080'
-    }
-  }
-
-  const getStatusText = () => {
-    switch (connectionState) {
-      case 'connected':
-        return `PETRA Connected (${performance.latency}ms)`
-      case 'connecting':
-        return 'Connecting to PETRA...'
-      case 'error':
-        return 'PETRA Connection Error'
-      default:
-        return 'PETRA Disconnected'
-    }
-  }
-
+export default function ConnectionStatus({
+  connected,
+  connectionState,
+  signals,
+  performance,
+  lastError
+}: ConnectionStatusProps) {
   return (
-    <div className="isa101-connection-status fixed bottom-0 right-0">
-      <div
-        className="isa101-connection-indicator"
-        style={{ backgroundColor: getStatusColor() }}
-      />
-      <span className="text-xs">{getStatusText()}</span>
+    <div className="flex items-center gap-2 text-xs">
+      <div className={`w-2 h-2 rounded-full ${
+        connected ? 'bg-green-500' : 'bg-red-500'
+      }`} />
+      <span className="text-gray-300">
+        {connectionState === 'connected' ? 'Connected' : 'Disconnected'}
+      </span>
+      {signals.size > 0 && (
+        <span className="text-gray-400">
+          ({signals.size} signals)
+        </span>
+      )}
     </div>
   )
 }
