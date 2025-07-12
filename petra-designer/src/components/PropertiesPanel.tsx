@@ -298,7 +298,7 @@ function renderBlockParams(blockData: BlockNodeData, updateNodeData: any, nodeId
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={blockData.params?.[param.name] || false}
+                checked={Boolean(blockData.params?.[param.name])}
                 onChange={(e) => {
                   updateNodeData(nodeId, {
                     params: {
@@ -368,7 +368,7 @@ export default function PropertiesPanel() {
             </label>
             <input
               type="text"
-              value={node.data.label || ''}
+              value={String((node.data as any).label || '')}
               onChange={(e) => updateNodeData(node.id, { label: e.target.value })}
               className="isa101-input w-full text-xs"
             />
@@ -422,7 +422,11 @@ export default function PropertiesPanel() {
               ) : (
                 <input
                   type="number"
-                  value={(node.data as SignalNodeData).initial || 0}
+                  value={Number(
+                    typeof (node.data as SignalNodeData).initial === 'number'
+                      ? (node.data as SignalNodeData).initial
+                      : (node.data as SignalNodeData).initial
+                  )}
                   onChange={(e) => updateNodeData(node.id, { initial: parseFloat(e.target.value) })}
                   step={(node.data as SignalNodeData).signalType === 'float' ? '0.1' : '1'}
                   className="isa101-input w-full text-xs"

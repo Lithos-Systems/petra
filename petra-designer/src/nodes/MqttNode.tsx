@@ -1,10 +1,10 @@
 // petra-designer/src/nodes/MqttNode.tsx
 import React from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import type { MqttNodeData } from '@/types/nodes'
 import { FaWifi, FaExclamationTriangle } from 'react-icons/fa'
 
-export default function MqttNode({ data, selected }: NodeProps<MqttNodeData>) {
+export default function MqttNode({ data, selected }: NodeProps<Node<MqttNodeData>>) {
   const isConfigured = data.configured && data.brokerHost && data.brokerPort
   
   return (
@@ -97,7 +97,7 @@ export default function MqttNode({ data, selected }: NodeProps<MqttNodeData>) {
         {data.subscriptions && data.subscriptions.length > 0 && (
           <div className="text-xs">
             <div className="text-gray-500">Subscriptions:</div>
-            {data.subscriptions.slice(0, 2).map((sub, i) => (
+            {data.subscriptions.slice(0, 2).map((sub: { topic: string }, i: number) => (
               <div key={i} className="text-gray-600 font-mono truncate" title={sub.topic}>
                 {sub.topic}
               </div>
