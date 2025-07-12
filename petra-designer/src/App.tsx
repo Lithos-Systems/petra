@@ -9,9 +9,6 @@ import {
   type EdgeChange,
   type NodeChange,
   useKeyPress,
-  getBezierPath,
-  type EdgeProps,
-  BaseEdge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
@@ -34,46 +31,6 @@ import './styles/isa101-theme.css'
 import './styles/performance.css'
 
 type DesignerMode = 'logic' | 'graphics'
-
-// Custom edge component with bezier curves
-const CustomEdge = ({ 
-  id, 
-  sourceX, 
-  sourceY, 
-  targetX, 
-  targetY, 
-  sourcePosition, 
-  targetPosition, 
-  data,
-  selected
-}: EdgeProps) => {
-  const [edgePath] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  })
-
-  return (
-    <>
-      <BaseEdge 
-        id={id} 
-        path={edgePath} 
-        style={{
-          stroke: selected ? '#000080' : '#000000',
-          strokeWidth: selected ? 3 : 2,
-        }}
-      />
-    </>
-  )
-}
-
-// Define edge types
-const edgeTypes = {
-  default: CustomEdge,
-}
 
 function Flow() {
   const [mode, setMode] = useState<DesignerMode>('logic')
@@ -254,12 +211,6 @@ function Flow() {
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               onEdgeClick={onEdgeClick}
-              edgeTypes={edgeTypes}
-              defaultEdgeOptions={{
-                type: 'default',
-                animated: false,
-                style: { strokeWidth: 2 }
-              }}
               className="bg-[#D3D3D3]"
             />
           </div>
