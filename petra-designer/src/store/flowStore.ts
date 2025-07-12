@@ -164,45 +164,64 @@ function getDefaultBlockParams(blockType: string) {
 
 // Get default node data based on type
 function getDefaultNodeData(type: string, customData?: any): any {
+  // For block types with custom data
+  if (type === 'block' && customData?.blockType) {
+    const blockType = customData.blockType
+    const config = BLOCK_CONFIGS[blockType]
+    
+    // Generate inputs based on block type
+    let inputs = []
+    if ((blockType === 'AND' || blockType === 'OR') && config?.maxInputs) {
+      // Variable inputs for AND/OR
+      const inputCount = customData.inputCount || config.defaultInputCount || 2
+      for (let i = 0; i < inputCount; i++) {
+        inputs.push({ name: String.fromCharCode(97 + i), type: 'bool' })
+      }
+    } else if (config?.inputs) {
+      // Fixed inputs for other blocks
+      inputs = config.inputs.map(name => ({ name, type: 'float' }))
+    }
+    
+    const outputs = config?.outputs?.map(name => ({ name, type: 'float' })) || []
+    const params = getDefaultBlockParams(blockType)
+    
+    return {
+      label: customData.label || `${blockType}_${Date.now()}`,
+      blockType,
+      inputs,
+      outputs,
+      params,
+      inputCount: customData.inputCount,
+      status: 'stopped',
+      ...customData
+    } as BlockNodeData
+  }
+  
+  // Legacy support for direct block types
   switch (type) {
     case 'signal':
       return {
-        label: 'New Signal',
-        signalName: `signal_${Date.now()}`,
-        signalType: 'float',
-        initial: 0,
-        mode: 'write',
+        label: customData?.label || 'New Signal',
+        signalName: customData?.signalName || `signal_${Date.now()}`,
+        signalType: customData?.signalType || 'float',
+        initial: customData?.initial || 0,
+        mode: customData?.mode || 'write',
+        value: undefined,
         ...customData
       } as SignalNodeData
-      
-    case 'block':
-      const blockType = customData?.blockType || 'AND'
-      const config = BLOCK_CONFIGS[blockType]
-      const inputCount = customData?.inputCount || config?.defaultInputCount || 2
-      const { inputs, outputs } = getBlockInputsOutputs(blockType, inputCount)
-      const params = getDefaultBlockParams(blockType)
-      
-      return {
-        label: customData?.label || `${blockType}_${Date.now()}`,
-        blockType,
-        inputs,
-        outputs,
-        params,
-        inputCount,
-        status: 'stopped',
-        ...customData
-      } as BlockNodeData
       
     case 'mqtt':
       return {
         label: customData?.label || `MQTT_${Date.now()}`,
         configured: false,
-        brokerHost: 'localhost',
-        brokerPort: 1883,
-        clientId: `petra_${Date.now()}`,
-        topicPrefix: 'petra',
-        mode: 'read_write',
+        brokerHost: customData?.brokerHost || 'localhost',
+        brokerPort: customData?.brokerPort || 1883,
+        clientId: customData?.clientId || `petra_${Date.now()}`,
+        topicPrefix: customData?.topicPrefix || 'petra',
+        mode: customData?.mode || 'read_write',
         publishOnChange: true,
+        subscriptions: [],
+        publications: [],
         ...customData
       } as MqttNodeData
       
@@ -236,25 +255,9 @@ function getDefaultNodeData(type: string, customData?: any): any {
         ...customData
       } as ModbusNodeData
       
-    case 'protocol':
-      const protocolType = customData?.protocolType || 'MQTT'
-      return {
-        label: customData?.label || `${protocolType}_${Date.now()}`,
-        protocolType,
-        configured: false,
-        config: {
-          broker: protocolType === 'MQTT' ? 'localhost' : undefined,
-          port: protocolType === 'MQTT' ? 1883 : undefined,
-          topic: protocolType === 'MQTT' ? 'petra/+' : undefined,
-          direction: 'subscribe',
-          ...customData?.config
-        },
-        ...customData
-      } as ProtocolNodeData
-      
     default:
       return {
-        label: `${type}_${Date.now()}`,
+        label: customData?.label || `${type}_${Date.now()}`,
         ...customData
       }
   }
