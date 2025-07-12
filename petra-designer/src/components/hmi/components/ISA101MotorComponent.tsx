@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Group, Circle, Text, Rect } from 'react-konva'
 import { useRef } from 'react'
 
@@ -19,7 +18,7 @@ interface ISA101MotorProps {
   width: number
   height: number
   properties: {
-    tagName: string
+    tagName?: string
     running: boolean
     speed?: number
     fault?: boolean

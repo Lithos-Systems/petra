@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Group, Rect, Line } from 'react-konva'
 
 export default function ISA101HeatExchangerComponent({ x, y, width, height, properties, ...props }: any) {

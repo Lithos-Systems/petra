@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Group, Circle, Line, Text, Shape, Rect } from 'react-konva'
 import { useRef } from 'react'
 
@@ -22,20 +21,22 @@ interface ISA101GaugeProps {
   width: number
   height: number
   properties: {
-    tagName: string
-    currentValue: number
-    units: string
-    minValue: number
-    maxValue: number
+    tagName?: string
+    currentValue?: number
+    units?: string
+    minValue?: number
+    maxValue?: number
     alarmHigh?: number
     alarmLow?: number
     setpoint?: number
     showDigitalValue?: boolean
     gaugeType?: 'pressure' | 'temperature' | 'flow' | 'level'
     showTrend?: boolean
+    [key: string]: any
   }
   style?: {
     lineWidth?: number
+    [key: string]: any
   }
   selected?: boolean
   onClick?: () => void
@@ -65,15 +66,22 @@ export default function ISA101GaugeComponent({
   const centerX = width / 2
   const centerY = height / 2
 
+  const {
+    minValue = 0,
+    maxValue = 100,
+    currentValue = 0,
+    units = '',
+  } = properties
+
   // Calculate angles
   const startAngle = -135 // Start at 225 degrees (lower left)
   const endAngle = 135   // End at 315 degrees (lower right)
   const angleRange = endAngle - startAngle
 
   // Calculate value position
-  const valueRange = properties.maxValue - properties.minValue
+  const valueRange = maxValue - minValue
   const normalizedValue = Math.max(0, Math.min(1, 
-    (properties.currentValue - properties.minValue) / valueRange
+    (currentValue - minValue) / valueRange
   ))
   const valueAngle = startAngle + (angleRange * normalizedValue)
 
@@ -88,8 +96,8 @@ export default function ISA101GaugeComponent({
 
   // Determine if value is in alarm
   const isInAlarm = () => {
-    if (properties.alarmHigh && properties.currentValue >= properties.alarmHigh) return true
-    if (properties.alarmLow && properties.currentValue <= properties.alarmLow) return true
+    if (properties.alarmHigh !== undefined && currentValue >= properties.alarmHigh) return true
+    if (properties.alarmLow !== undefined && currentValue <= properties.alarmLow) return true
     return false
   }
 
@@ -101,7 +109,7 @@ export default function ISA101GaugeComponent({
 
     for (let i = 0; i <= majorTicks; i++) {
       const angle = startAngle + (angleRange * i / majorTicks)
-      const value = properties.minValue + (valueRange * i / majorTicks)
+      const value = minValue + (valueRange * i / majorTicks)
       const outer = getXY(angle, radius)
       const inner = getXY(angle, radius - 10)
       const label = getXY(angle, radius - 20)
@@ -210,10 +218,10 @@ export default function ISA101GaugeComponent({
       />
 
       {/* Alarm zones */}
-      {properties.alarmHigh && (
+      {properties.alarmHigh !== undefined && (
         <Shape
           sceneFunc={(ctx, shape) => {
-            const alarmNormalized = (properties.alarmHigh - properties.minValue) / valueRange
+            const alarmNormalized = (properties.alarmHigh! - minValue) / valueRange
             const alarmStartAngle = startAngle + (angleRange * alarmNormalized)
             ctx.beginPath()
             ctx.arc(
@@ -232,10 +240,10 @@ export default function ISA101GaugeComponent({
         />
       )}
 
-      {properties.alarmLow && (
+      {properties.alarmLow !== undefined && (
         <Shape
           sceneFunc={(ctx, shape) => {
-            const alarmNormalized = (properties.alarmLow - properties.minValue) / valueRange
+            const alarmNormalized = (properties.alarmLow! - minValue) / valueRange
             const alarmEndAngle = startAngle + (angleRange * alarmNormalized)
             ctx.beginPath()
             ctx.arc(
@@ -260,7 +268,7 @@ export default function ISA101GaugeComponent({
       {/* Setpoint indicator */}
       {properties.setpoint !== undefined && (
         (() => {
-          const setpointNormalized = (properties.setpoint - properties.minValue) / valueRange
+          const setpointNormalized = (properties.setpoint! - minValue) / valueRange
           const setpointAngle = startAngle + (angleRange * setpointNormalized)
           const sp = getXY(setpointAngle, radius + 8)
           return (
@@ -326,7 +334,7 @@ export default function ISA101GaugeComponent({
             x={0}
             y={4}
             width={80}
-            text={`${properties.currentValue.toFixed(1)} ${properties.units}`}
+            text={`${currentValue.toFixed(1)} ${units}`}
             fontSize={14}
             fontStyle="bold"
             fill={isInAlarm() ? ISA101Colors.needleAlarm : ISA101Colors.processValue}

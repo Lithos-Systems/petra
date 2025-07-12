@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState, useRef } from 'react'
 import { Group, Rect, Shape, Text, Line } from 'react-konva'
 
@@ -38,9 +37,9 @@ interface ISA101TankProps {
   width: number
   height: number
   properties: {
-    tagName: string
+    tagName?: string
     currentLevel: number
-    levelUnits: string
+    levelUnits?: string
     maxLevel: number
     minLevel: number
     criticalHigh?: number
@@ -57,9 +56,11 @@ interface ISA101TankProps {
     inletValveOpen?: boolean
     outletValveOpen?: boolean
     agitatorRunning?: boolean
+    [key: string]: any
   }
   style?: {
     lineWidth?: number
+    [key: string]: any
   }
   selected?: boolean
   onContextMenu?: (e: any) => void

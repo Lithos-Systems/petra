@@ -1,5 +1,5 @@
-// @ts-nocheck
 import React from 'react'
+import type { HMIComponent } from '@/types/hmi'
 import ISA101TankComponent from './ISA101TankComponent'
 import ISA101PumpComponent from './ISA101PumpComponent'
 import ISA101ValveComponent from './ISA101ValveComponent'
@@ -16,10 +16,10 @@ import ISA101PipeComponent from './ISA101PipeComponent'
 import ISA101ShapeComponent from './ISA101ShapeComponent'
 
 interface ISA101ComponentRendererProps {
-  component: any
+  component: HMIComponent
   isSelected: boolean
   onSelect: () => void
-  onUpdate: (updates: any) => void
+  onUpdate: (updates: Partial<HMIComponent>) => void
 }
 
 export default function ISA101ComponentRenderer({

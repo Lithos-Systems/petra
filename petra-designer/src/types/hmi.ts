@@ -18,6 +18,7 @@ export type HMIComponentType =
   | 'heat-exchanger'
   | 'conveyor'
   | 'mixer'
+  | 'title'
   
 export interface ConnectionInfo {
   status: 'connected' | 'disconnected' | 'connecting' | 'error'

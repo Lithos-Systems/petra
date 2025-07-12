@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useRef, useState } from 'react'
 import { Group, Circle, Line, Text, Rect, Shape, Path } from 'react-konva'
 
@@ -21,8 +20,8 @@ interface ISA101PumpProps {
   width: number
   height: number
   properties: {
-    tagName: string
-    status: 'running' | 'stopped' | 'fault' | 'transitioning'
+    tagName?: string
+    status?: 'running' | 'stopped' | 'fault' | 'transitioning'
     flowRate?: number
     flowUnits?: string
     dischargePressure?: number
@@ -33,9 +32,11 @@ interface ISA101PumpProps {
     showDetailedStatus?: boolean
     showFlowDirection?: boolean
     pumpType?: 'centrifugal' | 'positive-displacement'
+    [key: string]: any
   }
   style?: {
     lineWidth?: number
+    [key: string]: any
   }
   selected?: boolean
   onClick?: () => void
