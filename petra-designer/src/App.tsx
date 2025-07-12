@@ -1,5 +1,5 @@
 // petra-designer/src/App.tsx
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import type { DragEvent, MouseEvent } from 'react'
 import {
   ReactFlowProvider,
@@ -8,13 +8,12 @@ import {
   type Connection,
   type EdgeChange,
   type NodeChange,
-  useKeyPress,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
 import { Toaster } from 'react-hot-toast'
 import toast from 'react-hot-toast'
-import { useFlowStore } from './store/flowStore'
+import { useOptimizedFlowStore } from './store/optimizedFlowStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import Sidebar from './components/Sidebar'
 import PropertiesPanel from './components/PropertiesPanel'
@@ -34,6 +33,7 @@ type DesignerMode = 'logic' | 'graphics'
 
 function Flow() {
   const [mode, setMode] = useState<DesignerMode>('logic')
+  const dragTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   const {     
     nodes,
@@ -44,10 +44,11 @@ function Flow() {
     selectedNode,
     addNode,
     setSelectedNode,
-    deleteEdge, 
-  } = useFlowStore()
+    deleteEdge,
+    clearFlow
+  } = useOptimizedFlowStore()
 
-  // PETRA connection
+  // PETRA connection with cleanup
   const {
     connected,
     connectionState,
@@ -59,58 +60,67 @@ function Flow() {
       toast.success('Connected to PETRA')
     },
     onDisconnect: () => {
-      // Removed the disconnect toast to avoid popup nuisance
+      // Silent disconnect to avoid popup nuisance
     },
   })
 
   // Add keyboard shortcuts
   useKeyboardShortcuts()
 
-  // Clean up any queued timers/listeners to avoid memory leaks
+  // Cleanup on unmount
   useEffect(() => {
-    const cleanup = () => {
-      const highestId = window.setTimeout(() => {}, 0)
-      for (let i = 0; i <= highestId; i++) {
-        window.clearTimeout(i)
-      }
-    }
-    window.addEventListener('beforeunload', cleanup)
     return () => {
-      window.removeEventListener('beforeunload', cleanup)
-      cleanup()
+      // Clear any pending drag timeouts
+      if (dragTimeoutRef.current) {
+        clearTimeout(dragTimeoutRef.current)
+      }
+      
+      // Clear store timers
+      const store = useOptimizedFlowStore.getState()
+      if (store.updateTimer) {
+        clearTimeout(store.updateTimer)
+      }
     }
   }, [])
 
   // Apply ISA-101 mode class to body
   useEffect(() => {
     document.body.classList.add('isa101-mode')
+    return () => {
+      document.body.classList.remove('isa101-mode')
+    }
   }, [])
 
   const onDrop = useCallback(
     (event: DragEvent) => {
       event.preventDefault()
+      event.stopPropagation()
 
       const type = event.dataTransfer.getData('application/reactflow')
       const customDataStr = event.dataTransfer.getData('custom-data')
       
       if (!type) return
 
-      const position = {
-        x: event.clientX - 250,
-        y: event.clientY - 50,
-      }
-
-      // Parse custom data if available
-      let customData = {}
-      if (customDataStr) {
-        try {
-          customData = JSON.parse(customDataStr)
-        } catch (e) {
-          console.error('Failed to parse custom data:', e)
+      // Use RAF to ensure smooth drop
+      requestAnimationFrame(() => {
+        const rect = (event.target as HTMLElement).getBoundingClientRect()
+        const position = {
+          x: event.clientX - rect.left - 60,
+          y: event.clientY - rect.top - 40,
         }
-      }
 
-      addNode(type, position, customData)
+        // Parse custom data if available
+        let customData = {}
+        if (customDataStr) {
+          try {
+            customData = JSON.parse(customDataStr)
+          } catch (e) {
+            console.error('Failed to parse custom data:', e)
+          }
+        }
+
+        addNode(type, position, customData)
+      })
     },
     [addNode]
   )
@@ -121,8 +131,7 @@ function Flow() {
   }, [])
 
   const onNodeClick = useCallback(
-    (event: MouseEvent, node: Node) => {
-      event.stopPropagation()
+    (_: MouseEvent, node: Node) => {
       setSelectedNode(node)
     },
     [setSelectedNode]
@@ -133,8 +142,7 @@ function Flow() {
   }, [setSelectedNode])
 
   const onEdgeClick = useCallback(
-    (event: MouseEvent, edge: Edge) => {
-      event.stopPropagation()
+    (_: MouseEvent, edge: Edge) => {
       if (confirm('Delete this connection?')) {
         deleteEdge(edge.id)
       }
@@ -186,57 +194,68 @@ function Flow() {
               <span className="text-sm">Graphics</span>
             </button>
           </div>
-
-          {/* Right: Spacer */}
-          <div className="flex-1" />
+          
+          {/* Right: Connection Status */}
+          <ConnectionStatus 
+            connected={connected}
+            connectionState={connectionState}
+            signals={signals}
+            performance={performance}
+            lastError={lastError}
+          />
         </div>
       </div>
 
-      {/* Conditional rendering based on mode */}
       {mode === 'logic' ? (
-        <div className="flex flex-1">
-          {/* Sidebar */}
-          <Sidebar />
-          
-          {/* Main Flow Area */}
-          <div className="flex-1 flex flex-col">
-            <OptimizedReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              onNodeClick={onNodeClick}
-              onPaneClick={onPaneClick}
-              onEdgeClick={onEdgeClick}
-              className="bg-[#D3D3D3]"
-            />
+        <div className="flex-1 flex">
+          <div className="w-60 bg-[#EAEAEA] border-r border-[#404040]">
+            <Sidebar />
           </div>
           
-          {/* Properties Panel */}
-          <PropertiesPanel />
+          <div className="flex-1 flex flex-col">
+            <Toolbar />
+            
+            <div className="flex-1 relative">
+              <ErrorBoundary>
+                <OptimizedReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  onNodeClick={onNodeClick}
+                  onPaneClick={onPaneClick}
+                  onDrop={onDrop}
+                  onDragOver={onDragOver}
+                  onEdgeClick={onEdgeClick}
+                  className="bg-[#F5F5F5]"
+                />
+              </ErrorBoundary>
+            </div>
+          </div>
           
-          {/* YAML Preview */}
-          <YamlPreview />
+          <div className="w-80 bg-[#EAEAEA] border-l border-[#404040] flex flex-col">
+            <PropertiesPanel />
+            <div className="border-t border-[#404040]">
+              <YamlPreview />
+            </div>
+          </div>
         </div>
       ) : (
         <HMIDesigner />
       )}
-      <ConnectionStatus />
     </div>
   )
 }
 
-export default function App() {
+function App() {
   return (
-    <ErrorBoundary>
-      <PetraProvider>
-        <ReactFlowProvider>
-          <Flow />
-        </ReactFlowProvider>
-      </PetraProvider>
-    </ErrorBoundary>
+    <PetraProvider>
+      <ReactFlowProvider>
+        <Flow />
+      </ReactFlowProvider>
+    </PetraProvider>
   )
 }
+
+export default App
