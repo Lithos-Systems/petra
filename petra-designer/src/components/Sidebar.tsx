@@ -1,274 +1,125 @@
+// petra-designer/src/components/Sidebar.tsx
 import React, { useState, useMemo } from 'react'
-import { FaSearch, FaChevronRight, FaChevronDown, FaInfoCircle, FaQuestionCircle, FaStar } from 'react-icons/fa'
+import { 
+  FaSearch, 
+  FaChevronRight, 
+  FaChevronDown, 
+  FaStar,
+  FaInfoCircle,
+  FaQuestionCircle,
+  FaCube,
+  FaNetworkWired,
+  FaClock,
+  FaChartLine,
+  FaCogs,
+  FaExchangeAlt,
+  FaCalculator,
+  FaWifi
+} from 'react-icons/fa'
+import { PETRA_BLOCKS } from '@/nodes/BlockNode'
 
-// ISA-101 Compliant Block Graphics Components
-const ISA101BlockGraphics = {
-  // Logic Blocks
-  AND: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <path d="M2 2 L10 2 A6 6 0 0 1 10 14 L2 14 Z" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="6" y="10" fontSize="8" textAnchor="middle" fill="#000">AND</text>
-    </svg>
-  ),
-  
-  OR: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <path d="M2 2 Q8 2 10 8 Q8 14 2 14 Q6 8 2 2" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="6" y="10" fontSize="8" textAnchor="middle" fill="#000">OR</text>
-    </svg>
-  ),
-  
-  NOT: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <path d="M2 2 L2 14 L12 8 Z" fill="none" stroke="#000" strokeWidth="1"/>
-      <circle cx="14" cy="8" r="2" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="6" y="10" fontSize="6" textAnchor="middle" fill="#000">NOT</text>
-    </svg>
-  ),
-  
-  XOR: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <path d="M2 2 Q8 2 10 8 Q8 14 2 14" fill="none" stroke="#000" strokeWidth="1"/>
-      <path d="M1 2 Q7 2 9 8 Q7 14 1 14" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="6" y="10" fontSize="7" textAnchor="middle" fill="#000">XOR</text>
-    </svg>
-  ),
-
-  // Comparison Blocks
-  GT: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">{">"}</text>
-    </svg>
-  ),
-  
-  LT: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">{"<"}</text>
-    </svg>
-  ),
-  
-  EQ: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">=</text>
-    </svg>
-  ),
-
-  // Math Blocks
-  ADD: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">+</text>
-    </svg>
-  ),
-  
-  SUB: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">-</text>
-    </svg>
-  ),
-  
-  MUL: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">×</text>
-    </svg>
-  ),
-  
-  DIV: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="8" textAnchor="middle" fill="#000">÷</text>
-    </svg>
-  ),
-
-  // Timer Blocks
-  TIMER: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <circle cx="10" cy="8" r="4" fill="none" stroke="#000" strokeWidth="1"/>
-      <path d="M10 6 L10 8 L12 8" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="13" fontSize="5" textAnchor="middle" fill="#000">TMR</text>
-    </svg>
-  ),
-  
-  DELAY: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="6" fontSize="6" textAnchor="middle" fill="#000">DELAY</text>
-      <text x="10" y="12" fontSize="5" textAnchor="middle" fill="#000">T#10s</text>
-    </svg>
-  ),
-
-  // Control Blocks
-  PID: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="7" fontSize="7" textAnchor="middle" fill="#000">PID</text>
-      <text x="10" y="13" fontSize="4" textAnchor="middle" fill="#000">CTRL</text>
-    </svg>
-  ),
-  
-  CONTROLLER: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="6" textAnchor="middle" fill="#000">CTRL</text>
-    </svg>
-  ),
-
-  // I/O Blocks
-  INPUT: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <path d="M2 8 L8 2 L8 5 L18 5 L18 11 L8 11 L8 14 Z" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="13" y="9" fontSize="5" textAnchor="middle" fill="#000">IN</text>
-    </svg>
-  ),
-  
-  OUTPUT: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <path d="M18 8 L12 2 L12 5 L2 5 L2 11 L12 11 L12 14 Z" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="7" y="9" fontSize="5" textAnchor="middle" fill="#000">OUT</text>
-    </svg>
-  ),
-
-  // Communication Blocks
-  MODBUS: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="8" fontSize="5" textAnchor="middle" fill="#000">MODBUS</text>
-      <text x="10" y="12" fontSize="4" textAnchor="middle" fill="#000">TCP/RTU</text>
-    </svg>
-  ),
-  
-  S7: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="9" fontSize="6" textAnchor="middle" fill="#000">S7</text>
-      <text x="10" y="13" fontSize="4" textAnchor="middle" fill="#000">SIEMENS</text>
-    </svg>
-  ),
-  
-  MQTT: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="9" fontSize="6" textAnchor="middle" fill="#000">MQTT</text>
-      <circle cx="6" cy="6" r="1" fill="#000"/>
-      <circle cx="10" cy="6" r="1" fill="#000"/>
-      <circle cx="14" cy="6" r="1" fill="#000"/>
-    </svg>
-  ),
-
-  // Signal Blocks
-  SIGNAL: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <circle cx="10" cy="8" r="6" fill="none" stroke="#000" strokeWidth="1"/>
-      <text x="10" y="10" fontSize="6" textAnchor="middle" fill="#000">SIG</text>
-    </svg>
-  ),
-  
-  ANALOG: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <path d="M4 10 L6 6 L8 10 L10 6 L12 10 L14 6 L16 10" fill="none" stroke="#000" strokeWidth="1"/>
-    </svg>
-  ),
-  
-  DIGITAL: () => (
-    <svg width="24" height="16" viewBox="0 0 24 16" className="isa101-block-icon">
-      <rect x="2" y="2" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
-      <path d="M4 10 L4 6 L6 6 L6 10 L8 10 L8 6 L10 6 L10 10 L12 10 L12 6 L14 6 L14 10 L16 10" 
-            fill="none" stroke="#000" strokeWidth="1"/>
-    </svg>
-  )
-}
-
-// Updated component categories with ISA-101 graphics
+// Complete PETRA block library
 const componentCategories = [
   {
     id: 'logic',
-    name: 'Logic',
-    icon: <span>⚡</span>,
-    color: 'blue',
+    name: 'Logic Gates',
+    icon: <FaNetworkWired className="w-4 h-4" />,
     components: [
       {
-        id: 'and-gate',
-        type: 'and',
+        id: 'and',
+        type: 'block',
+        blockType: 'AND',
         label: 'AND Gate',
-        icon: <ISA101BlockGraphics.AND />,
-        description: 'Logical AND operation',
-        category: 'logic',
-        tags: ['logic', 'and', 'boolean'],
+        description: 'All inputs must be true (2-8 inputs)',
+        tags: ['logic', 'and', 'boolean', 'gate'],
         complexity: 'basic'
       },
       {
-        id: 'or-gate',
-        type: 'or',
+        id: 'or',
+        type: 'block',
+        blockType: 'OR',
         label: 'OR Gate',
-        icon: <ISA101BlockGraphics.OR />,
-        description: 'Logical OR operation',
-        category: 'logic',
-        tags: ['logic', 'or', 'boolean'],
+        description: 'At least one input true (2-8 inputs)',
+        tags: ['logic', 'or', 'boolean', 'gate'],
         complexity: 'basic'
       },
       {
-        id: 'not-gate',
-        type: 'not',
+        id: 'not',
+        type: 'block',
+        blockType: 'NOT',
         label: 'NOT Gate',
-        icon: <ISA101BlockGraphics.NOT />,
-        description: 'Logical NOT operation',
-        category: 'logic',
-        tags: ['logic', 'not', 'invert'],
+        description: 'Inverts boolean input',
+        tags: ['logic', 'not', 'invert', 'boolean'],
         complexity: 'basic'
       },
       {
-        id: 'xor-gate',
-        type: 'xor',
+        id: 'xor',
+        type: 'block',
+        blockType: 'XOR',
         label: 'XOR Gate',
-        icon: <ISA101BlockGraphics.XOR />,
-        description: 'Exclusive OR operation',
-        category: 'logic',
-        tags: ['logic', 'xor', 'exclusive'],
+        description: 'Odd number of true inputs',
+        tags: ['logic', 'xor', 'exclusive', 'boolean'],
         complexity: 'basic'
       }
     ]
   },
   {
     id: 'compare',
-    name: 'Compare',
-    icon: <span>⚖️</span>,
-    color: 'green',
+    name: 'Comparison',
+    icon: <FaExchangeAlt className="w-4 h-4" />,
     components: [
       {
-        id: 'greater-than',
-        type: 'greater_than',
+        id: 'gt',
+        type: 'block',
+        blockType: 'GT',
         label: 'Greater Than',
-        icon: <ISA101BlockGraphics.GT />,
-        description: 'A > B comparison',
-        category: 'compare',
-        tags: ['comparison', 'greater', 'math'],
+        description: 'a > b comparison',
+        tags: ['compare', 'greater', 'numeric'],
         complexity: 'basic'
       },
       {
-        id: 'less-than',
-        type: 'less_than',
+        id: 'lt',
+        type: 'block',
+        blockType: 'LT',
         label: 'Less Than',
-        icon: <ISA101BlockGraphics.LT />,
-        description: 'A < B comparison',
-        category: 'compare',
-        tags: ['comparison', 'less', 'math'],
+        description: 'a < b comparison',
+        tags: ['compare', 'less', 'numeric'],
         complexity: 'basic'
       },
       {
-        id: 'equal',
-        type: 'equal',
+        id: 'gte',
+        type: 'block',
+        blockType: 'GTE',
+        label: 'Greater or Equal',
+        description: 'a ≥ b comparison',
+        tags: ['compare', 'greater', 'equal', 'numeric'],
+        complexity: 'basic'
+      },
+      {
+        id: 'lte',
+        type: 'block',
+        blockType: 'LTE',
+        label: 'Less or Equal',
+        description: 'a ≤ b comparison',
+        tags: ['compare', 'less', 'equal', 'numeric'],
+        complexity: 'basic'
+      },
+      {
+        id: 'eq',
+        type: 'block',
+        blockType: 'EQ',
         label: 'Equal',
-        icon: <ISA101BlockGraphics.EQ />,
-        description: 'A = B comparison',
-        category: 'compare',
-        tags: ['comparison', 'equal', 'math'],
+        description: 'a = b comparison',
+        tags: ['compare', 'equal', 'numeric'],
+        complexity: 'basic'
+      },
+      {
+        id: 'neq',
+        type: 'block',
+        blockType: 'NEQ',
+        label: 'Not Equal',
+        description: 'a ≠ b comparison',
+        tags: ['compare', 'not equal', 'numeric'],
         complexity: 'basic'
       }
     ]
@@ -276,46 +127,41 @@ const componentCategories = [
   {
     id: 'math',
     name: 'Math',
-    icon: <span>🔢</span>,
-    color: 'purple',
+    icon: <FaCalculator className="w-4 h-4" />,
     components: [
       {
         id: 'add',
-        type: 'add',
+        type: 'block',
+        blockType: 'ADD',
         label: 'Add',
-        icon: <ISA101BlockGraphics.ADD />,
-        description: 'Addition: A + B',
-        category: 'math',
+        description: 'Addition (a + b)',
         tags: ['math', 'add', 'arithmetic'],
         complexity: 'basic'
       },
       {
-        id: 'subtract',
-        type: 'subtract',
+        id: 'sub',
+        type: 'block',
+        blockType: 'SUB',
         label: 'Subtract',
-        icon: <ISA101BlockGraphics.SUB />,
-        description: 'Subtraction: A - B',
-        category: 'math',
+        description: 'Subtraction (a - b)',
         tags: ['math', 'subtract', 'arithmetic'],
         complexity: 'basic'
       },
       {
-        id: 'multiply',
-        type: 'multiply',
+        id: 'mul',
+        type: 'block',
+        blockType: 'MUL',
         label: 'Multiply',
-        icon: <ISA101BlockGraphics.MUL />,
-        description: 'Multiplication: A × B',
-        category: 'math',
+        description: 'Multiplication (a × b)',
         tags: ['math', 'multiply', 'arithmetic'],
         complexity: 'basic'
       },
       {
-        id: 'divide',
-        type: 'divide',
+        id: 'div',
+        type: 'block',
+        blockType: 'DIV',
         label: 'Divide',
-        icon: <ISA101BlockGraphics.DIV />,
-        description: 'Division: A ÷ B',
-        category: 'math',
+        description: 'Division (a ÷ b)',
         tags: ['math', 'divide', 'arithmetic'],
         complexity: 'basic'
       }
@@ -324,27 +170,85 @@ const componentCategories = [
   {
     id: 'timer',
     name: 'Timers',
-    icon: <span>⏱️</span>,
-    color: 'orange',
+    icon: <FaClock className="w-4 h-4" />,
     components: [
       {
-        id: 'timer',
-        type: 'timer',
-        label: 'Timer',
-        icon: <ISA101BlockGraphics.TIMER />,
-        description: 'Time delay on/off',
-        category: 'timer',
-        tags: ['timer', 'delay', 'time'],
+        id: 'on_delay',
+        type: 'block',
+        blockType: 'ON_DELAY',
+        label: 'On Delay Timer',
+        description: 'Delays turn-on signal',
+        tags: ['timer', 'delay', 'on', 'TON'],
         complexity: 'intermediate'
       },
       {
-        id: 'delay',
-        type: 'delay',
-        label: 'Delay',
-        icon: <ISA101BlockGraphics.DELAY />,
-        description: 'Signal delay block',
-        category: 'timer',
-        tags: ['delay', 'time', 'signal'],
+        id: 'off_delay',
+        type: 'block',
+        blockType: 'OFF_DELAY',
+        label: 'Off Delay Timer',
+        description: 'Delays turn-off signal',
+        tags: ['timer', 'delay', 'off', 'TOF'],
+        complexity: 'intermediate'
+      },
+      {
+        id: 'pulse',
+        type: 'block',
+        blockType: 'PULSE',
+        label: 'Pulse Timer',
+        description: 'Generates timed pulse',
+        tags: ['timer', 'pulse', 'TP'],
+        complexity: 'intermediate'
+      }
+    ]
+  },
+  {
+    id: 'data',
+    name: 'Data Processing',
+    icon: <FaCube className="w-4 h-4" />,
+    components: [
+      {
+        id: 'scale',
+        type: 'block',
+        blockType: 'SCALE',
+        label: 'Scale',
+        description: 'Scales input range to output range',
+        tags: ['data', 'scale', 'range', 'convert'],
+        complexity: 'intermediate'
+      },
+      {
+        id: 'limit',
+        type: 'block',
+        blockType: 'LIMIT',
+        label: 'Limit',
+        description: 'Limits value to min/max range',
+        tags: ['data', 'limit', 'clamp', 'range'],
+        complexity: 'basic'
+      },
+      {
+        id: 'select',
+        type: 'block',
+        blockType: 'SELECT',
+        label: 'Select',
+        description: 'Selects between two inputs',
+        tags: ['data', 'select', 'switch', 'mux'],
+        complexity: 'basic'
+      },
+      {
+        id: 'mux',
+        type: 'block',
+        blockType: 'MUX',
+        label: 'Multiplexer',
+        description: '4-to-1 multiplexer',
+        tags: ['data', 'mux', 'select', 'switch'],
+        complexity: 'intermediate'
+      },
+      {
+        id: 'demux',
+        type: 'block',
+        blockType: 'DEMUX',
+        label: 'Demultiplexer',
+        description: '1-to-4 demultiplexer',
+        tags: ['data', 'demux', 'distribute'],
         complexity: 'intermediate'
       }
     ]
@@ -352,149 +256,113 @@ const componentCategories = [
   {
     id: 'control',
     name: 'Control',
-    icon: <span>🎛️</span>,
-    color: 'red',
+    icon: <FaCogs className="w-4 h-4" />,
     components: [
       {
         id: 'pid',
-        type: 'pid',
+        type: 'block',
+        blockType: 'PID',
         label: 'PID Controller',
-        icon: <ISA101BlockGraphics.PID />,
         description: 'Proportional-Integral-Derivative control',
-        category: 'control',
-        tags: ['pid', 'control', 'loop'],
+        tags: ['control', 'pid', 'loop', 'process'],
         complexity: 'advanced'
       },
       {
-        id: 'controller',
-        type: 'controller',
-        label: 'Controller',
-        icon: <ISA101BlockGraphics.CONTROLLER />,
-        description: 'Generic controller block',
-        category: 'control',
-        tags: ['control', 'generic', 'automation'],
+        id: 'ramp',
+        type: 'block',
+        blockType: 'RAMP',
+        label: 'Ramp',
+        description: 'Ramps output up/down at set rate',
+        tags: ['control', 'ramp', 'rate', 'limit'],
         complexity: 'intermediate'
+      },
+      {
+        id: 'leadlag',
+        type: 'block',
+        blockType: 'LEADLAG',
+        label: 'Lead/Lag',
+        description: 'Lead-lag compensator',
+        tags: ['control', 'lead', 'lag', 'compensator'],
+        complexity: 'advanced'
       }
     ]
   },
   {
-    id: 'io',
-    name: 'I/O',
-    icon: <span>🔌</span>,
-    color: 'teal',
+    id: 'statistics',
+    name: 'Statistics',
+    icon: <FaChartLine className="w-4 h-4" />,
     components: [
       {
-        id: 'input',
-        type: 'input',
-        label: 'Input',
-        icon: <ISA101BlockGraphics.INPUT />,
-        description: 'Digital/Analog input',
-        category: 'io',
-        tags: ['input', 'io', 'signal'],
-        complexity: 'basic'
+        id: 'avg',
+        type: 'block',
+        blockType: 'AVG',
+        label: 'Average',
+        description: 'Moving average calculator',
+        tags: ['stats', 'average', 'mean', 'filter'],
+        complexity: 'intermediate'
       },
       {
-        id: 'output',
-        type: 'output',
-        label: 'Output',
-        icon: <ISA101BlockGraphics.OUTPUT />,
-        description: 'Digital/Analog output',
-        category: 'io',
-        tags: ['output', 'io', 'signal'],
-        complexity: 'basic'
+        id: 'minmax',
+        type: 'block',
+        blockType: 'MIN_MAX',
+        label: 'Min/Max',
+        description: 'Tracks minimum and maximum values',
+        tags: ['stats', 'min', 'max', 'range'],
+        complexity: 'intermediate'
       },
       {
-        id: 'analog-input',
-        type: 'analog_input',
-        label: 'Analog Input',
-        icon: <ISA101BlockGraphics.ANALOG />,
-        description: '4-20mA, 0-10V input',
-        category: 'io',
-        tags: ['analog', 'input', '4-20ma'],
-        complexity: 'basic'
-      },
-      {
-        id: 'digital-input',
-        type: 'digital_input',
-        label: 'Digital Input',
-        icon: <ISA101BlockGraphics.DIGITAL />,
-        description: 'Discrete input signal',
-        category: 'io',
-        tags: ['digital', 'input', 'discrete'],
-        complexity: 'basic'
+        id: 'stddev',
+        type: 'block',
+        blockType: 'STDDEV',
+        label: 'Std Deviation',
+        description: 'Standard deviation calculator',
+        tags: ['stats', 'stddev', 'variance', 'statistics'],
+        complexity: 'advanced'
       }
     ]
   },
   {
     id: 'communication',
     name: 'Communication',
-    icon: <span>📡</span>,
-    color: 'indigo',
+    icon: <FaWifi className="w-4 h-4" />,
     components: [
       {
         id: 'mqtt',
         type: 'mqtt',
-        label: 'MQTT',
-        icon: <ISA101BlockGraphics.MQTT />,
-        description: 'MQTT publish/subscribe',
-        category: 'communication',
-        tags: ['mqtt', 'publish', 'subscribe'],
-        complexity: 'intermediate'
-      },
-      {
-        id: 's7',
-        type: 's7',
-        label: 'Siemens S7',
-        icon: <ISA101BlockGraphics.S7 />,
-        description: 'Siemens S7 communication',
-        category: 'communication',
-        tags: ['s7', 'siemens', 'plc'],
+        label: 'MQTT Client',
+        description: 'MQTT broker connection',
+        tags: ['mqtt', 'iot', 'broker', 'publish', 'subscribe'],
         complexity: 'advanced'
       },
       {
         id: 'modbus',
         type: 'modbus',
         label: 'Modbus',
-        icon: <ISA101BlockGraphics.MODBUS />,
-        description: 'Modbus TCP/RTU communication',
-        category: 'communication',
-        tags: ['modbus', 'protocol', 'tcp', 'rtu'],
+        description: 'Modbus TCP/RTU client',
+        tags: ['modbus', 'industrial', 'tcp', 'rtu'],
         complexity: 'advanced'
-      }
-    ]
-  },
-  {
-    id: 'notifications',
-    name: 'Notifications',
-    icon: <span>!</span>,
-    color: 'red',
-    components: [
+      },
       {
-        id: 'twilio',
-        type: 'twilio',
-        label: 'Twilio',
-        icon: <ISA101BlockGraphics.SIGNAL />, // Using signal icon for now
-        description: 'SMS and voice notifications',
-        category: 'notifications',
-        tags: ['twilio', 'sms', 'voice', 'alert'],
-        complexity: 'intermediate'
+        id: 's7',
+        type: 's7',
+        label: 'Siemens S7',
+        description: 'S7 PLC communication',
+        tags: ['s7', 'siemens', 'plc', 'industrial'],
+        complexity: 'advanced'
       }
     ]
   },
   {
     id: 'signals',
     name: 'Signals',
-    icon: <span>📊</span>,
-    color: 'yellow',
+    icon: <FaExchangeAlt className="w-4 h-4" />,
     components: [
       {
         id: 'signal',
         type: 'signal',
         label: 'Signal',
-        icon: <ISA101BlockGraphics.SIGNAL />,
-        description: 'Generic signal block',
-        category: 'signals',
-        tags: ['signal', 'generic', 'data'],
+        description: 'Signal input/output point',
+        tags: ['signal', 'io', 'variable'],
         complexity: 'basic'
       }
     ]
@@ -507,13 +375,22 @@ interface SidebarProps {
 
 export default function Sidebar({ className = '' }: SidebarProps) {
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
   const [favoriteComponents, setFavoriteComponents] = useState<Set<string>>(new Set())
 
-  const handleDragStart = (e: React.DragEvent, componentType: string, componentId: string) => {
-    e.dataTransfer.setData('application/reactflow', componentType)
+  const handleDragStart = (e: React.DragEvent, component: any) => {
+    e.dataTransfer.setData('application/reactflow', component.type)
     e.dataTransfer.effectAllowed = 'move'
+    
+    // Add custom data for blocks
+    if (component.type === 'block') {
+      const customData = {
+        blockType: component.blockType,
+        label: component.label,
+        inputCount: component.blockType === 'AND' || component.blockType === 'OR' ? 2 : undefined
+      }
+      e.dataTransfer.setData('custom-data', JSON.stringify(customData))
+    }
   }
 
   const toggleCategory = (categoryId: string) => {
@@ -549,18 +426,16 @@ export default function Sidebar({ className = '' }: SidebarProps) {
           component.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           component.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
         
-        const matchesCategory = !selectedCategory || category.id === selectedCategory
-        
-        return matchesSearch && matchesCategory
+        return matchesSearch
       })
     })).filter(category => category.components.length > 0)
-  }, [searchTerm, selectedCategory])
+  }, [searchTerm])
 
   return (
-    <div className={`isa101-sidebar w-64 h-full ${className}`}>
+    <div className={`isa101-sidebar w-80 h-full ${className}`}>
       {/* Header */}
       <div className="isa101-panel-header">
-        <span className="text-sm font-medium">Block Library</span>
+        <span className="text-sm font-medium">PETRA Block Library</span>
       </div>
 
       {/* Search */}
@@ -591,7 +466,10 @@ export default function Sidebar({ className = '' }: SidebarProps) {
               onClick={() => toggleCategory(category.id)}
               className="w-full px-3 py-2 flex items-center justify-between hover:bg-[#C8C8C8] transition-colors"
             >
-              <span className="text-xs font-medium text-black">{category.name}</span>
+              <div className="flex items-center gap-2">
+                {category.icon}
+                <span className="text-xs font-medium text-black">{category.name}</span>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-[#606060]">{category.components.length}</span>
                 {collapsedCategories.has(category.id) ? (
@@ -609,12 +487,12 @@ export default function Sidebar({ className = '' }: SidebarProps) {
                   <div
                     key={component.id}
                     draggable
-                    onDragStart={(e) => handleDragStart(e, component.type, component.id)}
+                    onDragStart={(e) => handleDragStart(e, component)}
                     className="isa101-block-item group relative"
                   >
                     <div className="flex items-center gap-2 p-2 hover:bg-[#C8C8C8] cursor-move transition-colors">
-                      <div className="flex-shrink-0">
-                        {component.icon}
+                      <div className="flex-shrink-0 w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-xs font-bold">
+                        {component.blockType ? PETRA_BLOCKS[component.blockType]?.symbol : '?'}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium text-black">{component.label}</div>
@@ -639,7 +517,7 @@ export default function Sidebar({ className = '' }: SidebarProps) {
                     
                     {/* Complexity indicator */}
                     {component.complexity && (
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-2 right-8 opacity-0 group-hover:opacity-100 transition-opacity">
                         {component.complexity === 'basic' && (
                           <div className="w-1 h-3 bg-green-500" title="Basic" />
                         )}
