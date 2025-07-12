@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState, useRef } from 'react'
 import { Group, Line, Shape, Text, Rect, Circle } from 'react-konva'
 
@@ -22,18 +21,20 @@ interface ISA101ValveProps {
   width: number
   height: number
   properties: {
-    tagName: string
-    position: number // 0-100%
-    status: 'open' | 'closed' | 'transitioning' | 'fault'
+    tagName?: string
+    position?: number // 0-100%
+    status?: 'open' | 'closed' | 'transitioning' | 'fault'
     valveType?: 'gate' | 'ball' | 'butterfly' | 'control'
     controlMode?: 'auto' | 'manual' | 'cascade'
     interlocked?: boolean
     showPosition?: boolean
     orientation?: 'horizontal' | 'vertical'
     failPosition?: 'open' | 'closed' | 'last'
+    [key: string]: any
   }
   style?: {
     lineWidth?: number
+    [key: string]: any
   }
   selected?: boolean
   onClick?: () => void
@@ -61,6 +62,7 @@ export default function ISA101ValveComponent({
   const [isAnimating, setIsAnimating] = useState(false)
   const animationRef = useRef<any>()
   const groupRef = useRef<any>()
+  const position = properties.position ?? 0
 
   // Determine valve color based on status
   const getValveColor = () => {
@@ -133,9 +135,9 @@ export default function ISA101ValveComponent({
               fill={getValveColor()}
               stroke={ISA101Colors.equipmentOutline}
               strokeWidth={1}
-              rotation={isVertical ? 
-                (properties.position > 50 ? 0 : 90) : 
-                (properties.position > 50 ? 90 : 0)}
+              rotation={isVertical ?
+                (position > 50 ? 0 : 90) :
+                (position > 50 ? 90 : 0)}
             />
           </Group>
         )
@@ -159,8 +161,8 @@ export default function ISA101ValveComponent({
               strokeWidth={valveSize / 8}
               lineCap="round"
               rotation={isVertical ? 
-                (90 - properties.position * 0.9) : 
-                (properties.position * 0.9)}
+                (90 - position * 0.9) :
+                (position * 0.9)}
             />
           </Group>
         )
@@ -194,7 +196,7 @@ export default function ISA101ValveComponent({
             />
             <Circle
               x={0}
-              y={-valveSize + (properties.position / 100) * (valveSize / 2)}
+              y={-valveSize + (position / 100) * (valveSize / 2)}
               radius={valveSize / 8}
               fill={getValveColor()}
               stroke={ISA101Colors.equipmentOutline}
@@ -225,7 +227,7 @@ export default function ISA101ValveComponent({
             {/* Gate position */}
             <Rect
               x={-valveSize / 3}
-              y={-valveSize * 0.6 + (1 - properties.position / 100) * valveSize * 1.2}
+              y={-valveSize * 0.6 + (1 - position / 100) * valveSize * 1.2}
               width={valveSize * 2 / 3}
               height={valveSize * 0.2}
               fill={getValveColor()}
@@ -332,7 +334,7 @@ export default function ISA101ValveComponent({
             x={width / 2 - 30}
             y={2}
             width={60}
-            text={`${properties.position.toFixed(0)}%`}
+            text={`${position.toFixed(0)}%`}
             fontSize={12}
             fontStyle="bold"
             fill={ISA101Colors.processValue}

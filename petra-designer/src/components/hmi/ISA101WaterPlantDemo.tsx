@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/components/hmi/WaterPlantDemo.tsx
 
 import { useState, useEffect, useCallback } from 'react'
@@ -352,7 +351,7 @@ export default function WaterPlantPetraDemo() {
                   <span>Setpoint:</span>
                   <input
                     type="number"
-                    value={signals[`pump${num}SetpointFlow` as keyof typeof signals]}
+                    value={Number(signals[`pump${num}SetpointFlow` as keyof typeof signals])}
                     onChange={(e) => updateSetpoint(`pump${num}.setpoint_flow`, parseInt(e.target.value))}
                     className="w-20 px-2 py-1 border rounded text-right"
                     min="0"
@@ -500,7 +499,6 @@ export default function WaterPlantPetraDemo() {
                   stroke: '#374151',
                   strokeWidth: 2
                 }}
-                bindings={[]}
               />
               {/* Tank annotations */}
               <Text
@@ -573,7 +571,6 @@ export default function WaterPlantPetraDemo() {
                   stroke: '#374151',
                   strokeWidth: 2
                 }}
-                bindings={[]}
               />
               <Text
                 x={500}
@@ -627,7 +624,6 @@ export default function WaterPlantPetraDemo() {
                     stroke: signals[`pump${num}IsLead` as keyof typeof signals] ? '#f59e0b' : '#374151',
                     strokeWidth: signals[`pump${num}IsLead` as keyof typeof signals] ? 3 : 2
                   }}
-                  bindings={[]}
                 />
                 <Text
                   x={500}
@@ -850,7 +846,6 @@ export default function WaterPlantPetraDemo() {
                   stroke: '#4338ca',
                   strokeWidth: 2
                 }}
-                bindings={[]}
               />
               <ISA101TankComponent
                 x={100}
@@ -874,7 +869,6 @@ export default function WaterPlantPetraDemo() {
                   stroke: '#4338ca',
                   strokeWidth: 2
                 }}
-                bindings={[]}
               />
             </Group>
             

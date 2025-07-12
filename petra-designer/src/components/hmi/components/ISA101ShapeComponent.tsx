@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Group, Rect, Circle, Line, RegularPolygon } from 'react-konva'
 import { useRef } from 'react'
 
@@ -14,12 +13,13 @@ interface ISA101ShapeProps {
   width: number
   height: number
   properties: {
-    shapeType: 'rectangle' | 'circle' | 'triangle' | 'hexagon' | 'line'
+    shapeType?: 'rectangle' | 'circle' | 'triangle' | 'hexagon' | 'line'
     fill?: string
     stroke?: string
     strokeWidth?: number
     cornerRadius?: number
     opacity?: number
+    [key: string]: any
   }
   style?: any
   selected?: boolean

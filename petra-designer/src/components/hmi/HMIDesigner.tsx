@@ -1,6 +1,7 @@
-// @ts-nocheck
 import { useState, useEffect, useRef } from 'react'
 import { Stage, Layer, Rect, Line } from 'react-konva'
+import type { Stage as KonvaStage } from 'konva/lib/Stage'
+import type { HMIComponent, HMIComponentType } from '@/types/hmi'
 import { 
   FaBars, FaTimes, FaIndustry, FaChartLine, FaFont, FaShapes,
   FaPalette, FaEye, FaEyeSlash, FaLock, FaUnlock, FaTrash,
@@ -33,6 +34,9 @@ const ISA101Colors = {
   accent: '#0080FF',
   gridLine: '#D0D0D0',
   categoryHeader: '#D0D0D0',
+  running: '#00FF00',
+  stopped: '#808080',
+  alarmLow: '#FFFF00',
 }
 
 // Component categories following ISA-101 organization
@@ -232,19 +236,19 @@ const componentCategories = [
 
 export default function ISA101HMIDesigner() {
   const { connected, signals, subscribeSignal, unsubscribeSignal } = usePetra()
-  const [components, setComponents] = useState([])
-  const [selectedId, setSelectedId] = useState(null)
-  const [showGrid, setShowGrid] = useState(true)
-  const [gridSize, setGridSize] = useState(20)
-  const [snapToGrid, setSnapToGrid] = useState(true)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [activeCategory, setActiveCategory] = useState(0)
-  const [stageSize, setStageSize] = useState({ width: 1200, height: 800 })
-  const [isDragging, setIsDragging] = useState(false)
-  const [showBindingPanel, setShowBindingPanel] = useState(false)
-  const [availableSignals, setAvailableSignals] = useState([])
-  const stageRef = useRef()
-  const draggedComponent = useRef(null)
+  const [components, setComponents] = useState<HMIComponent[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showGrid, setShowGrid] = useState<boolean>(true)
+  const [gridSize, setGridSize] = useState<number>(20)
+  const [snapToGrid, setSnapToGrid] = useState<boolean>(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false)
+  const [activeCategory, setActiveCategory] = useState<number>(0)
+  const [stageSize, setStageSize] = useState<{ width: number; height: number }>({ width: 1200, height: 800 })
+  const [isDragging, setIsDragging] = useState<boolean>(false)
+  const [showBindingPanel, setShowBindingPanel] = useState<boolean>(false)
+  const [availableSignals, setAvailableSignals] = useState<string[]>([])
+  const stageRef = useRef<KonvaStage | null>(null)
+  const draggedComponent = useRef<HMIComponent | null>(null)
 
   // Update component properties based on signal bindings
   useEffect(() => {
@@ -311,7 +315,7 @@ export default function ISA101HMIDesigner() {
   }, [sidebarCollapsed])
 
   // Add component to canvas
-  const addComponent = (componentType) => {
+  const addComponent = (componentType: HMIComponentType) => {
     const category = componentCategories.find(cat => 
       cat.components.some(comp => comp.type === componentType)
     )
@@ -320,7 +324,7 @@ export default function ISA101HMIDesigner() {
     if (!componentDef) return
 
     // Component-specific default sizes
-    const getDefaultSize = (type) => {
+    const getDefaultSize = (type: HMIComponentType) => {
       switch (type) {
         case 'tank': return { width: 120, height: 150 }
         case 'mixer': return { width: 100, height: 120 }
@@ -335,7 +339,7 @@ export default function ISA101HMIDesigner() {
       }
     }
 
-    const newComponent = {
+    const newComponent: HMIComponent = {
       id: `${componentType}-${Date.now()}`,
       type: componentType,
       position: { x: 100, y: 100 },
@@ -355,7 +359,7 @@ export default function ISA101HMIDesigner() {
   }
 
   // Update component
-  const updateComponent = (id, updates) => {
+  const updateComponent = (id: string, updates: Partial<HMIComponent>) => {
     setComponents(components.map(comp => 
       comp.id === id ? { ...comp, ...updates } : comp
     ))
@@ -370,8 +374,8 @@ export default function ISA101HMIDesigner() {
   }
 
   // Render component based on type
-  const renderComponent = (component) => {
-    const commonProps = {
+  const renderComponent = (component: HMIComponent) => {
+    const commonProps: any = {
       x: component.position.x,
       y: component.position.y,
       width: component.size.width,
@@ -381,7 +385,7 @@ export default function ISA101HMIDesigner() {
       selected: component.id === selectedId,
       onClick: () => setSelectedId(component.id),
       draggable: !component.locked,
-      onDragEnd: (e) => {
+      onDragEnd: (e: any) => {
         const node = e.target
         let x = node.x()
         let y = node.y()
@@ -397,7 +401,7 @@ export default function ISA101HMIDesigner() {
           position: { x, y }
         })
       },
-      onDragStart: (e) => {
+      onDragStart: (e: any) => {
         e.target.moveToTop()
         setIsDragging(true)
       }
@@ -487,10 +491,10 @@ export default function ISA101HMIDesigner() {
                 
                 {activeCategory === idx && (
                   <div className="grid grid-cols-2 gap-1 p-2">
-                    {category.components.map(comp => (
+                      {category.components.map(comp => (
                       <button
                         key={comp.type}
-                        onClick={() => addComponent(comp.type)}
+                        onClick={() => addComponent(comp.type as HMIComponentType)}
                         className="p-2 text-xs border rounded hover:bg-gray-200 flex flex-col items-center gap-1"
                         style={{ 
                           backgroundColor: ISA101Colors.buttonBg,

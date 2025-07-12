@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useRef } from 'react'
 import { Group, Circle, Line, Path, Text, Rect, Shape } from 'react-konva'
 
