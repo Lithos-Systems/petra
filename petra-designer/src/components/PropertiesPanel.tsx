@@ -390,6 +390,16 @@ export default function PropertiesPanel() {
                 value={(node.data as SignalNodeData).signalName || ''}
                 onChange={(e) => updateNodeData(node.id, { signalName: e.target.value })}
                 className="isa101-input w-full text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-black mb-1">
+                Type
+              </label>
+              <select
+                value={(node.data as SignalNodeData).signalType || 'float'}
+                onChange={(e) => updateNodeData(node.id, { signalType: e.target.value })}
+                className="isa101-input w-full text-xs"
               >
                 <option value="bool">Boolean</option>
                 <option value="int">Integer</option>
@@ -821,14 +831,4 @@ export default function PropertiesPanel() {
   )
 }
 
-export { BLOCK_PARAMETERS } w-full text-xs"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-black mb-1">
-                Type
-              </label>
-              <select
-                value={(node.data as SignalNodeData).signalType || 'float'}
-                onChange={(e) => updateNodeData(node.id, { signalType: e.target.value })}
-                className="isa101-input w-full text-xs"
+export { BLOCK_PARAMETERS }
