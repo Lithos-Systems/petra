@@ -13,7 +13,7 @@ import '@xyflow/react/dist/style.css'
 
 import { Toaster } from 'react-hot-toast'
 import toast from 'react-hot-toast'
-import { useOptimizedFlowStore } from './store/optimizedFlowStore'
+import { useFlowStore } from './store/flowStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import Sidebar from './components/Sidebar'
 import PropertiesPanel from './components/PropertiesPanel'
@@ -33,7 +33,7 @@ type DesignerMode = 'logic' | 'graphics'
 
 function Flow() {
   const [mode, setMode] = useState<DesignerMode>('logic')
-  const dragTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const dragTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   const {     
     nodes,
@@ -46,7 +46,7 @@ function Flow() {
     setSelectedNode,
     deleteEdge,
     clearFlow
-  } = useOptimizedFlowStore()
+  } = useFlowStore()
 
   // PETRA connection with cleanup
   const {
@@ -76,9 +76,9 @@ function Flow() {
       }
       
       // Clear store timers
-      const store = useOptimizedFlowStore.getState()
-      if (store.updateTimer) {
-        clearTimeout(store.updateTimer)
+      const store = useFlowStore.getState()
+      if ('updateTimer' in store && store.updateTimer) {
+        clearTimeout(store.updateTimer as ReturnType<typeof setTimeout>)
       }
     }
   }, [])
