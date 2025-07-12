@@ -55,7 +55,16 @@ interface FlowState {
 }
 
 // Enhanced block configurations matching PETRA backend
-const BLOCK_CONFIGS = {
+interface BlockConfig {
+  inputs: string[]
+  outputs: string[]
+  symbol: string
+  minInputs?: number
+  maxInputs?: number
+  defaultInputCount?: number
+}
+
+const BLOCK_CONFIGS: Record<string, BlockConfig> = {
   // Logic blocks
   'AND': { 
     inputs: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], 
@@ -105,14 +114,14 @@ const BLOCK_CONFIGS = {
 
 // Helper to get block inputs/outputs
 function getBlockInputsOutputs(blockType: string, inputCount?: number) {
-  const config = BLOCK_CONFIGS[blockType as keyof typeof BLOCK_CONFIGS]
+  const config = BLOCK_CONFIGS[blockType]
   if (!config) {
     return { inputs: [], outputs: [] }
   }
   
   // For AND/OR gates, use dynamic input count
-  if ((blockType === 'AND' || blockType === 'OR') && inputCount) {
-    const actualCount = Math.min(inputCount, config.maxInputs || 8)
+  if ((blockType === 'AND' || blockType === 'OR') && inputCount && config.maxInputs) {
+    const actualCount = Math.min(inputCount, config.maxInputs)
     return {
       inputs: config.inputs.slice(0, actualCount).map(name => ({ name, type: 'bool' })),
       outputs: config.outputs.map(name => ({ name, type: 'bool' }))
@@ -168,7 +177,7 @@ function getDefaultNodeData(type: string, customData?: any): any {
       
     case 'block':
       const blockType = customData?.blockType || 'AND'
-      const config = BLOCK_CONFIGS[blockType as keyof typeof BLOCK_CONFIGS]
+      const config = BLOCK_CONFIGS[blockType]
       const inputCount = customData?.inputCount || config?.defaultInputCount || 2
       const { inputs, outputs } = getBlockInputsOutputs(blockType, inputCount)
       const params = getDefaultBlockParams(blockType)
