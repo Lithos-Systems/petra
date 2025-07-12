@@ -1,7 +1,7 @@
-// petra-designer/src/store/flowStore.ts
+// petra-designer/src/store/optimizedFlowStore.ts
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { 
+import {
   type Node,
   type Edge,
   type NodeChange,
@@ -9,285 +9,87 @@ import {
   type Connection,
   applyNodeChanges,
   applyEdgeChanges,
-  addEdge,
+  addEdge
 } from '@xyflow/react'
+import { nanoid } from 'nanoid'
 import { validateConnection } from '@/utils/validation'
 import { generateYaml } from '@/utils/yamlGenerator'
+import { 
+  getDefaultNodeData, 
+  getBlockInputsOutputs, 
+  getDefaultBlockParams,
+  BLOCK_CONFIGS 
+} from '@/utils/nodeUtils'
+import type { BlockNodeData } from '@/types/nodes'
 import toast from 'react-hot-toast'
-import type { 
-  BlockNodeData, 
-  SignalNodeData, 
-  MqttNodeData,
-  S7NodeData,
-  ModbusNodeData,
-  ProtocolNodeData 
-} from '@/types/nodes'
 
 interface FlowState {
   nodes: Node[]
   edges: Edge[]
   selectedNode: Node | null
+  // Reduced history size to prevent memory leaks
   history: Array<{ nodes: Node[]; edges: Edge[] }>
   historyIndex: number
+  // Performance optimizations
+  updateQueued: boolean
+  updateTimer: NodeJS.Timeout | null
   
-  // Node operations
   onNodesChange: (changes: NodeChange[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
-  onConnect: (connection: Connection) => void
+  onConnect: (conn: Connection) => void
   addNode: (type: string, position: { x: number; y: number }, data?: any) => void
-  updateNode: (nodeId: string, data: any) => void
-  updateNodeData: (nodeId: string, updates: any) => void
-  deleteNode: (nodeId: string) => void
-  deleteEdge: (edgeId: string) => void
+  updateNode: (id: string, data: any) => void
+  updateNodeData: (id: string, data: any) => void
+  deleteNode: (id: string) => void
+  deleteEdge: (id: string) => void
   deleteSelectedNode: () => void
   setSelectedNode: (node: Node | null) => void
-  
-  // Flow operations
   clearFlow: () => void
   loadFlow: (nodes: Node[], edges: Edge[]) => void
-  exportToYAML: () => string
-  validateLogic: () => { valid: boolean; nodeCount: number; connectionCount: number; errors: string[] }
-  
-  // History
   undo: () => void
   redo: () => void
   canUndo: () => boolean
   canRedo: () => boolean
+  exportToYAML: () => string
+  validateLogic: () => { valid: boolean; nodeCount: number; connectionCount: number; errors: string[] }
 }
 
-// Enhanced block configurations matching PETRA backend
-interface BlockConfig {
-  inputs: string[]
-  outputs: string[]
-  symbol: string
-  minInputs?: number
-  maxInputs?: number
-  defaultInputCount?: number
-}
-
-const BLOCK_CONFIGS: Record<string, BlockConfig> = {
-  // Logic blocks
-  'AND': { 
-    inputs: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], 
-    outputs: ['out'], 
-    symbol: '&',
-    minInputs: 2,
-    maxInputs: 8,
-    defaultInputCount: 2
-  },
-  'OR': { 
-    inputs: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], 
-    outputs: ['out'], 
-    symbol: '≥1',
-    minInputs: 2,
-    maxInputs: 8,
-    defaultInputCount: 2
-  },
-  'NOT': { inputs: ['in'], outputs: ['out'], symbol: '1' },
-  'XOR': { inputs: ['a', 'b'], outputs: ['out'], symbol: '=1' },
-  
-  // Comparison blocks
-  'GT': { inputs: ['a', 'b'], outputs: ['out'], symbol: '>' },
-  'LT': { inputs: ['a', 'b'], outputs: ['out'], symbol: '<' },
-  'EQ': { inputs: ['a', 'b'], outputs: ['out'], symbol: '=' },
-  'GTE': { inputs: ['a', 'b'], outputs: ['out'], symbol: '≥' },
-  'LTE': { inputs: ['a', 'b'], outputs: ['out'], symbol: '≤' },
-  'NEQ': { inputs: ['a', 'b'], outputs: ['out'], symbol: '≠' },
-  
-  // Math blocks
-  'ADD': { inputs: ['a', 'b'], outputs: ['out'], symbol: '+' },
-  'SUB': { inputs: ['a', 'b'], outputs: ['out'], symbol: '-' },
-  'MUL': { inputs: ['a', 'b'], outputs: ['out'], symbol: '×' },
-  'DIV': { inputs: ['a', 'b'], outputs: ['out'], symbol: '÷' },
-  
-  // Timer blocks
-  'ON_DELAY': { inputs: ['in', 'pt'], outputs: ['out', 'et'], symbol: 'TON' },
-  'OFF_DELAY': { inputs: ['in', 'pt'], outputs: ['out', 'et'], symbol: 'TOF' },
-  'PULSE': { inputs: ['in', 'pt'], outputs: ['out', 'et'], symbol: 'TP' },
-  
-  // Control blocks
-  'PID': { 
-    inputs: ['pv', 'sp', 'man', 'reset'], 
-    outputs: ['out', 'err'], 
-    symbol: 'PID' 
-  },
-}
-
-// Helper to get block inputs/outputs
-function getBlockInputsOutputs(blockType: string, inputCount?: number) {
-  const config = BLOCK_CONFIGS[blockType]
-  if (!config) {
-    return { inputs: [], outputs: [] }
-  }
-  
-  // For AND/OR gates, use dynamic input count
-  if ((blockType === 'AND' || blockType === 'OR') && inputCount && config.maxInputs) {
-    const actualCount = Math.min(inputCount, config.maxInputs)
-    return {
-      inputs: config.inputs.slice(0, actualCount).map(name => ({ name, type: 'bool' })),
-      outputs: config.outputs.map(name => ({ name, type: 'bool' }))
-    }
-  }
-  
-  // Default behavior for other blocks
-  return {
-    inputs: config.inputs.map(name => ({ name, type: 'float' })),
-    outputs: config.outputs.map(name => ({ name, type: 'float' }))
-  }
-}
-
-// Get default parameters for block types
-function getDefaultBlockParams(blockType: string) {
-  switch (blockType) {
-    case 'ON_DELAY':
-    case 'OFF_DELAY':
-    case 'PULSE':
-      return { preset: 1.0, units: 'seconds' }
-    case 'PID':
-      return { 
-        kp: 1.0, 
-        ki: 0.1, 
-        kd: 0.01, 
-        output_min: 0.0, 
-        output_max: 100.0 
-      }
-    case 'GT':
-    case 'LT':
-    case 'EQ':
-    case 'GTE':
-    case 'LTE':
-    case 'NEQ':
-      return { threshold: 0.0, deadband: 0.1 }
-    default:
-      return {}
-  }
-}
-
-// Get default node data based on type
-function getDefaultNodeData(type: string, customData?: any): any {
-  // For block types with custom data
-  if (type === 'block' && customData?.blockType) {
-    const blockType = customData.blockType
-    const config = BLOCK_CONFIGS[blockType]
-    
-    // Generate inputs based on block type
-    let inputs: { name: string; type: string }[] = []
-    if ((blockType === 'AND' || blockType === 'OR') && config?.maxInputs) {
-      // Variable inputs for AND/OR
-      const inputCount = customData.inputCount || config.defaultInputCount || 2
-      for (let i = 0; i < inputCount; i++) {
-        inputs.push({ name: String.fromCharCode(97 + i), type: 'bool' })
-      }
-    } else if (config?.inputs) {
-      // Fixed inputs for other blocks
-      inputs = config.inputs.map(name => ({ name, type: 'float' }))
-    }
-    
-    const outputs = config?.outputs?.map(name => ({ name, type: 'float' })) || []
-    const params = getDefaultBlockParams(blockType)
-    
-    return {
-      label: customData.label || `${blockType}_${Date.now()}`,
-      blockType,
-      inputs,
-      outputs,
-      params,
-      inputCount: customData.inputCount,
-      status: 'stopped',
-      ...customData
-    } as BlockNodeData
-  }
-  
-  // Legacy support for direct block types
-  switch (type) {
-    case 'signal':
-      return {
-        label: customData?.label || 'New Signal',
-        signalName: customData?.signalName || `signal_${Date.now()}`,
-        signalType: customData?.signalType || 'float',
-        initial: customData?.initial || 0,
-        mode: customData?.mode || 'write',
-        value: undefined,
-        ...customData
-      } as SignalNodeData
-      
-    case 'mqtt':
-      return {
-        label: customData?.label || `MQTT_${Date.now()}`,
-        configured: false,
-        brokerHost: customData?.brokerHost || 'localhost',
-        brokerPort: customData?.brokerPort || 1883,
-        clientId: customData?.clientId || `petra_${Date.now()}`,
-        topicPrefix: customData?.topicPrefix || 'petra',
-        mode: customData?.mode || 'read_write',
-        publishOnChange: true,
-        subscriptions: [],
-        publications: [],
-        ...customData
-      } as MqttNodeData
-      
-    case 's7':
-      return {
-        label: customData?.label || `S7_${Date.now()}`,
-        configured: false,
-        ip: '192.168.0.1',
-        rack: 0,
-        slot: 2,
-        area: 'DB',
-        dbNumber: 1,
-        address: 0,
-        dataType: 'real',
-        direction: 'read',
-        signal: '',
-        ...customData
-      } as S7NodeData
-      
-    case 'modbus':
-      return {
-        label: customData?.label || `Modbus_${Date.now()}`,
-        configured: false,
-        host: '192.168.0.1',
-        port: 502,
-        unitId: 1,
-        address: 0,
-        dataType: 'holding_register',
-        direction: 'read',
-        signal: '',
-        ...customData
-      } as ModbusNodeData
-      
-    default:
-      return {
-        label: customData?.label || `${type}_${Date.now()}`,
-        ...customData
-      }
-  }
-}
-
-// Save state to history
-function saveHistory(get: () => FlowState, set: (state: Partial<FlowState>) => void) {
+// Debounced history save to prevent excessive updates
+function saveHistoryDebounced(get: () => FlowState, set: (s: Partial<FlowState>) => void) {
   const state = get()
-  const snap = {
-    nodes: JSON.parse(JSON.stringify(state.nodes)),
-    edges: JSON.parse(JSON.stringify(state.edges))
+  
+  // Clear existing timer
+  if (state.updateTimer) {
+    clearTimeout(state.updateTimer)
   }
   
-  // Trim history after current index
-  const newHistory = state.history.slice(0, state.historyIndex + 1)
-  newHistory.push(snap)
+  // Set new timer
+  const timer = setTimeout(() => {
+    const currentState = get()
+    const snap = {
+      nodes: currentState.nodes.map(n => ({ ...n })),
+      edges: currentState.edges.map(e => ({ ...e }))
+    }
+    
+    const newHistory = currentState.history.slice(0, currentState.historyIndex + 1)
+    newHistory.push(snap)
+    
+    // Keep only last 20 history items to prevent memory issues
+    if (newHistory.length > 20) {
+      newHistory.splice(0, newHistory.length - 20)
+    }
+    
+    set({ 
+      history: newHistory, 
+      historyIndex: newHistory.length - 1,
+      updateQueued: false,
+      updateTimer: null
+    })
+  }, 300) // 300ms debounce
   
-  // Keep only last 50 states
-  if (newHistory.length > 50) {
-    newHistory.shift()
-  }
-  
-  set({ 
-    history: newHistory, 
-    historyIndex: newHistory.length - 1 
-  })
+  set({ updateQueued: true, updateTimer: timer })
 }
 
-// Create the flow store
 const useFlowStoreInternal = create<FlowState>()(
   subscribeWithSelector((set, get) => ({
     nodes: [],
@@ -295,21 +97,43 @@ const useFlowStoreInternal = create<FlowState>()(
     selectedNode: null,
     history: [{ nodes: [], edges: [] }],
     historyIndex: 0,
-    
+    updateQueued: false,
+    updateTimer: null,
+
     onNodesChange: (changes) => {
-      set({
-        nodes: applyNodeChanges(changes, get().nodes),
-      })
+      // Filter out select changes to reduce updates
+      const filteredChanges = changes.filter(change => 
+        change.type !== 'select' || (change.type === 'select' && change.selected)
+      )
+      
+      if (filteredChanges.length > 0) {
+        set(state => {
+          const newNodes = applyNodeChanges(filteredChanges, state.nodes)
+          return { nodes: newNodes }
+        })
+        
+        // Only save history for position changes
+        const hasPositionChange = filteredChanges.some(c => c.type === 'position')
+        if (hasPositionChange) {
+          saveHistoryDebounced(get, set)
+        }
+      }
     },
-    
+
     onEdgesChange: (changes) => {
-      set({
-        edges: applyEdgeChanges(changes, get().edges),
-      })
+      set(state => ({ 
+        edges: applyEdgeChanges(changes, state.edges) 
+      }))
     },
-    
+
     onConnect: (connection) => {
-      const validation = validateConnection(connection, get().nodes, get().edges)
+      if (!connection.source || !connection.target) return
+      
+      const validation = validateConnection(
+        connection,
+        get().nodes,
+        get().edges
+      )
       
       if (!validation.valid) {
         toast.error(validation.error || 'Invalid connection')
@@ -318,20 +142,19 @@ const useFlowStoreInternal = create<FlowState>()(
       
       const newEdge = {
         ...connection,
-        type: 'default', // Use bezier curves
+        id: `${connection.source}_${connection.sourceHandle}-${connection.target}_${connection.targetHandle}`,
+        type: 'default',
         animated: false,
-        style: { strokeWidth: 2 }
       }
       
-      set({
-        edges: addEdge(newEdge, get().edges),
-      })
+      set(state => ({
+        edges: addEdge(newEdge, state.edges)
+      }))
       
-      saveHistory(get, set)
-      toast.success('Connected')
+      saveHistoryDebounced(get, set)
     },
-    
-    addNode: (type: string, position: { x: number; y: number }, data?: any) => {
+
+    addNode: (type: string, position: { x: number; y: number }, data: any = {}) => {
       const nodeId = `${type}_${Date.now()}`
       const nodeData = getDefaultNodeData(type, data)
       
@@ -345,152 +168,172 @@ const useFlowStoreInternal = create<FlowState>()(
         },
       }
       
-      set({
-        nodes: [...get().nodes, newNode],
-      })
+      set(state => ({
+        nodes: [...state.nodes, newNode]
+      }))
       
-      saveHistory(get, set)
+      saveHistoryDebounced(get, set)
     },
-    
+
     updateNode: (nodeId: string, data: any) => {
       get().updateNodeData(nodeId, data)
     },
-    
+
     updateNodeData: (nodeId: string, updates: any) => {
-      const nodes = get().nodes.map((node) => {
-        if (node.id === nodeId) {
-          // Handle block type changes
-          if (updates.blockType && updates.blockType !== node.data.blockType) {
-            const inputCount = updates.inputCount || (node.data as BlockNodeData).inputCount || 2
-            const { inputs, outputs } = getBlockInputsOutputs(updates.blockType, inputCount)
-            return {
-              ...node,
-              data: { 
-                ...node.data, 
-                ...updates, 
-                inputs, 
-                outputs,
-                params: getDefaultBlockParams(updates.blockType)
-              },
+      set(state => {
+        const nodes = state.nodes.map((node) => {
+          if (node.id === nodeId) {
+            // Handle block type changes
+            if (updates.blockType && updates.blockType !== node.data.blockType) {
+              const inputCount = updates.inputCount || (node.data as BlockNodeData).inputCount || 2
+              const { inputs, outputs } = getBlockInputsOutputs(updates.blockType, inputCount)
+              return {
+                ...node,
+                data: { 
+                  ...node.data, 
+                  ...updates, 
+                  inputs, 
+                  outputs,
+                  params: getDefaultBlockParams(updates.blockType)
+                },
+              }
+            }
+            
+            // Handle input count changes for AND/OR gates
+            if (updates.inputCount && (node.data.blockType === 'AND' || node.data.blockType === 'OR')) {
+              const { inputs, outputs } = getBlockInputsOutputs(node.data.blockType, updates.inputCount)
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  ...updates,
+                  inputs,
+                  outputs,
+                },
+              }
+            }
+            
+            // Normal update
+            return { 
+              ...node, 
+              data: { ...node.data, ...updates } 
             }
           }
-          
-          // Handle input count changes for AND/OR gates
-          if (updates.inputCount && (node.data.blockType === 'AND' || node.data.blockType === 'OR')) {
-            const { inputs, outputs } = getBlockInputsOutputs(node.data.blockType, updates.inputCount)
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                ...updates,
-                inputs,
-                outputs,
-              },
-            }
-          }
-          
-          // Normal update
-          return { 
-            ...node, 
-            data: { ...node.data, ...updates } 
-          }
+          return node
+        })
+        
+        // Update selected node if it was the one updated
+        const selectedNode = state.selectedNode
+        if (selectedNode?.id === nodeId) {
+          const updatedNode = nodes.find(n => n.id === nodeId)
+          return { nodes, selectedNode: updatedNode || null }
         }
-        return node
+        
+        return { nodes }
       })
       
-      set({ nodes })
-      saveHistory(get, set)
-      
-      // Update selected node if it was the one updated
-      if (get().selectedNode?.id === nodeId) {
-        const updatedNode = nodes.find(n => n.id === nodeId)
-        if (updatedNode) {
-          set({ selectedNode: updatedNode })
-        }
-      }
+      saveHistoryDebounced(get, set)
     },
-    
+
     deleteNode: (nodeId: string) => {
-      set({
-        nodes: get().nodes.filter((n) => n.id !== nodeId),
-        edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
-        selectedNode: get().selectedNode?.id === nodeId ? null : get().selectedNode,
-      })
-      saveHistory(get, set)
+      set(state => ({
+        nodes: state.nodes.filter((n) => n.id !== nodeId),
+        edges: state.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+        selectedNode: state.selectedNode?.id === nodeId ? null : state.selectedNode,
+      }))
+      saveHistoryDebounced(get, set)
     },
 
     deleteEdge: (edgeId: string) => {
-      set({
-        edges: get().edges.filter(e => e.id !== edgeId),
-      })
-      saveHistory(get, set)
+      set(state => ({
+        edges: state.edges.filter(e => e.id !== edgeId),
+      }))
+      saveHistoryDebounced(get, set)
     },
-    
+
     deleteSelectedNode: () => {
       const selectedNode = get().selectedNode
       if (selectedNode) {
         get().deleteNode(selectedNode.id)
       }
     },
-    
+
     setSelectedNode: (node: Node | null) => {
       set({ selectedNode: node })
     },
-    
+
     clearFlow: () => {
+      // Clear any pending history saves
+      const state = get()
+      if (state.updateTimer) {
+        clearTimeout(state.updateTimer)
+      }
+      
       set({
         nodes: [],
         edges: [],
         selectedNode: null,
+        history: [{ nodes: [], edges: [] }],
+        historyIndex: 0,
+        updateQueued: false,
+        updateTimer: null
       })
-      saveHistory(get, set)
     },
-    
+
     loadFlow: (nodes: Node[], edges: Edge[]) => {
+      // Clear any pending history saves
+      const state = get()
+      if (state.updateTimer) {
+        clearTimeout(state.updateTimer)
+      }
+      
       set({
         nodes,
         edges,
         selectedNode: null,
+        history: [{ nodes: [...nodes], edges: [...edges] }],
+        historyIndex: 0,
+        updateQueued: false,
+        updateTimer: null
       })
-      saveHistory(get, set)
     },
-    
+
     undo: () => {
       const state = get()
       if (state.historyIndex > 0) {
         const newIndex = state.historyIndex - 1
         const snap = state.history[newIndex]
         set({
-          nodes: JSON.parse(JSON.stringify(snap.nodes)),
-          edges: JSON.parse(JSON.stringify(snap.edges)),
+          nodes: snap.nodes.map(n => ({ ...n })),
+          edges: snap.edges.map(e => ({ ...e })),
           historyIndex: newIndex,
           selectedNode: null,
         })
       }
     },
-    
+
     redo: () => {
       const state = get()
       if (state.historyIndex < state.history.length - 1) {
         const newIndex = state.historyIndex + 1
         const snap = state.history[newIndex]
         set({
-          nodes: JSON.parse(JSON.stringify(snap.nodes)),
-          edges: JSON.parse(JSON.stringify(snap.edges)),
+          nodes: snap.nodes.map(n => ({ ...n })),
+          edges: snap.edges.map(e => ({ ...e })),
           historyIndex: newIndex,
           selectedNode: null,
         })
       }
     },
-    
+
     canUndo: () => get().historyIndex > 0,
     canRedo: () => get().historyIndex < get().history.length - 1,
-    
+
     exportToYAML: () => {
       const { nodes, edges } = get()
       return generateYaml(nodes, edges)
     },
-    
+
     validateLogic: () => {
       const { nodes, edges } = get()
       const errors: string[] = []
@@ -535,6 +378,6 @@ const useFlowStoreInternal = create<FlowState>()(
   }))
 )
 
-// Export with proper aliases
+// Export with compatible aliases
 export const useFlowStore = useFlowStoreInternal
 export const useOptimizedFlowStore = useFlowStoreInternal
