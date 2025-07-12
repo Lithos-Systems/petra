@@ -1,3 +1,4 @@
+// petra-designer/src/components/OptimizedReactFlow.tsx
 import React, { useMemo } from 'react'
 import { ReactFlow, Background, Controls, MiniMap, BackgroundVariant } from '@xyflow/react'
 import { OptimizedBlockNode } from '@/nodes/OptimizedBlockNode'
@@ -16,12 +17,15 @@ export const OptimizedReactFlow = React.memo(({
   onDrop,
   onDragOver,
   onEdgeClick,
+  edgeTypes,
+  defaultEdgeOptions,
   className
 }: any) => {
   const reactFlowProps = useMemo(() => ({
     nodes,
     edges,
     nodeTypes,
+    edgeTypes: edgeTypes || {},
     onNodesChange,
     onEdgesChange,
     onConnect,
@@ -33,8 +37,8 @@ export const OptimizedReactFlow = React.memo(({
     fitView: false,
     snapToGrid: true,
     snapGrid: [10, 10] as [number, number],
-    defaultEdgeOptions: {
-      type: 'straight',
+    defaultEdgeOptions: defaultEdgeOptions || {
+      type: 'default',
       animated: false,
       style: { strokeWidth: 2, stroke: '#000000' }
     },
@@ -52,7 +56,7 @@ export const OptimizedReactFlow = React.memo(({
     panOnScrollSpeed: 0.5,
     zoomOnScrollSpeed: 0.5,
     viewport: { x: 0, y: 0, zoom: 1 }
-  }), [nodes, edges, onNodesChange, onEdgesChange, onConnect, onNodeClick, onPaneClick, onDrop, onDragOver, onEdgeClick])
+  }), [nodes, edges, onNodesChange, onEdgesChange, onConnect, onNodeClick, onPaneClick, onDrop, onDragOver, onEdgeClick, edgeTypes, defaultEdgeOptions])
 
   return (
     <ReactFlow {...reactFlowProps} className={className}>
