@@ -1,9 +1,18 @@
+// petra-designer/src/App.tsx
 import { useCallback, useEffect, DragEvent, MouseEvent, useState } from 'react'
 import {
   ReactFlowProvider,
   type Node,
   useKeyPress,
+  Connection,
+  Edge,
+  EdgeChange,
+  NodeChange,
+  getBezierPath,
+  EdgeProps,
+  BaseEdge,
 } from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
 
 import { Toaster } from 'react-hot-toast'
 import toast from 'react-hot-toast'
@@ -26,6 +35,46 @@ import './styles/isa101-theme.css'
 import './styles/performance.css'
 
 type DesignerMode = 'logic' | 'graphics'
+
+// Custom edge component with bezier curves
+const CustomEdge = ({ 
+  id, 
+  sourceX, 
+  sourceY, 
+  targetX, 
+  targetY, 
+  sourcePosition, 
+  targetPosition, 
+  data,
+  selected
+}: EdgeProps) => {
+  const [edgePath] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  })
+
+  return (
+    <>
+      <BaseEdge 
+        id={id} 
+        path={edgePath} 
+        style={{
+          stroke: selected ? '#000080' : '#000000',
+          strokeWidth: selected ? 3 : 2,
+        }}
+      />
+    </>
+  )
+}
+
+// Define edge types
+const edgeTypes = {
+  default: CustomEdge,
+}
 
 function Flow() {
   const [mode, setMode] = useState<DesignerMode>('logic')
@@ -81,98 +130,83 @@ function Flow() {
     document.body.classList.add('isa101-mode')
   }, [])
 
-  useEffect(() => {
-    console.log('ReactFlow mounted. nodes:', nodes.length, 'edges:', edges.length)
-  }, [nodes, edges])
-
-  const onEdgeClick = useCallback(
-    (event: MouseEvent, edge: any) => {
-      event.stopPropagation()
-      deleteEdge(edge.id)
-      toast.success('Connection deleted')
-    },
-    [deleteEdge]
-  )
-
-  const deletePressed = useKeyPress(['Delete', 'Backspace'])
-  useEffect(() => {
-    if (deletePressed && selectedNode) {
-      // Only delete nodes when a node is selected
-    }
-  }, [deletePressed, selectedNode])
-
-  const onDragOver = useCallback((e: DragEvent) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }, [])
-
   const onDrop = useCallback(
-    (e: DragEvent) => {
-      e.preventDefault()
-      const type = e.dataTransfer.getData('application/reactflow')
+    (event: DragEvent) => {
+      event.preventDefault()
+
+      const type = event.dataTransfer.getData('application/reactflow')
+      const customData = event.dataTransfer.getData('custom-data')
+      
       if (!type) return
 
-      const reactFlowBounds = e.currentTarget.getBoundingClientRect()
       const position = {
-        x: e.clientX - reactFlowBounds.left - 75,
-        y: e.clientY - reactFlowBounds.top - 25,
+        x: event.clientX - 250,
+        y: event.clientY - 50,
       }
 
-      addNode(type, position)
+      // Parse custom data if present
+      let parsedData = {}
+      if (customData) {
+        try {
+          parsedData = JSON.parse(customData)
+        } catch (e) {
+          console.error('Failed to parse custom data:', e)
+        }
+      }
+
+      addNode(type, position, parsedData)
     },
-    [addNode],
+    [addNode]
   )
 
+  const onDragOver = useCallback((event: DragEvent) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }, [])
+
   const onNodeClick = useCallback(
-    (_evt: MouseEvent, node: Node) => {
+    (event: MouseEvent, node: Node) => {
+      event.stopPropagation()
       setSelectedNode(node)
     },
-    [setSelectedNode],
+    [setSelectedNode]
   )
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null)
   }, [setSelectedNode])
 
+  const onEdgeClick = useCallback(
+    (event: MouseEvent, edge: Edge) => {
+      event.stopPropagation()
+      if (confirm('Delete this connection?')) {
+        deleteEdge(edge.id)
+      }
+    },
+    [deleteEdge]
+  )
+
   return (
-    <div className="h-screen flex flex-col isa101-mode bg-[#E8E8E8]">
+    <div className="h-screen flex flex-col bg-[#D3D3D3]">
       <Toaster 
-        position="top-right"
+        position="bottom-right"
         toastOptions={{
           duration: 3000,
           style: {
-            background: '#404040',
+            background: '#333',
             color: '#fff',
-          },
-          success: {
-            iconTheme: {
-              primary: '#10b981',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
-            },
           },
         }}
       />
       
-      {/* Minimal ISA-101 Toolbar */}
-      <div className="isa101-toolbar">
-        <div className="flex items-center justify-between px-4 py-2">
-          {/* Left: Logo/Title */}
-          <div className="flex items-center gap-4">
-            <h1 className="text-lg font-medium text-black">
-              PETRA Designer
-            </h1>
-            <div className="h-4 w-px bg-[#606060]" />
-            <Toolbar />
-          </div>
+      {/* Header with mode switch */}
+      <div className="bg-[#404040] text-white p-2">
+        <div className="flex items-center">
+          {/* Left: Title */}
+          <h1 className="text-lg font-bold">PETRA Designer</h1>
           
-          {/* Center: Mode Switcher - Minimal ISA-101 Style */}
-          <div className="flex items-center bg-[#B8B8B8] p-1">
+          {/* Center: Mode switch */}
+          <div className="flex items-center gap-2 mx-auto bg-[#606060] rounded">
             <button
               onClick={() => setMode('logic')}
               className={`flex items-center gap-2 px-3 py-1 transition-colors ${
@@ -221,6 +255,12 @@ function Flow() {
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               onEdgeClick={onEdgeClick}
+              edgeTypes={edgeTypes}
+              defaultEdgeOptions={{
+                type: 'default',
+                animated: false,
+                style: { strokeWidth: 2 }
+              }}
               className="bg-[#D3D3D3]"
             />
           </div>
