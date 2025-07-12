@@ -829,4 +829,4 @@ export default function PropertiesPanel() {
               <select
                 value={(node.data as SignalNodeData).signalType || 'float'}
                 onChange={(e) => updateNodeData(node.id, { signalType: e.target.value })}
-                className="isa101-input
+                className="isa101-input w-full text-xs"
